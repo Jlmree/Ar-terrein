@@ -107,6 +107,8 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 #xrUI{position:fixed;inset:0;pointer-events:none;z-index:100;font-family:system-ui}
 #xrUI .xrb{position:absolute;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px;pointer-events:auto}
 #xrUI button{background:#16181de6;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:17px;font-weight:700}
+#xrUI .xrt{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));background:#000a;border-radius:12px;padding:8px 10px;pointer-events:auto;color:#fff;font-size:13px}
+#xrUI .xrt button{padding:6px 12px;font-size:15px}
 #xrMsg{position:absolute;top:calc(20px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#000a;color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;white-space:nowrap}
 </style>
 </head>
@@ -179,7 +181,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v7 · 13-11 08:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v8 · 13-11 08:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -200,6 +202,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
+  <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
   <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
 <!-- ============ GEO (UTM / MGRS / Mercator) ============ -->
@@ -608,7 +611,7 @@ function onResize(){if(!renderer) return; const w=innerWidth,h=innerHeight; rend
 const needle=document.getElementById('needle');
 let lastLblCheck=0;
 function frame(t,xrFrame){
-  if(renderer.xr.isPresenting){xrUpdate(xrFrame); renderer.render(scene,camera); return;}
+  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
   if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
@@ -620,13 +623,13 @@ function frame(t,xrFrame){
   }
 }
 
-const VS=`attribute float elev; varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW;
-void main(){vUv=uv;vElev=elev;vN=normal;vec4 w=modelMatrix*vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
+const VS=`attribute float elev; varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW; varying vec3 vL;
+void main(){vUv=uv;vElev=elev;vN=normal;vL=position;vec4 w=modelMatrix*vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
 const FS=`uniform sampler2D map; uniform sampler2D shMap; uniform vec3 sun; uniform float ci; uniform float shade; uniform vec3 fogC; uniform float fogN; uniform float fogF;
 uniform float shOn; uniform vec4 uvR; uniform float amb; uniform float dirK; uniform float lightK; uniform vec3 tint;
 uniform sampler2D cloudMap; uniform float cloudOn; uniform vec2 cloudDrift; uniform float cloudSpan; uniform float cloudY; uniform float cloudK;
 uniform float gfog; uniform float gfH; uniform float eMinU; uniform vec3 gfC; uniform float wet; uniform float snow;
-varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW;
+varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW; varying vec3 vL;
 float cline(float v,float k){float f=v/k;float w=fwidth(f);float g=abs(fract(f-0.5)-0.5)/max(w,1e-6);return (1.0-clamp(g,0.0,1.0))*clamp(1.6-w*5.0,0.0,1.0);}
 void main(){
   vec3 col=texture2D(map,vUv).rgb; vec3 Nn=normalize(vN);
@@ -635,7 +638,7 @@ void main(){
   if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a);}
   vec2 muv=uvR.xy+vUv*uvR.zw;
   float sh=shOn>0.5?texture2D(shMap,muv).r:1.0;
-  float cs=1.0; if(cloudOn>0.5){vec2 p=vW.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
+  float cs=1.0; if(cloudOn>0.5){vec2 p=vL.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
   float d=max(dot(Nn,sun),0.0)*sh*cs;
   col*=mix(1.0,amb+dirK*d,shade);
   col*=tint*lightK;
@@ -1391,6 +1394,7 @@ function applyWx(fast){
     const hD=new THREE.Color(0.68,0.82,0.95),hN=new THREE.Color(0.04,0.06,0.12),hS=new THREE.Color(1.0,0.55,0.32);
     sky=hN.clone().lerp(hD,day).lerp(hS,dusk*0.5).lerp(new THREE.Color(0.62,0.65,0.7).multiplyScalar(0.15+0.85*day),D.cloudy.value*0.85);
   }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;dome.visible=false;}
+  if(renderer.xr.isPresenting) lightK=Math.max(lightK,0.4);
   fx.lk=lightK; U.amb.value=amb;U.dirK.value=dirK;U.lightK.value=lightK;U.tint.value.set(...tint);
   if(!renderer.xr.isPresenting) scene.background=sky; U.fogC.value.copy(sky);
   hemiL.intensity=1.1*lightK; dirL.intensity=1.6*lightK*dirK;
@@ -1409,7 +1413,7 @@ function applyWx(fast){
   U.wet.value=w&&wx.rain?clamp((w._p3||0)/1.5,0,1)*0.9:0;
   U.snow.value=w&&wx.rain?clamp((w.snow_depth||0)/0.04,0,1):0;
   fx.storm=!!(w&&wx.rain&&w.weather_code>=95);
-  updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w);
+  updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w); updateCelest();
   // tekst
   if($('wxNow')){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
@@ -1485,10 +1489,10 @@ function wxFxOff(){ // bij uitzetten / nieuw gebied
 }
 
 // --- wolken (3D-pluizen + schaduw over het terrein)
-const PUFF_VS=`attribute vec3 iOff; attribute float iScale; attribute float iShade; uniform vec2 drift; uniform float span;
+const PUFF_VS=`attribute vec3 iOff; attribute float iScale; attribute float iShade; uniform vec2 drift; uniform float span; uniform float clipR;
 varying vec2 vUv; varying float vShade; varying float vFade;
 void main(){ vec3 o=iOff; o.xz=mod(o.xz+drift+span*0.5,span)-span*0.5;
-  vec2 e=abs(o.xz)/(span*0.5); vFade=1.0-smoothstep(0.72,0.98,max(e.x,e.y));
+  vec2 e=abs(o.xz)/(span*0.5); vFade=1.0-smoothstep(0.72,0.98,max(e.x,e.y)); if(clipR>0.0){float m=max(abs(o.x),abs(o.z)); vFade*=1.0-smoothstep(clipR*0.85,clipR,m);}
   vec4 mv=modelViewMatrix*vec4(o,1.0); mv.xy+=position.xy*iScale; vUv=uv; vShade=iShade; gl_Position=projectionMatrix*mv; }`;
 const PUFF_FS=`uniform sampler2D nTex; uniform vec3 litC; uniform vec3 darkC; uniform float opa; varying vec2 vUv; varying float vShade; varying float vFade;
 void main(){ vec2 c=vUv-0.5; float r=length(c)*2.0; float n=texture2D(nTex,vUv*0.8+vec2(vShade*3.7,vShade*1.9)).r;
@@ -1519,7 +1523,7 @@ function buildClouds(cov,base,strat){
   g.setAttribute('iOff',new THREE.InstancedBufferAttribute(off,3)); g.setAttribute('iScale',new THREE.InstancedBufferAttribute(sc,1)); g.setAttribute('iShade',new THREE.InstancedBufferAttribute(shd,1));
   g.instanceCount=N;
   const mat=new THREE.ShaderMaterial({vertexShader:PUFF_VS,fragmentShader:PUFF_FS,transparent:true,depthWrite:false,
-    uniforms:{drift:{value:fx.drift},span:{value:span},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:strat?0.7:0.85}}});
+    uniforms:{drift:{value:fx.drift},span:{value:span},clipR:{value:renderer.xr.isPresenting?S/2:0},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:strat?0.7:0.85}}});
   const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.renderOrder=6; m.userData={base}; tAdd('clouds',m); placeClouds();
   // schaduwmasker
   const M=256,cv=document.createElement('canvas');cv.width=cv.height=M;const ctx=cv.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,M,M);ctx.globalCompositeOperation='lighter';
@@ -1563,8 +1567,8 @@ function updatePrecip(w){
 }
 function stepPrecip(dt){
   const o=tmeshes.precip;if(!o) return; const u=o.userData,P=u.P,a=o.geometry.attributes.position.array;
-  const dist=camera.position.distanceTo(controls.target),L=clamp(dist*1.3,cur.bb.S*0.03,cur.bb.S*1.2);
-  o.position.set(controls.target.x,controls.target.y+L*0.2,controls.target.z); o.scale.setScalar(L);
+  const ar=renderer.xr.isPresenting,dist=camera.position.distanceTo(controls.target),L=ar?cur.bb.S:clamp(dist*1.3,cur.bb.S*0.03,cur.bb.S*1.2);
+  if(ar) o.position.set(0,(cur.eMax-cur.eMin)*exag()+L*0.18,0); else o.position.set(controls.target.x,controls.target.y+L*0.2,controls.target.z); o.scale.set(L,ar?L*0.35:L,L);
   const rain=u.type==='rain', v=rain?1.3:0.11, k=rain?0.045:0.03, dx=u.wx*k, dz=u.wz*k;
   for(let i=0;i<u.cnt;i++){const j=i*3;
     P[j+1]-=v*dt; P[j]+=dx*dt; P[j+2]+=dz*dt;
@@ -1587,8 +1591,8 @@ function updateFlow(w){
 }
 function stepFlow(dt){
   const o=tmeshes.flow;if(!o) return;const u=o.userData,S=cur.bb.S,pos=o.geometry.attributes.position.array,col=o.geometry.attributes.color.array;
-  const dist=camera.position.distanceTo(controls.target),L=clamp(dist*1.6,S*0.05,S*1.05);
-  const cx=clamp(controls.target.x,-S/2+L/2,S/2-L/2),cz=clamp(controls.target.z,-S/2+L/2,S/2-L/2);
+  const ar=renderer.xr.isPresenting,dist=camera.position.distanceTo(controls.target),L=ar?S:clamp(dist*1.6,S*0.05,S*1.05);
+  const cx=ar?0:clamp(controls.target.x,-S/2+L/2,S/2-L/2),cz=ar?0:clamp(controls.target.z,-S/2+L/2,S/2-L/2);
   const vs=L*0.035*(0.35+Math.min(u.sp,20)/6),bx=Math.sin(u.to),bz=-Math.cos(u.to),h=L*0.005,c=u.col;
   for(let i=0;i<u.N;i++){
     u.age[i]+=dt;
@@ -1641,6 +1645,7 @@ function uiAR(){
   $('toolT').textContent='🕶 AR';
   tb.innerHTML=`<div class="note"><b>Zandbak op tafel</b> – het terrein als 3D-model op je tafel; loop eromheen. Werkt in Chrome op Android met ARCore (Google Play-services voor AR).</div>
   <div class="row"><button class="btn sm" id="arT">Start AR op tafel</button><span id="arTs" class="note"></span></div>
+  <div class="row"><label class="tg"><input type="checkbox" id="arWx" checked> Weer, zon &amp; maan tonen in AR</label></div>
   <div class="note" style="margin-top:12px"><b>AR in het veld</b> – camerabeeld met labels van kenmerken, meetpunten en waarnemer, met afstand en richting in streep. Gebruikt GPS en kompas (±5–10°): hulpmiddel, geen richtmiddel.</div>
   <div class="row"><button class="btn sm" id="arF">Start veld-AR</button></div>
   <div class="note">Camera, kompas en GPS werken alleen in een "veilige" pagina: via https (bijv. op je eigen server) of als lokaal bestand in Chrome.</div>`;
@@ -1657,7 +1662,7 @@ function uiAR(){
   else $('arDiag').innerHTML=dg.join('<br>');
 }
 // --- WebXR tafel
-let xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
+let xrWx=true,xrPlay=null,xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
 function arErr(m){const d=$('arDiag');if(d) d.innerHTML+='<br>❌ '+m; toast(m);}
 async function startXR(){
   if(!navigator.xr){arErr('WebXR niet beschikbaar (gebruik Chrome op Android, via https)');return;}
@@ -1680,7 +1685,11 @@ async function startXR(){
     $('xrUI').classList.remove('hidden'); xrSeen=0; $('xrMsg').textContent='Zoeken naar oppervlak… beweeg de telefoon langzaam (v7 · 13-11 08:30)';
     xrSaved={bg:scene.background,fogN:terrain.material.uniforms.fogN.value,fogF:terrain.material.uniforms.fogF.value};
     scene.background=null; terrain.material.uniforms.fogN.value=1e9; terrain.material.uniforms.fogF.value=2e9;
-    world.visible=false; xrPlaced=false; ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); if(skyDome) skyDome.visible=false; xrSaved.cloudOn=terrain.material.uniforms.cloudOn.value; terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; if(marker) marker.visible=false;
+    world.visible=false; xrPlaced=false; if(skyDome) skyDome.visible=false; if(marker) marker.visible=false;
+    xrWx=$('arWx')?$('arWx').checked:true;
+    if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
+      $('xrT').value=wx.ofs; $('xrWxRow').style.display='';}
+    else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1717,11 +1726,16 @@ function endXR(){
   xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
-  ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); if(wx.enabled) setTimeout(()=>applyWx(),60);
+  ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
+  if(wx.enabled) setTimeout(()=>{fx.cKey='';applyWx();},60);
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=xrPlaceHere;
-for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+$('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
+$('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
+$('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';wxShadowKey='';applyWx();return;}
+  $('xrPlayB').textContent='⏸';xrPlay=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;$('xrT').value=wx.ofs;applyWx(true);},230);};
 $('xrMinus').onclick=()=>xrRescale(1/1.25); $('xrPlus').onclick=()=>xrRescale(1.25);
 $('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;};
 $('xrMove').onclick=()=>{xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
@@ -1793,6 +1807,51 @@ function farDraw(){
   ctx.strokeStyle='#fff8';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2-14,H/2);ctx.lineTo(W/2+14,H/2);ctx.moveTo(W/2,H/2-14);ctx.lineTo(W/2,H/2+14);ctx.stroke();
 }
 
+
+
+/* ---------- AR: zon, maan en windroos boven de kaart ---------- */
+const MOON_FS=`uniform vec3 sunL; varying vec3 vNm; void main(){ float l=dot(normalize(vNm),normalize(sunL)); float lit=smoothstep(-0.05,0.08,l);
+  vec3 col=mix(vec3(0.07,0.08,0.1),vec3(0.93,0.93,0.88),lit); gl_FragColor=vec4(col,1.0);}`;
+const MOON_VS=`varying vec3 vNm; void main(){vNm=normal; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+function textSprite(txt,col,h){
+  const c=document.createElement('canvas'),x=c.getContext('2d'),f=44;x.font=`bold ${f}px system-ui`;const lines=txt.split('\n');
+  const w=Math.max(...lines.map(l=>x.measureText(l).width))+30;c.width=Math.ceil(w);c.height=lines.length*(f+10)+16;
+  x.fillStyle='rgba(10,12,16,0.75)';x.beginPath();x.roundRect(0,0,c.width,c.height,16);x.fill();
+  x.font=`bold ${f}px system-ui`;x.fillStyle=col;x.textBaseline='top';lines.forEach((l,i)=>x.fillText(l,15,8+i*(f+10)));
+  const t=new THREE.CanvasTexture(c),s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:false,transparent:true}));
+  s.scale.set(h*c.width/c.height,h,1);s.renderOrder=20;return s;
+}
+function glowTex(){const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d'),g=x.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,240,190,1)');g.addColorStop(0.25,'rgba(255,210,120,0.6)');g.addColorStop(1,'rgba(255,180,80,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return new THREE.CanvasTexture(c);}
+function buildCelest(){
+  tRemove('celest'); const S=cur.bb.S,g=new THREE.Group();
+  const sun=new THREE.Group(); sun.add(new THREE.Mesh(new THREE.SphereGeometry(S*0.028,24,16),new THREE.MeshBasicMaterial({color:'#ffd76a'})));
+  const gl=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex(),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));gl.scale.set(S*0.22,S*0.22,1);sun.add(gl);
+  const moon=new THREE.Mesh(new THREE.SphereGeometry(S*0.022,32,20),new THREE.ShaderMaterial({vertexShader:MOON_VS,fragmentShader:MOON_FS,uniforms:{sunL:{value:new THREE.Vector3(1,0,0)}}}));
+  const mkLine=c=>new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,1,0)]),new THREE.LineDashedMaterial({color:c,dashSize:S*0.02,gapSize:S*0.015,transparent:true,opacity:0.8}));
+  const sl=mkLine('#ffd76a'),ml=mkLine('#c7d2fe');
+  g.add(sun,moon,sl,ml);
+  // windroos aan de kaartrand
+  const r=S*0.5+S*0.05;
+  for(const [t,a,c] of [['N',0,'#f87171'],['O',90,'#e5e7eb'],['Z',180,'#e5e7eb'],['W',270,'#e5e7eb']]){const s=textSprite(t,c,S*0.05);s.position.set(Math.sin(a*D2R)*r,0,-Math.cos(a*D2R)*r);s.userData.rose=true;g.add(s);}
+  g.userData={sun,moon,sl,ml,lab:null,mlab:null}; tAdd('celest',g); updateCelest();
+}
+function updateCelest(){
+  const g=tmeshes.celest;if(!g||!cur) return;const u=g.userData,S=cur.bb.S,t=wxTime(),{lat,lon}=cur.bb;
+  const sp=sunPos(t,lat,lon),mp=moonPos(t,lat,lon),mi=moonIll(t),R=S*0.62,top=(cur.eMax-cur.eMin)*exag(),c=new THREE.Vector3(0,top*0.5,0);
+  const sv=sunVec(sp),mv=sunVec(mp);
+  const place=(obj,line,v,alt)=>{const p=c.clone().addScaledVector(v,R);obj.position.copy(p);obj.visible=alt>-3;
+    line.geometry.setFromPoints([c,p]);line.computeLineDistances();line.visible=alt>-3;return p;};
+  const ps=place(u.sun,u.sl,sv,sp.alt), pm=place(u.moon,u.ml,mv,mp.alt);
+  u.moon.material.uniforms.sunL.value.copy(sv);
+  for(const s of g.children) if(s.userData.rose) s.position.y=top*0.15;
+  if(u.lab){g.remove(u.lab);u.lab.material.map.dispose();u.lab.material.dispose();} if(u.mlab){g.remove(u.mlab);u.mlab.material.map.dispose();u.mlab.material.dispose();}
+  const fase=mi.f<0.04?'nieuwe maan':mi.f>0.96?'volle maan':(mi.waxing?(mi.f<0.5?'wassende sikkel':mi.f<0.55?'eerste kwartier':'wassend'):(mi.f<0.5?'afnemende sikkel':mi.f<0.55?'laatste kwartier':'afnemend'));
+  u.lab=textSprite(`☀️ ${nf(sp.alt,0)}° · ${toMil(sp.b)}‰\n${hhmm(t)}`,'#ffe08a',S*0.07); u.lab.position.copy(ps).add(new THREE.Vector3(0,S*0.07,0)); u.lab.visible=sp.alt>-3;
+  u.mlab=textSprite(`🌙 ${Math.round(mi.f*100)}% ${fase}\n${nf(mp.alt,0)}° · ${toMil(mp.b)}‰`,'#dbe3ff',S*0.07); u.mlab.position.copy(pm).add(new THREE.Vector3(0,S*0.06,0)); u.mlab.visible=mp.alt>-3;
+  g.add(u.lab,u.mlab);
+  if($('xrInfo')) $('xrInfo').textContent=`${hhmm(t)} · zon ${sp.alt>0?nf(sp.alt,0)+'° hoog':'onder'} · maan ${Math.round(mi.f*100)}% ${fase}${mp.alt<0?' (onder)':''}`;
+}
 
 </script>
 </body>
