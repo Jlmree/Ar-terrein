@@ -200,7 +200,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tLife" checked> Verkeer &amp; leven</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v15 · 13-11 14:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v16 · 13-11 14:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -950,7 +950,7 @@ function processFeatures(js){
     if(el.type==='way'&&el.geometry){
       const pts=el.geometry.map(g=>[g.lat,g.lon]);
       if(isForest) forests.push({outer:[pts],inner:[],lt});
-      else if(t.highway&&RS[t.highway]) roads.push({cls:t.highway,pts});
+      else if(t.highway&&RS[t.highway]) roads.push({cls:t.highway,pts,bridge:!!t.bridge&&t.bridge!=='no',tunnel:!!t.tunnel&&t.tunnel!=='no'&&t.tunnel!=='building_passage',layer:+t.layer||0});
     }else if(el.type==='relation'&&el.members&&isForest){
       const o=[],i=[]; for(const m of el.members) if(m.type==='way'&&m.geometry){(m.role==='inner'?i:o).push(m.geometry.map(g=>[g.lat,g.lon]));}
       forests.push({outer:joinRings(o),inner:joinRings(i),lt});
@@ -1121,8 +1121,9 @@ function toolsExag(){
   if(cur.meas&&cur.meas.length) updateMeas(true);
   placeClouds(); renderTac(); renderPeers(); renderMe();
   if(tmeshes.bld){clearTimeout(bld.exT);bld.exT=setTimeout(buildBuildings,150);}
+  if(tmeshes.brg){clearTimeout(bld.brT);bld.brT=setTimeout(buildBridges,150);}
 }
-function toolsFeatures(){if(lifeOn()) loadLife();if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
+function toolsFeatures(){buildBridges(); if(lifeOn()) loadLife();if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
 /* ---------- paneel ---------- */
 let toolMode=null; const tb=$('toolB');
@@ -2454,11 +2455,11 @@ async function loadLife(){
   buildLife();
 }
 function lifeClear(){life.tok++;life.agents=[];life.tur=[];tRemove('life');life.m={};}
-function addWay(kind,cls,ll){
+function addWay(kind,cls,ll,src){
   const pts=ll.map(([la,lo])=>ll2w(la,lo)); if(pts.length<2) return;
   const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
   const len=cum[cum.length-1]; if(len<5) return;
-  const w={id:life.ways.length,kind,cls,pts,cum,len};life.ways.push(w);
+  const w={id:life.ways.length,kind,cls,pts,cum,len,src:src&&src.bridge?src:null,tunnel:!!(src&&src.tunnel)};life.ways.push(w);
   pts.forEach((p,j)=>{const k=ptKey(p[0],p[1]);(life.graph[k]=life.graph[k]||[]).push({w,j});});
 }
 function wayPos(w,s,ag){ // positie + richting op afstand s
@@ -2475,11 +2476,11 @@ function lifeMesh(key,geo,count,color){
 function buildLife(){
   tRemove('life'); life.ways=[];life.graph={};life.agents=[];life.tur=[];life.m={};
   if(!cur) return;
-  for(const r of (cur.feats&&cur.feats.roads)||[]) addWay('road',r.cls,r.pts);
+  for(const r of (cur.feats&&cur.feats.roads)||[]) addWay('road',r.cls,r.pts,r);
   const stations=[];
   for(const el of (life.extra&&life.extra.elements)||[]){const t=el.tags||{};
     if(el.type==='way'&&el.geometry){const ll=el.geometry.map(g=>[g.lat,g.lon]);
-      if(t.railway) addWay('rail',t.railway,ll); else if(t.waterway) addWay('water',t.waterway,ll);}
+      if(t.railway){const br=t.bridge&&t.bridge!=='no';const src=br?(el._b||(el._b={cls:t.railway,pts:ll,bridge:true,rail:true})):{tunnel:!!t.tunnel&&t.tunnel!=='no'};addWay('rail',t.railway,ll,src);} else if(t.waterway) addWay('water',t.waterway,ll);}
     else if(el.type==='node'){const [x,z]=ll2w(el.lat,el.lon);
       if(t.railway) stations.push([x,z]); else if(inArea(x,z)) life.tur.push({x,z,ph:Math.random()*6.28,h:parseFloat(t.height)||parseFloat(t['generator:height'])||100});}}
   life.stations=stations;
@@ -2516,7 +2517,7 @@ function buildLife(){
   const C=new THREE.Color(),pal={car:['#e5e7eb','#111827','#9ca3af','#1e3a8a','#b91c1c','#f8fafc','#4b5563','#0f766e','#a16207','#7c2d12'],truck:['#f8fafc','#b91c1c','#1d4ed8','#e5e7eb'],tractor:['#15803d','#b91c1c','#1d4ed8'],bike:['#111827','#b91c1c','#1d4ed8','#e5e7eb'],walk:['#1f2937','#334155','#7f1d1d','#065f46','#1e3a8a','#78350f','#be185d']};
   const idx={};for(const a of life.agents){const k=a.type;a.i=idx[k]=(idx[k]??-1)+1;const m=life.m[k];if(m&&pal[k]){C.set(pal[k][Math.floor(a.col*pal[k].length)]);m.setColorAt(a.i,C);}}
   for(const k of Object.keys(pal)) if(life.m[k]&&life.m[k].instanceColor) life.m[k].instanceColor.needsUpdate=true;
-  tAdd('life',g);
+  tAdd('life',g); buildBridges();
   const f=$('feat');if(f) f.textContent=f.textContent.replace(/ · \d+ in beweging/,'')+` · ${life.agents.length} in beweging`;
 }
 function enterWay(a,o){ // stap over op weg o.w bij punt o.j
@@ -2566,7 +2567,7 @@ function lifeFrame(now){
     const [x0,z0,tx0,tz0]=wayPos(a.w,a.s,a),tx=tx0*a.dir,tz=tz0*a.dir;
     const side=a.type==='walk'?0.8:a.type==='bike'?2.2:a.type==='boat'?3:a.type==='train'?0:1.7;
     const x=x0-tz*side*vs*(a.type==='train'?0:1), z=z0+tx*side*vs*(a.type==='train'?0:1); // rechts rijden
-    const inA=inArea(x,z), y=inA?surfaceY(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2)):0, yaw=Math.atan2(-tx,-tz);
+    const inA=inArea(x,z)&&!a.w.tunnel, dk=inA&&a.w.src?lifeDeckY(a.w,a.s,x,z):null, y=inA?(dk!=null?dk:surfaceY(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2))):0, yaw=Math.atan2(-tx,-tz);
     if(a.type==='train'){
       const tr=a.trail,last=tr[tr.length-1]; if(!last||Math.hypot(last[0]-x,last[2]-z)>2){tr.push([x,y,z]);if(tr.length>220) tr.shift();}
       const ts=clamp(vs*0.6,1,5),gap=22*ts;
@@ -2596,6 +2597,62 @@ function lifeFrame(now){
     for(const k of ['tower','nacelle','rotor']) life.m[k].instanceMatrix.needsUpdate=true;}
   L.geometry.setDrawRange(0,li);L.geometry.attributes.position.needsUpdate=true;L.geometry.attributes.color.needsUpdate=true;L.visible=li>0;
 }
+
+/* =================================================================
+   🌉 BRUGGEN & VIADUCTEN – de AHN (maaiveld) bevat geen bruggen,
+   dus bouwen we de dekken zelf op uit OSM (bridge=yes)
+   ================================================================= */
+const BW={motorway:12,trunk:10,primary:9,secondary:8,tertiary:7,unclassified:6,residential:6,service:4,track:4,path:2.5,footway:2.5,cycleway:3,bridleway:2.5,rail:6,light_rail:5,tram:5,narrow_gauge:4};
+function bridgeEnds(r){ // hoogte van het dek aan beide uiteinden (de aanbruggen/taluds zitten wél in de AHN)
+  if(r.e0!=null) return; const S=cur.bb.S,P=r.pts.map(([la,lo])=>ll2w(la,lo)),c=v=>clamp(v,-S/2,S/2);
+  const ext=(a,b)=>{const dx=a[0]-b[0],dz=a[1]-b[1],l=Math.hypot(dx,dz)||1;return [a[0]+dx/l*3,a[1]+dz/l*3];}; // 3 m buiten de brug meten
+  const A=ext(P[0],P[1]),B=ext(P[P.length-1],P[P.length-2]);
+  r.e0=Math.max(elevAt(c(P[0][0]),c(P[0][1])),elevAt(c(A[0]),c(A[1])));r.e1=Math.max(elevAt(c(P[P.length-1][0]),c(P[P.length-1][1])),elevAt(c(B[0]),c(B[1])));
+}
+function deckElev(r,t,x,z){const S=cur.bb.S;let e=r.e0+(r.e1-r.e0)*t;const g=elevAt(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2));return Math.max(e,g+0.4);}
+function bridgeList(){
+  const L=[];for(const r of (cur.feats&&cur.feats.roads)||[]) if(r.bridge) L.push(r);
+  if(life.extra) for(const el of life.extra.elements||[]){const t=el.tags||{};if(el.type==='way'&&t.railway&&t.bridge&&t.bridge!=='no'&&el.geometry) L.push(el._b||(el._b={cls:t.railway,pts:el.geometry.map(g=>[g.lat,g.lon]),bridge:true,rail:true}));}
+  return L;
+}
+function buildBridges(){
+  tRemove('brg'); if(!cur||cur.src.startsWith('AHN DSM')) return; const L=bridgeList(); if(!L.length) return;
+  const S=cur.bb.S,ex=exag(),pos=[],col=[];
+  const quad=(a,b,c,d,cl)=>{pos.push(...a,...b,...c,...a,...c,...d);for(let k=0;k<6;k++)col.push(cl.r,cl.g,cl.b);};
+  const asph=new THREE.Color('#5b5e63'),ball=new THREE.Color('#7a6a58'),conc=new THREE.Color('#c9c4b8'),side=new THREE.Color('#a9a497'),rail=new THREE.Color('#e5e7eb');
+  for(const r of L){
+    const P=r.pts.map(([la,lo])=>ll2w(la,lo));if(P.length<2) continue;
+    let cx=0,cz=0;for(const p of P){cx+=p[0];cz+=p[1];} if(!inArea(cx/P.length,cz/P.length)) continue;
+    bridgeEnds(r);
+    const cum=[0];for(let i=1;i<P.length;i++)cum.push(cum[i-1]+Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]));const len=cum[cum.length-1]||1;
+    const w=(BW[r.cls]||6)/2,th=1.4,top=r.rail?ball:asph;
+    const V=P.map((p,i)=>{const a=P[Math.max(0,i-1)],b=P[Math.min(P.length-1,i+1)],dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz)||1;
+      const e=deckElev(r,cum[i]/len,p[0],p[1]),y=(e-cur.eMin)*ex+0.2;return {x:p[0],z:p[1],nx:-dz/l,nz:dx/l,y};});
+    for(let i=0;i<V.length-1;i++){const a=V[i],b=V[i+1];
+      const aL=[a.x-a.nx*w,a.y,a.z-a.nz*w],aR=[a.x+a.nx*w,a.y,a.z+a.nz*w],bL=[b.x-b.nx*w,b.y,b.z-b.nz*w],bR=[b.x+b.nx*w,b.y,b.z+b.nz*w];
+      const d=v=>[v[0],v[1]-th,v[2]];
+      quad(aL,bL,bR,aR,top);                         // rijdek
+      quad(aL,d(aL),d(bL),bL,side); quad(aR,bR,d(bR),d(aR),side); // zijkanten
+      quad(d(aL),d(aR),d(bR),d(bL),conc);            // onderkant
+      const rh=1.1; const up=v=>[v[0],v[1]+rh,v[2]];  // leuning
+      quad(aL,bL,up(bL),up(aL),rail); quad(aR,up(aR),up(bR),bR,rail);
+    }
+    // pijlers waar de brug hoog genoeg boven de grond ligt
+    for(let s=len>40?17:len/2;s<len-5;s+=34){let i=0;while(i<cum.length-2&&cum[i+1]<s)i++;const f=(s-cum[i])/((cum[i+1]-cum[i])||1),a=V[i],b=V[i+1];
+      const x=a.x+(b.x-a.x)*f,z=a.z+(b.z-a.z)*f,yt=a.y+(b.y-a.y)*f-th,yg=(elevAt(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2))-cur.eMin)*ex-1;if(yt-yg<2) continue;
+      const pw=0.9,nx=a.nx,nz=a.nz,tx=-nz,tz=nx;
+      for(const off of (w>4?[-w*0.55,w*0.55]:[0])){const px=x+nx*off,pz=z+nz*off;
+        const c=[[px-tx*pw-nx*pw,pz-tz*pw-nz*pw],[px+tx*pw-nx*pw,pz+tz*pw-nz*pw],[px+tx*pw+nx*pw,pz+tz*pw+nz*pw],[px-tx*pw+nx*pw,pz-tz*pw+nz*pw]];
+        for(let k=0;k<4;k++){const p=c[k],q=c[(k+1)%4];quad([p[0],yg,p[1]],[q[0],yg,q[1]],[q[0],yt,q[1]],[p[0],yt,p[1]],conc);}}}
+  }
+  if(!pos.length) return;
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.computeVertexNormals();
+  const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2}));m.renderOrder=2;tAdd('brg',m);
+}
+function lifeDeckY(w,s,x,z){ // hoogte voor voertuigen op een brug
+  const r=w.src;if(!r) return null;bridgeEnds(r);return (deckElev(r,s/w.len,x,z)-cur.eMin)*exag()+0.2;
+}
+
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
