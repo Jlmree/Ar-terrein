@@ -191,7 +191,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v10 · 13-11 09:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v11 · 13-11 09:10. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -210,6 +210,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div id="farBot" class="panel">
     <div id="farPos" class="note">Wachten op GPS…</div>
     <div class="row"><span class="t">Beeldhoek</span><input type="range" id="farFov" min="35" max="85" value="58"><span class="val" id="farFovV">58°</span></div>
+    <div class="row"><span class="t">Stabiliseren</span><input type="range" id="farStab" min="0" max="10" step="1" value="6"><span class="val" id="farStabV">6</span></div>
     <div class="row"><span class="t">Kompas&nbsp;±</span><input type="range" id="farCor" min="-25" max="25" step="0.5" value="0"><span class="val" id="farCorV">0°</span></div>
     <div class="note">Houd de telefoon rechtop (staand). Kompas afwijkend? Beweeg de telefoon in een 8-vorm, of corrigeer met de schuif op een bekend punt.</div>
   </div>
@@ -1686,7 +1687,7 @@ function uiAR(){
   else $('arDiag').innerHTML=dg.join('<br>');
 }
 // --- WebXR tafel
-let xrWx=true,xrPlay=null,xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
+let xrAnchor=null,xrLastRes=null,xrWx=true,xrPlay=null,xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
 function arErr(m){const d=$('arDiag');if(d) d.innerHTML+='<br>❌ '+m; toast(m);}
 async function startXR(){
   if(!navigator.xr){arErr('WebXR niet beschikbaar (gebruik Chrome op Android, via https)');return;}
@@ -1694,7 +1695,7 @@ async function startXR(){
   try{
     $('xrUI').classList.remove('hidden');
     let s;
-    try{s=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:$('xrUI')}});}
+    try{s=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay','anchors'],domOverlay:{root:$('xrUI')}});}
     catch(e1){console.warn('met overlay mislukt',e1);
       try{s=await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test']});}
       catch(e2){console.warn(e2);
@@ -1739,10 +1740,10 @@ function xrApplyLayers(){
   if(terrain&&!(xrL.wx&&xrWx)){terrain.material.uniforms.cloudOn.value=0;terrain.material.uniforms.gfog.value=0;}
 }
 function xrUpdate(frame){
-  xrApplyLayers();
+  xrApplyLayers(); if(frame&&xrPlaced) xrFollowAnchor(frame);
   if(camera.near!==0.01){camera.near=0.01;camera.far=100;camera.updateProjectionMatrix();}
   if(!frame||!xrHit) return; const hits=frame.getHitTestResults(xrHit);
-  if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
+  if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrLastRes=hits[0];xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
     if(!xrPlaced&&xrSeen!==1){xrSeen=1;$('xrMsg').textContent='Oppervlak gevonden – tik om te plaatsen';}}
   else{xrReticle.visible=false;xrLast=null;
     if(!xrPlaced&&xrSeen!==2){xrSeen=2;$('xrMsg').textContent='Zoeken… meer licht/structuur helpt, of tik "Plaats hier"';}}
@@ -1759,19 +1760,27 @@ function xrSelect(){
   const m=new THREE.Matrix4().fromArray(xrLast.transform.matrix),p=new THREE.Vector3().setFromMatrixPosition(m);
   const k=xrSize/cur.bb.S; xrPlaneY=p.y; world.scale.setScalar(k); world.position.set(p.x,p.y-(cur.skirtBase||0)*k,p.z);
   world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Terrein ${Math.round(xrSize*100)} cm breed · loop eromheen`;
+  xrDropAnchor(); if(xrLastRes&&xrLastRes.createAnchor) xrLastRes.createAnchor().then(a=>{xrAnchor=a;}).catch(e=>console.warn('anker',e));
+}
+function xrDropAnchor(){if(xrAnchor){try{xrAnchor.delete();}catch(e){}xrAnchor=null;}}
+function xrFollowAnchor(frame){ // houdt de kaart vast op de tafel en dempt trillen
+  if(!xrAnchor||!frame.trackedAnchors||!frame.trackedAnchors.has(xrAnchor)) return;
+  const pose=frame.getPose(xrAnchor.anchorSpace,xrRef);if(!pose) return;const p=pose.transform.position,k=xrSize/cur.bb.S;
+  const ty=p.y-(cur.skirtBase||0)*k, d=Math.hypot(world.position.x-p.x,world.position.y-ty,world.position.z-p.z);
+  const a=d>0.05?1:0.08; world.position.x+=(p.x-world.position.x)*a; world.position.y+=(ty-world.position.y)*a; world.position.z+=(p.z-world.position.z)*a; xrPlaneY+=(p.y-xrPlaneY)*a;
 }
 let xrPlaneY=0;
 function xrRescale(f){xrSize=clamp(xrSize*f,0.15,5);const k=xrSize/cur.bb.S;$('xrMsg').textContent=`Terrein ${Math.round(xrSize*100)} cm breed`;
   if(!xrPlaced) return; world.scale.setScalar(k); world.position.y=xrPlaneY-(cur.skirtBase||0)*k;}
 function endXR(){
-  xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
+  xrDropAnchor(); xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
   ['clouds','precip','flow','meas','vs','peers'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); setTimeout(()=>{renderTac();renderPeers();},80); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
   if(wx.enabled) setTimeout(()=>{fx.cKey='';applyWx();},60);
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
-$('xrHere').onclick=xrPlaceHere;
+$('xrHere').onclick=()=>{xrDropAnchor();xrPlaceHere();};
 for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
 $('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
@@ -1779,12 +1788,13 @@ $('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlay
   $('xrPlayB').textContent='⏸';xrPlay=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;$('xrT').value=wx.ofs;applyWx(true);},230);};
 $('xrMinus').onclick=()=>xrRescale(1/1.25); $('xrPlus').onclick=()=>xrRescale(1.25);
 $('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;};
-$('xrMove').onclick=()=>{xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
+$('xrMove').onclick=()=>{xrDropAnchor();xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
 $('xrExit').onclick=()=>{const s=renderer.xr.getSession();if(s) s.end();};
 
 // --- veld-AR (camera + kompas + GPS)
-const far={stream:null,watch:null,h:null,pitch:0,pos:null,fov:58,cor:0,raf:0};
+const far={stream:null,watch:null,h:null,pitch:0,pos:null,fov:58,cor:0,raf:0,fH:null,fP:null,hu:null,hRaw:0,lab:{},sp:null};
 async function startFieldAR(){
+  farSetStab(+$('farStab').value); far.sp=null;
   $('far').classList.remove('hidden');
   try{
     if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){const r=await DeviceOrientationEvent.requestPermission();if(r!=='granted') throw new Error('kompas geweigerd');}
@@ -1792,7 +1802,10 @@ async function startFieldAR(){
     $('farV').srcObject=far.stream;
   }catch(e){$('farPos').textContent='Camera/kompas niet beschikbaar: '+(e.message||e)+'. Open de pagina via https of als lokaal bestand in Chrome.';}
   if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',farOri); else window.addEventListener('deviceorientation',farOri);
-  if(navigator.geolocation) far.watch=navigator.geolocation.watchPosition(p=>{far.pos=p.coords;},e=>{$('farPos').textContent='GPS: '+e.message;},{enableHighAccuracy:true,maximumAge:2000});
+  if(navigator.geolocation) far.watch=navigator.geolocation.watchPosition(p=>{const c=p.coords;
+    if(!far.sp||hav(far.sp.latitude,far.sp.longitude,c.latitude,c.longitude)>40) far.sp={latitude:c.latitude,longitude:c.longitude};
+    else{const k=clamp(10/Math.max(5,c.accuracy),0.15,0.6);far.sp.latitude+=(c.latitude-far.sp.latitude)*k;far.sp.longitude+=(c.longitude-far.sp.longitude)*k;}
+    far.pos={latitude:far.sp.latitude,longitude:far.sp.longitude,accuracy:c.accuracy,altitude:c.altitude};},e=>{$('farPos').textContent='GPS: '+e.message;},{enableHighAccuracy:true,maximumAge:2000});
   far.raf=requestAnimationFrame(farDraw);
 }
 function stopFieldAR(){
@@ -1808,9 +1821,19 @@ function farOri(e){
     const a=e.alpha*D2R,b=e.beta*D2R,g=e.gamma*D2R;
     const vx=-Math.cos(a)*Math.sin(g)-Math.sin(a)*Math.sin(b)*Math.cos(g), vy=-Math.sin(a)*Math.sin(g)+Math.cos(a)*Math.sin(b)*Math.cos(g), vz=-Math.cos(b)*Math.cos(g);
     h=wrap360(Math.atan2(vx,vy)/D2R); pitch=Math.asin(clamp(vz,-1,1))/D2R;}
-  if(far.h==null) far.h=h; else far.h=wrap360(far.h+(((h-far.h+540)%360)-180)*0.2);
-  far.pitch=far.pitch*0.8+pitch*0.2;
+  const t=e.timeStamp||performance.now();
+  if(far.hu==null){far.hu=h;far.hRaw=h;} else {far.hu+=((h-far.hRaw+540)%360)-180; far.hRaw=h;}   // doorlopende hoek (geen sprong bij 0/360)
+  far.h=wrap360(far.fH.filter(far.hu,t)); far.pitch=far.fP.filter(pitch,t);
 }
+class OneEuro{ // filtert trillen weg, maar volgt snelle bewegingen
+  constructor(minC,beta){this.minC=minC;this.beta=beta;this.dC=1;this.x=null;}
+  filter(x,t){if(this.x==null){this.x=x;this.dx=0;this.t=t;return x;}
+    const dt=Math.max(0.004,(t-this.t)/1000);this.t=t;const al=c=>{const r=2*Math.PI*c*dt;return r/(r+1);};
+    const dx=(x-this.x)/dt;this.dx+=al(this.dC)*(dx-this.dx);const c=this.minC+this.beta*Math.abs(this.dx);this.x+=al(c)*(x-this.x);return this.x;}
+}
+function farSetStab(v){const minC=[3,2,1.4,1,0.75,0.55,0.4,0.3,0.22,0.15,0.1][v],beta=[0.05,0.04,0.03,0.025,0.02,0.015,0.012,0.009,0.007,0.005,0.004][v];
+  far.fH=new OneEuro(minC,beta); far.fP=new OneEuro(minC,beta); far.hu=null; far.lab={};}
+$('farStab').oninput=()=>{const v=+$('farStab').value;$('farStabV').textContent=v;farSetStab(v);};
 $('farX').onclick=stopFieldAR;
 $('farFov').oninput=()=>{far.fov=+$('farFov').value;$('farFovV').textContent=far.fov+'°';};
 $('farCor').oninput=()=>{far.cor=+$('farCor').value;$('farCorV').textContent=(far.cor>0?'+':'')+far.cor+'°';};
@@ -1843,7 +1866,9 @@ function farDraw(){
     return {...t,d,b,ea:Math.atan2(te-(ue+1.6),d)/D2R};}).filter(t=>t.d>5&&t.d<30000).sort((a,b)=>b.d-a.d);
   ctx.textAlign='center';
   for(const t of T){const rel=((t.b-hd+540)%360)-180;if(Math.abs(rel)>far.fov/2+8) continue;
-    const x=W/2+Math.tan(rel*D2R)*fpx,y=H/2-Math.tan((t.ea-far.pitch)*D2R)*fpx;if(y<90||y>H-150) continue;
+    let x=W/2+Math.tan(rel*D2R)*fpx,y=H/2-Math.tan((t.ea-far.pitch)*D2R)*fpx;
+    const Lb=far.lab[t.nm]; if(Lb&&Math.abs(Lb.x-x)<W*0.4&&Math.abs(Lb.y-y)<H*0.4){Lb.x+=(x-Lb.x)*0.3;Lb.y+=(y-Lb.y)*0.3;x=Lb.x;y=Lb.y;} else far.lab[t.nm]={x,y};
+    if(y<90||y>H-150) continue;
     const s1=t.nm,s2=`${fmtDist(t.d)} · ${toMil(t.b)}‰`;ctx.font='bold 14px system-ui';const w=Math.max(ctx.measureText(s1).width,ctx.measureText(s2).width)+14;
     ctx.fillStyle='#000b';ctx.fillRect(x-w/2,y-46,w,40);ctx.fillStyle=t.c;ctx.fillText(s1,x,y-30);ctx.font='12px system-ui';ctx.fillStyle='#ddd';ctx.fillText(s2,x,y-13);
     ctx.strokeStyle=t.c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y-6);ctx.lineTo(x,y);ctx.stroke();ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.stroke();}
