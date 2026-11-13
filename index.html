@@ -179,7 +179,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v6 · 13-11 08:10. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v7 · 13-11 08:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -611,7 +611,7 @@ function frame(t,xrFrame){
   if(renderer.xr.isPresenting){xrUpdate(xrFrame); renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
-  if(tmeshes.wind) placeWind(performance.now()); if(tmeshes.rain) stepRain();
+  if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
   needle.style.transform=`rotate(${controls.getAzimuthalAngle()}rad)`;
   renderer.render(scene,camera);
   if($('tLabels').checked){
@@ -624,16 +624,22 @@ const VS=`attribute float elev; varying vec2 vUv; varying float vElev; varying v
 void main(){vUv=uv;vElev=elev;vN=normal;vec4 w=modelMatrix*vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`;
 const FS=`uniform sampler2D map; uniform sampler2D shMap; uniform vec3 sun; uniform float ci; uniform float shade; uniform vec3 fogC; uniform float fogN; uniform float fogF;
 uniform float shOn; uniform vec4 uvR; uniform float amb; uniform float dirK; uniform float lightK; uniform vec3 tint;
+uniform sampler2D cloudMap; uniform float cloudOn; uniform vec2 cloudDrift; uniform float cloudSpan; uniform float cloudY; uniform float cloudK;
+uniform float gfog; uniform float gfH; uniform float eMinU; uniform vec3 gfC; uniform float wet; uniform float snow;
 varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW;
 float cline(float v,float k){float f=v/k;float w=fwidth(f);float g=abs(fract(f-0.5)-0.5)/max(w,1e-6);return (1.0-clamp(g,0.0,1.0))*clamp(1.6-w*5.0,0.0,1.0);}
 void main(){
-  vec3 col=texture2D(map,vUv).rgb;
+  vec3 col=texture2D(map,vUv).rgb; vec3 Nn=normalize(vN);
+  if(snow>0.0){float fl=smoothstep(0.5,0.9,Nn.y);col=mix(col,vec3(0.93,0.95,0.98),snow*fl);}
+  if(wet>0.0){col*=1.0-0.22*wet;col=mix(col,col*col*1.7,0.22*wet);}
   if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a);}
   vec2 muv=uvR.xy+vUv*uvR.zw;
   float sh=shOn>0.5?texture2D(shMap,muv).r:1.0;
-  float d=max(dot(normalize(vN),sun),0.0)*sh;
+  float cs=1.0; if(cloudOn>0.5){vec2 p=vW.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
+  float d=max(dot(Nn,sun),0.0)*sh*cs;
   col*=mix(1.0,amb+dirK*d,shade);
   col*=tint*lightK;
+  if(gfog>0.0){float low=1.0-smoothstep(0.0,gfH,vElev-eMinU); float fd2=length(vW-cameraPosition); col=mix(col,gfC*min(1.0,lightK),gfog*low*(0.35+0.65*smoothstep(0.0,fogF*0.4,fd2)));}
   float fd=length(vW-cameraPosition);col=mix(col,fogC,smoothstep(fogN,fogF,fd)*0.85);
   gl_FragColor=vec4(col,1.0);
 }`;
@@ -709,7 +715,9 @@ function buildTerrain(){
   g.setAttribute('elev',new THREE.BufferAttribute(E,1)); g.setIndex(new THREE.BufferAttribute(idx,1));
   const mat=new THREE.ShaderMaterial({vertexShader:VS,fragmentShader:FS,uniforms:{
     map:{value:mainSurf.tex},sun:{value:sun},ci:{value:0},shade:{value:1},fogC:{value:new THREE.Color('#b9d1e4')},fogN:{value:S*1.5},fogF:{value:S*6},
-    shMap:{value:WHITE1},shOn:{value:0},uvR:{value:new THREE.Vector4(0,0,1,1)},amb:{value:0.42},dirK:{value:0.8},lightK:{value:1},tint:{value:new THREE.Vector3(1,1,1)}}});
+    shMap:{value:WHITE1},shOn:{value:0},uvR:{value:new THREE.Vector4(0,0,1,1)},amb:{value:0.42},dirK:{value:0.8},lightK:{value:1},tint:{value:new THREE.Vector3(1,1,1)},
+    cloudMap:{value:WHITE1},cloudOn:{value:0},cloudDrift:{value:new THREE.Vector2()},cloudSpan:{value:S*2},cloudY:{value:800},cloudK:{value:0},
+    gfog:{value:0},gfH:{value:10},eMinU:{value:0},gfC:{value:new THREE.Color(0.86,0.88,0.9)},wet:{value:0},snow:{value:0}}});
   terrain=new THREE.Mesh(g,mat); world.add(terrain);
   // rand (sokkel)
   const ring=[]; for(let i=0;i<n;i++)ring.push(i); for(let j=1;j<n;j++)ring.push(j*n+n-1); for(let i=n-2;i>=0;i--)ring.push((n-1)*n+i); for(let j=n-2;j>0;j--)ring.push(j*n); ring.push(0);
@@ -1069,13 +1077,12 @@ function tRemove(key){const o=tmeshes[key];if(!o) return;world.remove(o);
 function mkPin(color,h){const g=new THREE.Group(),r=h/45,m=new THREE.MeshBasicMaterial({color});
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,8).translate(0,h/2,0),m));
   g.add(new THREE.Mesh(new THREE.SphereGeometry(r*4,14,10).translate(0,h,0),m)); return g;}
-function toolsDispose(){for(const k of Object.keys(tmeshes)) tRemove(k); wxShadowKey='';}
+function toolsDispose(){for(const k of Object.keys(tmeshes)) tRemove(k); wxShadowKey=''; wxFxOff();}
 function toolsExag(){
   if(!cur) return;
   if(cur.vsObs&&tmeshes.vs) tmeshes.vs.position.y=surfaceY(cur.vsObs.x,cur.vsObs.z);
   if(cur.meas&&cur.meas.length) updateMeas(true);
-  if(tmeshes.cloud) placeCloud();
-  if(tmeshes.rain) tmeshes.rain.userData.y0=(cur.eMax-cur.eMin)*exag();
+  placeClouds();
 }
 function toolsFeatures(){if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
@@ -1317,16 +1324,17 @@ const sunVec=p=>new THREE.Vector3(Math.sin(p.b*D2R)*Math.cos(p.alt*D2R),Math.sin
 
 async function loadWeather(){
   const {lat,lon}=cur.bb,V='temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,weather_code,cloud_cover,cloud_cover_low,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility';
-  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=${V}&hourly=${V},precipitation_probability&wind_speed_unit=ms&timezone=auto&forecast_days=3`);
+  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=${V}&hourly=${V},precipitation_probability,snow_depth&wind_speed_unit=ms&timezone=auto&forecast_days=3`);
   if(!r.ok) throw new Error('weer HTTP '+r.status);
   const js=await r.json(); js._t=js.hourly.time.map(s=>Date.parse(s+'Z')-(js.utc_offset_seconds||0)*1000); js._bb=cur.bb; wx.data=js;
 }
 function wxAt(t){
   const js=wx.data;if(!js) return null;
-  if(wx.ofs===0&&js.current) return {...js.current,precipitation_probability:null,_now:true};
   const T=js._t;let i=T.findIndex(x=>x>t);if(i<=0) i=i<0?T.length-1:1;const a=i-1,f=clamp((t-T[a])/(T[i]-T[a]),0,1),h=js.hourly,o={};
   for(const k of Object.keys(h)){if(k==='time') continue;const va=h[k][a],vb=h[k][i];if(va==null||vb==null){o[k]=va??vb;continue;}
     if(k==='weather_code') o[k]=f<0.5?va:vb; else if(k==='wind_direction_10m'){let d=((vb-va+540)%360)-180;o[k]=wrap360(va+d*f);} else o[k]=va+(vb-va)*f;}
+  let p3=0; for(let q=0;q<T.length;q++) if(T[q]<=t&&T[q]>t-3*36e5) p3+=h.precipitation[q]||0; o._p3=p3;
+  if(wx.ofs===0&&js.current) Object.assign(o,js.current,{_now:true});
   return o;
 }
 function uiWx(){
@@ -1340,11 +1348,16 @@ function uiWx(){
     <label class="tg"><input type="checkbox" id="wRain" ${wx.rain?'checked':''}> Neerslag</label>
     <label class="tg"><input type="checkbox" id="wMist" ${wx.mist?'checked':''}> Zicht/mist</label>
   </div>
+  <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
   <div id="sunInfo" class="note"></div>
   <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
   <div class="attr">Weer: Open-Meteo · Radar: RainViewer · Zon/maan berekend (SunCalc)</div>`;
   const tl=()=>{$('wxTV').textContent=wx.ofs===0?'nu':new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});};tl();
   $('wxT').oninput=()=>{wx.ofs=+$('wxT').value;tl();applyWx();};
+  $('wxNowB').onclick=()=>{if(fx.play){clearInterval(fx.play);fx.play=null;$('wxPlay').textContent='▶ 48 uur afspelen';}wx.ofs=0;$('wxT').value=0;tl();wxShadowKey='';applyWx();};
+  $('wxPlay').onclick=()=>{if(fx.play){clearInterval(fx.play);fx.play=null;$('wxPlay').textContent='▶ 48 uur afspelen';wxShadowKey='';applyWx();return;}
+    $('wxPlay').textContent='⏸ Stop';
+    fx.play=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;const sl=$('wxT');if(sl){sl.value=wx.ofs;$('wxTV').textContent=new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});}applyWx(true);},230);};
   for(const [id,k] of [['wSun','sun'],['wWind','wind'],['wCloud','cloud'],['wRain','rain'],['wMist','mist']]) $(id).onchange=()=>{wx[k]=$(id).checked;wxShadowKey='';applyWx();};
   $('radPlay').onclick=()=>{if(radTimer){clearInterval(radTimer);radTimer=null;$('radPlay').textContent='▶ Radar afspelen';return;}
     if(!wx.radar) return; $('radPlay').textContent='⏸ Stop';radTimer=setInterval(()=>{wx.fi=(wx.fi+1)%wx.radar.frames.length;drawRadar();},700);};
@@ -1355,35 +1368,59 @@ function uiWx(){
     try{if(!wx.radar) await loadRadar(); drawRadar();}catch(e){console.warn('radar',e);if($('radT')) $('radT').textContent='Radar niet beschikbaar';}
   })();
 }
-function applyWx(){
+function applyWx(fast){
   if(!cur||!terrain) return;
   const t=wxTime(),w=wxAt(t),U=terrain.material.uniforms,S=cur.bb.S,{lat,lon}=cur.bb;
-  const sp=sunPos(t,lat,lon),mp=moonPos(t,lat,lon),mi=moonIll(t),cc=w&&w.cloud_cover!=null?w.cloud_cover/100:0;
+  const sp=sunPos(t,lat,lon),mp=moonPos(t,lat,lon),mi=moonIll(t);
+  const cc=w&&w.cloud_cover!=null?w.cloud_cover/100:0, rainy=w&&w.precipitation>0.1?1:0;
   let amb=0.42,dirK=0.8,lightK=1,tint=[1,1,1],sky=SKY0.clone(),src=null;
+  const sm=(a,b,x)=>{const k=clamp((x-a)/(b-a),0,1);return k*k*(3-2*k);};
+  const day=sm(-6,8,sp.alt), dusk=sm(-10,-2,sp.alt)*(1-sm(3,12,sp.alt)), starK=1-sm(-14,-6,sp.alt);
+  const dome=ensureSky();
   if(wx.sun){
     if(sp.alt>-6){const k=clamp((sp.alt+6)/12,0,1);
-      lightK=0.3+0.7*k; tint=[1,0.8+0.2*k,0.66+0.34*k]; amb=0.42+0.18*cc; dirK=0.9*(1-0.75*cc)*clamp(sp.alt/4,0,1); src=sp.alt>0.3?sp:null;
-      sky=new THREE.Color('#d9925f').lerp(SKY0,k).lerp(new THREE.Color('#9aa3ab'),cc*0.6).multiplyScalar(0.45+0.55*k);}
-    else{const ml=mp.alt>0?mi.f:0; lightK=0.13+0.25*ml*(1-0.6*cc); tint=[0.62,0.72,1]; amb=0.6; dirK=mp.alt>0.3?0.55*(1-0.75*cc):0; src=mp.alt>0.3?mp:null;
-      sky=new THREE.Color('#070d1a').lerp(new THREE.Color('#1c2a44'),ml*0.6);}
+      lightK=0.3+0.7*k; tint=[1,0.8+0.2*k,0.66+0.34*k]; amb=0.42+0.18*cc; dirK=0.9*(1-0.75*cc)*clamp(sp.alt/4,0,1); src=sp.alt>0.3?sp:null;}
+    else{const ml=mp.alt>0?mi.f:0; lightK=0.13+0.25*ml*(1-0.6*cc); tint=[0.62,0.72,1]; amb=0.6; dirK=mp.alt>0.3?0.55*(1-0.75*cc):0; src=mp.alt>0.3?mp:null;}
+    lightK*=1-0.15*rainy;
     if(src){U.sun.value.copy(sunVec(src)); dirL.position.copy(U.sun.value).multiplyScalar(1000);}
-    U.shOn.value=src?1:0; if(src) scheduleShadows(src);
-  }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;}
-  U.amb.value=amb;U.dirK.value=dirK;U.lightK.value=lightK;U.tint.value.set(...tint);
+    U.shOn.value=src?1:0; if(src&&!(fast&&(fx.shSkip++%4))) scheduleShadows(src);
+    // lucht
+    const D=dome.material.uniforms; D.sunD.value.copy(sunVec(sp)); D.moonD.value.copy(sunVec(mp)); D.day.value=day; D.dusk.value=dusk;
+    D.cloudy.value=clamp(cc*cc*1.1,0,1); D.moonF.value=mi.f; D.starK.value=starK; dome.visible=!renderer.xr.isPresenting;
+    // horizonkleur (gelijk aan de shader) voor nevel en achtergrond
+    const hD=new THREE.Color(0.68,0.82,0.95),hN=new THREE.Color(0.04,0.06,0.12),hS=new THREE.Color(1.0,0.55,0.32);
+    sky=hN.clone().lerp(hD,day).lerp(hS,dusk*0.5).lerp(new THREE.Color(0.62,0.65,0.7).multiplyScalar(0.15+0.85*day),D.cloudy.value*0.85);
+  }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;dome.visible=false;}
+  fx.lk=lightK; U.amb.value=amb;U.dirK.value=dirK;U.lightK.value=lightK;U.tint.value.set(...tint);
   if(!renderer.xr.isPresenting) scene.background=sky; U.fogC.value.copy(sky);
   hemiL.intensity=1.1*lightK; dirL.intensity=1.6*lightK*dirK;
-  if(wx.mist&&w&&w.visibility!=null){U.fogF.value=clamp(w.visibility,S*0.2,S*8);U.fogN.value=U.fogF.value*0.03;}else{U.fogN.value=S*1.5;U.fogF.value=S*6;}
-  buildWind(w);buildCloud(w);buildRain(w);
+  // zicht & grondmist
+  U.gfog.value=0;
+  if(wx.mist&&w){
+    if(w.visibility!=null){U.fogF.value=clamp(w.visibility,S*0.2,S*8);U.fogN.value=U.fogF.value*0.03;}
+    const rh=w.relative_humidity_2m??0, ws=w.wind_speed_10m??5, v=w.visibility??20000;
+    let g=v<1000?0.85:v<3000?0.6:v<6000?0.3:0;
+    if(rh>=94&&ws<3.5&&sp.alt<12) g=Math.max(g,0.25+0.4*(rh-94)/6);
+    if([45,48].includes(w.weather_code)) g=Math.max(g,0.8);
+    U.gfog.value=g; U.gfH.value=clamp((cur.eMax-cur.eMin)*0.35,3,40); U.eMinU.value=cur.eMin;
+    U.gfC.value.set(0.86*tint[0],0.88*tint[1],0.9*tint[2]);
+  }else{U.fogN.value=S*1.5;U.fogF.value=S*6;}
+  // natte grond / sneeuwdek
+  U.wet.value=w&&wx.rain?clamp((w._p3||0)/1.5,0,1)*0.9:0;
+  U.snow.value=w&&wx.rain?clamp((w.snow_depth||0)/0.04,0,1):0;
+  fx.storm=!!(w&&wx.rain&&w.weather_code>=95);
+  updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w);
   // tekst
   if($('wxNow')){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
       $('wxNow').innerHTML=`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,1)} °C</div>
       <div>💨 ${DIRS[Math.round(wd/22.5)%16]} ${nf(ws,1)} m/s (${bft(ws)} Bft)</div><div>Stoten ${nf(w.wind_gusts_10m??0,1)} m/s · ${toMil(wd)}‰</div>
       <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% (laag ${Math.round(w.cloud_cover_low??0)}%)</div>
-      <div>👁 zicht ${w.visibility!=null?fmtDist(w.visibility):'—'}</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>`;}
+      <div>👁 zicht ${w.visibility!=null?fmtDist(w.visibility):'—'}</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>
+      <div>💧 RV ${Math.round(w.relative_humidity_2m??0)}%</div><div>${w.snow_depth>0.005?'❄️ sneeuwdek '+Math.round(w.snow_depth*100)+' cm':''}</div>`;}
     else if(!wx.data) $('wxNow').textContent='Weer laden…';
   }
-  if($('sunInfo')){const ev=sunEvents(t,lat,lon),f=k=>ev[k]?hhmm(ev[k]):'—';
+  if($('sunInfo')&&!fast){const ev=sunEvents(t,lat,lon),f=k=>ev[k]?hhmm(ev[k]):'—';
     $('sunInfo').innerHTML=`☀️ Zon ${nf(sp.alt,0)}° hoog, richting ${toMil(sp.b)}‰ (${Math.round(sp.b)}°) · op ${f('op')} · onder ${f('onder')}<br>
     BMNT ${f('bmnt')} · BMCT ${f('bmct')} · EECT ${f('eect')} · EENT ${f('eent')}<br>
     🌙 Maan ${Math.round(mi.f*100)}% verlicht (${mi.waxing?'wassend':'afnemend'}), ${nf(mp.alt,0)}° hoog, richting ${toMil(mp.b)}‰`;}
@@ -1410,56 +1447,174 @@ function computeShadows(p){
   const tx=new THREE.DataTexture(B,n,n,THREE.RedFormat);tx.unpackAlignment=1;tx.magFilter=THREE.LinearFilter;tx.minFilter=THREE.LinearFilter;tx.needsUpdate=true;cur.shTex=tx;
   terrain.material.uniforms.shMap.value=tx;
 }
-function buildWind(w){
-  tRemove('wind');if(!wx.wind||!w) return;
-  const sp=w.wind_speed_10m||0,dir=w.wind_direction_10m||0,k=6;
-  const geo=new THREE.ConeGeometry(0.28,1,6);geo.rotateX(Math.PI/2);
-  const col=sp<5?'#4ade80':sp<10?'#facc15':sp<15?'#fb923c':'#ef4444';
-  const m=new THREE.InstancedMesh(geo,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.85}),k*k);
-  m.userData={sp,dir,k};m.frustumCulled=false;tAdd('wind',m);placeWind(performance.now());
+/* ---------- weer-effecten: lucht, wolken, neerslag, wind, bliksem ---------- */
+const fx={last:0,t:0,drift:new THREE.Vector2(),cw:new THREE.Vector2(),lk:1,flash:0,flashT:-1e9,next:0,storm:false,play:null,shSkip:0,cKey:'',pKey:'',mask:null};
+let skyDome=null;
+const SKY_VS=`varying vec3 vDir; void main(){vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
+const SKY_FS=`uniform vec3 sunD; uniform vec3 moonD; uniform float day; uniform float dusk; uniform float cloudy; uniform float moonF; uniform float starK; uniform float flash;
+varying vec3 vDir;
+float hash(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453);}
+void main(){
+  vec3 d=normalize(vDir); float h=max(d.y,0.0);
+  vec3 zen=mix(vec3(0.005,0.012,0.04),vec3(0.18,0.42,0.82),day), hor=mix(vec3(0.04,0.06,0.12),vec3(0.68,0.82,0.95),day);
+  vec2 sh=normalize(sunD.xz+1e-5); float toward=max(dot(normalize(d.xz+1e-5),sh),0.0);
+  hor=mix(hor,vec3(1.0,0.55,0.32),dusk*(0.3+0.7*toward)); zen=mix(zen,vec3(0.16,0.2,0.42),dusk*0.5);
+  vec3 col=mix(hor,zen,pow(h,0.55));
+  float sd=dot(d,sunD), vis=1.0-cloudy;
+  col+=vec3(1.0,0.75,0.45)*pow(max(sd,0.0),8.0)*0.3*(dusk+day*0.25)*vis;
+  col=mix(col,vec3(0.62,0.65,0.7)*(0.15+0.85*day),cloudy*0.85);
+  float up=step(-0.03,sunD.y);
+  col+=vec3(1.0,0.92,0.75)*pow(max(sd,0.0),350.0)*1.2*vis*up;
+  col+=vec3(1.0,0.97,0.9)*smoothstep(0.99935,0.9996,sd)*3.0*(1.0-cloudy*0.92)*up;
+  float md=dot(d,moonD), mup=step(0.0,moonD.y);
+  col+=vec3(0.88,0.9,1.0)*smoothstep(0.99955,0.9997,md)*(0.25+0.75*moonF)*(1.0-cloudy*0.9)*(1.0-day*0.75)*mup*1.6;
+  col+=vec3(0.45,0.5,0.7)*pow(max(md,0.0),50.0)*0.18*moonF*(1.0-day)*vis*mup;
+  if(starK>0.01&&d.y>0.0){vec3 q=floor(d*220.0);float s=hash(q);col+=vec3(step(0.9972,s))*starK*vis*smoothstep(0.0,0.25,d.y)*(0.35+0.65*hash(q+1.3));}
+  if(d.y<0.0) col=mix(col,hor*0.55,smoothstep(0.0,-0.12,d.y));
+  col+=vec3(0.75,0.8,1.0)*flash;
+  gl_FragColor=vec4(col,1.0);
+}`;
+function ensureSky(){
+  if(skyDome) return skyDome;
+  skyDome=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),new THREE.ShaderMaterial({vertexShader:SKY_VS,fragmentShader:SKY_FS,side:THREE.BackSide,depthWrite:false,fog:false,
+    uniforms:{sunD:{value:new THREE.Vector3(0,1,0)},moonD:{value:new THREE.Vector3(0,-1,0)},day:{value:1},dusk:{value:0},cloudy:{value:0},moonF:{value:0},starK:{value:0},flash:{value:0}}}));
+  skyDome.frustumCulled=false; skyDome.renderOrder=-10; skyDome.visible=false; scene.add(skyDome); return skyDome;
 }
-const _m4=new THREE.Matrix4(),_q=new THREE.Quaternion(),_p=new THREE.Vector3(),_s=new THREE.Vector3(),_Y=new THREE.Vector3(0,1,0);
-function placeWind(t){
-  const m=tmeshes.wind;if(!m||!cur) return;const {sp,dir,k}=m.userData,S=cur.bb.S,to=(dir+180)*D2R,vx=Math.sin(to),vz=-Math.cos(to);
-  const len=S*0.035*(0.6+Math.min(sp,20)/8),y0=(cur.eMax-cur.eMin)*exag()+S*0.035,step=S/k,flow=(t*0.00006*(0.5+sp))%1;
-  _q.setFromAxisAngle(_Y,Math.PI-to);_s.set(len*0.6,len*0.6,len);
-  for(let j=0;j<k;j++)for(let i=0;i<k;i++){const f=(flow+((i*7+j*3)%10)/10)%1-0.5;
-    _p.set(-S/2+step*(i+0.5)+vx*step*f,y0+Math.sin((i+j)*1.7)*S*0.004,-S/2+step*(j+0.5)+vz*step*f);
-    _m4.compose(_p,_q,_s);m.setMatrixAt(j*k+i,_m4);}
-  m.instanceMatrix.needsUpdate=true;
+function wxFxOff(){ // bij uitzetten / nieuw gebied
+  if(skyDome) skyDome.visible=false; fx.storm=false; fx.flash=0; fx.cKey=''; fx.pKey='';
 }
-function cloudTexture(cov){
-  const N=256,cv=document.createElement('canvas');cv.width=cv.height=N;const ctx=cv.getContext('2d'),img=ctx.createImageData(N,N);
-  const oct=[[6,0.5],[12,0.25],[24,0.15],[48,0.1]],grids=oct.map(([g])=>{const a=new Float32Array((g+1)*(g+1));for(let i=0;i<a.length;i++)a[i]=Math.random();return a;});
-  const th=1-cov;
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){let v=0;
-    oct.forEach(([g,wt],o)=>{const fx=x/N*g,fy=y/N*g,x0=fx|0,y0=fy|0,tx=fx-x0,ty=fy-y0,sx=tx*tx*(3-2*tx),sy=ty*ty*(3-2*ty),a=grids[o],G1=g+1;
-      const v0=a[y0*G1+x0]*(1-sx)+a[y0*G1+x0+1]*sx,v1=a[(y0+1)*G1+x0]*(1-sx)+a[(y0+1)*G1+x0+1]*sx;v+=wt*(v0*(1-sy)+v1*sy);});
-    const p=(y*N+x)*4,al=clamp((v-th*0.95+0.05)/0.22,0,1);img.data[p]=img.data[p+1]=img.data[p+2]=245;img.data[p+3]=al*255;}
-  ctx.putImageData(img,0,0);const tx=new THREE.CanvasTexture(cv);return tx;
+
+// --- wolken (3D-pluizen + schaduw over het terrein)
+const PUFF_VS=`attribute vec3 iOff; attribute float iScale; attribute float iShade; uniform vec2 drift; uniform float span;
+varying vec2 vUv; varying float vShade; varying float vFade;
+void main(){ vec3 o=iOff; o.xz=mod(o.xz+drift+span*0.5,span)-span*0.5;
+  vec2 e=abs(o.xz)/(span*0.5); vFade=1.0-smoothstep(0.72,0.98,max(e.x,e.y));
+  vec4 mv=modelViewMatrix*vec4(o,1.0); mv.xy+=position.xy*iScale; vUv=uv; vShade=iShade; gl_Position=projectionMatrix*mv; }`;
+const PUFF_FS=`uniform sampler2D nTex; uniform vec3 litC; uniform vec3 darkC; uniform float opa; varying vec2 vUv; varying float vShade; varying float vFade;
+void main(){ vec2 c=vUv-0.5; float r=length(c)*2.0; float n=texture2D(nTex,vUv*0.8+vec2(vShade*3.7,vShade*1.9)).r;
+  float a=smoothstep(1.0,0.25,r+(n-0.5)*0.7); if(a<0.01) discard;
+  vec3 col=mix(darkC,litC,clamp(vUv.y*0.9+(n-0.5)*0.4+0.1,0.0,1.0));
+  gl_FragColor=vec4(col,a*opa*vFade); }`;
+let noiseTex=null;
+function getNoise(){
+  if(noiseTex) return noiseTex; const N=128,cv=document.createElement('canvas');cv.width=cv.height=N;const ctx=cv.getContext('2d'),img=ctx.createImageData(N,N);
+  const g=[4,8,16,32].map(s=>{const a=new Float32Array(s*s);for(let i=0;i<a.length;i++)a[i]=Math.random();return {s,a};});
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){let v=0,w=0.5;for(const {s,a} of g){const fx_=x/N*s,fy=y/N*s,x0=fx_|0,y0=fy|0,tx=fx_-x0,ty=fy-y0,x1=(x0+1)%s,y1=(y0+1)%s,
+      sx=tx*tx*(3-2*tx),sy=ty*ty*(3-2*ty),v0=a[y0*s+x0]*(1-sx)+a[y0*s+x1]*sx,v1=a[y1*s+x0]*(1-sx)+a[y1*s+x1]*sx;v+=w*(v0*(1-sy)+v1*sy);w*=0.5;}
+    const p=(y*N+x)*4;img.data[p]=img.data[p+1]=img.data[p+2]=clamp(v/0.94,0,1)*255;img.data[p+3]=255;}
+  ctx.putImageData(img,0,0); noiseTex=new THREE.CanvasTexture(cv); noiseTex.wrapS=noiseTex.wrapT=THREE.RepeatWrapping; return noiseTex;
 }
-function buildCloud(w){
-  tRemove('cloud');if(!wx.cloud||!w) return;
-  const cov=(w.cloud_cover_low??w.cloud_cover??0)/100;if(cov<0.05) return;
-  const base=(w.temperature_2m!=null&&w.dew_point_2m!=null)?clamp(125*(w.temperature_2m-w.dew_point_2m),80,3000):800;
-  const S=cur.bb.S,mat=new THREE.MeshBasicMaterial({map:cloudTexture(cov),transparent:true,opacity:0.55+0.35*cov,depthWrite:false,side:THREE.DoubleSide});
-  const pl=new THREE.Mesh(new THREE.PlaneGeometry(S*1.6,S*1.6),mat);pl.rotation.x=-Math.PI/2;pl.userData.base=base;pl.renderOrder=5;tAdd('cloud',pl);placeCloud();
+function buildClouds(cov,base,strat){
+  tRemove('clouds'); const S=cur.bb.S, span=2*S, puffs=[];
+  const nC=strat?Math.round(30+cov*30):Math.round(3+cov*26);
+  for(let c=0;c<nC;c++){const cx=(Math.random()-0.5)*span,cz=(Math.random()-0.5)*span,R=strat?500+Math.random()*700:250+Math.random()*500;
+    const np=strat?7:8+Math.floor(Math.random()*9);
+    for(let p=0;p<np;p++){const a=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*R*(strat?1.2:0.8);
+      const dy=strat?Math.random()*60:Math.random()*R*0.55*(1-r/(R*0.9))+R*0.08;
+      puffs.push({x:cx+Math.cos(a)*r,y:base+dy,z:cz+Math.sin(a)*r,s:(strat?1.6:1)*R*(0.55+Math.random()*0.55),sh:Math.random()});}}
+  const N=puffs.length, g=new THREE.InstancedBufferGeometry(), q=new THREE.PlaneGeometry(1,1);
+  g.index=q.index; g.setAttribute('position',q.attributes.position); g.setAttribute('uv',q.attributes.uv);
+  const off=new Float32Array(N*3),sc=new Float32Array(N),shd=new Float32Array(N);
+  puffs.forEach((p,i)=>{off[i*3]=p.x;off[i*3+1]=p.y;off[i*3+2]=p.z;sc[i]=p.s;shd[i]=p.sh;});
+  g.setAttribute('iOff',new THREE.InstancedBufferAttribute(off,3)); g.setAttribute('iScale',new THREE.InstancedBufferAttribute(sc,1)); g.setAttribute('iShade',new THREE.InstancedBufferAttribute(shd,1));
+  g.instanceCount=N;
+  const mat=new THREE.ShaderMaterial({vertexShader:PUFF_VS,fragmentShader:PUFF_FS,transparent:true,depthWrite:false,
+    uniforms:{drift:{value:fx.drift},span:{value:span},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:strat?0.7:0.85}}});
+  const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.renderOrder=6; m.userData={base}; tAdd('clouds',m); placeClouds();
+  // schaduwmasker
+  const M=256,cv=document.createElement('canvas');cv.width=cv.height=M;const ctx=cv.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,M,M);ctx.globalCompositeOperation='lighter';
+  for(const p of puffs){const r=p.s*0.5/span*M;for(const ox of [-M,0,M])for(const oz of [-M,0,M]){const x=(p.x+S)/span*M+ox,y=(1-(p.z+S)/span)*M+oz;if(x<-r||y<-r||x>M+r||y>M+r) continue;
+    const gr=ctx.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(255,255,255,0.35)');gr.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=gr;ctx.fillRect(x-r,y-r,2*r,2*r);}}
+  if(fx.mask) fx.mask.dispose(); fx.mask=new THREE.CanvasTexture(cv); fx.mask.wrapS=fx.mask.wrapT=THREE.RepeatWrapping;
+  const U=terrain.material.uniforms; U.cloudMap.value=fx.mask; U.cloudSpan.value=span; U.cloudDrift.value=fx.drift; U.cloudY.value=base;
 }
-function placeCloud(){const pl=tmeshes.cloud;if(pl) pl.position.y=(cur.eMax-cur.eMin)*exag()+pl.userData.base;}
-function buildRain(w){
-  tRemove('rain');if(!wx.rain||!w||!(w.precipitation>0.05)) return;
-  const S=cur.bb.S,snow=[71,73,75,77,85,86].includes(w.weather_code),cnt=clamp(Math.round(w.precipitation*2500),600,6000),H=S*0.35,pos=new Float32Array(cnt*3);
-  for(let i=0;i<cnt;i++){pos[i*3]=(Math.random()-0.5)*S;pos[i*3+1]=Math.random()*H;pos[i*3+2]=(Math.random()-0.5)*S;}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  const pts=new THREE.Points(g,new THREE.PointsMaterial({color:snow?'#ffffff':'#bcd7ff',size:S/(snow?420:700),transparent:true,opacity:0.75,depthWrite:false}));
-  const to=((w.wind_direction_10m||0)+180)*D2R,sp=w.wind_speed_10m||0;
-  pts.userData={H,y0:(cur.eMax-cur.eMin)*exag(),v:S*(snow?0.0006:0.0035),dx:Math.sin(to)*sp*S*0.00004,dz:-Math.cos(to)*sp*S*0.00004};pts.frustumCulled=false;tAdd('rain',pts);
+function placeClouds(){const m=tmeshes.clouds;if(m&&cur) m.position.y=(cur.eMax-cur.eMin)*exag();}
+function updateClouds(w,tint,lightK,rainy){
+  const U=terrain.material.uniforms;
+  const cov=w?Math.max(w.cloud_cover_low??0,(w.cloud_cover??0)*0.8)/100:0;
+  if(!wx.cloud||!w||cov<0.04){tRemove('clouds');fx.cKey='';U.cloudOn.value=0;return;}
+  const base=(w.temperature_2m!=null&&w.dew_point_2m!=null)?clamp(125*(w.temperature_2m-w.dew_point_2m),150,2500):800, strat=cov>0.85;
+  const key=Math.round(cov*10)+'|'+strat+'|'+Math.round(base/150);
+  if(key!==fx.cKey){fx.cKey=key;buildClouds(cov,base,strat);}
+  const m=tmeshes.clouds;if(!m) return;const u=m.material.uniforms;
+  u.litC.value.setRGB(tint[0],tint[1],tint[2]).multiplyScalar(Math.min(1.05,lightK*1.05));
+  u.darkC.value.setRGB(0.55-0.2*rainy,0.6-0.2*rainy,0.66-0.2*rainy).multiplyScalar(lightK);
+  const ws=Math.max(2,(w.wind_speed_10m||0)*1.8),to=((w.wind_direction_10m||0)+180)*D2R; fx.cw.set(Math.sin(to)*ws,-Math.cos(to)*ws);
+  U.cloudOn.value=1; U.cloudK.value=0.6*Math.min(1,cov*1.3)*(strat?0.6:1);
 }
-function stepRain(){
-  const p=tmeshes.rain;if(!p) return;const a=p.geometry.attributes.position.array,u=p.userData,S=cur.bb.S;
-  for(let i=0;i<a.length;i+=3){a[i+1]-=u.v;a[i]+=u.dx;a[i+2]+=u.dz;if(a[i+1]<0){a[i+1]+=u.H;}
-    if(a[i]>S/2)a[i]-=S;else if(a[i]<-S/2)a[i]+=S;if(a[i+2]>S/2)a[i+2]-=S;else if(a[i+2]<-S/2)a[i+2]+=S;}
-  p.position.y=u.y0;p.geometry.attributes.position.needsUpdate=true;
+
+// --- neerslag (regenstrepen / sneeuwvlokken in een kader rond je kijkpunt)
+let dotTex=null;
+function getDot(){if(dotTex) return dotTex;const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d'),g=x.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(0.5,'rgba(255,255,255,0.6)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,32,32);dotTex=new THREE.CanvasTexture(c);return dotTex;}
+function updatePrecip(w){
+  const on=wx.rain&&w&&w.precipitation>0.05;
+  const type=on?(([71,73,75,77,85,86].includes(w.weather_code)||(w.temperature_2m!=null&&w.temperature_2m<0.5))?'snow':'rain'):null;
+  const cnt=on?clamp(Math.round(w.precipitation*1800),700,5000):0, key=type?type+Math.round(cnt/500):'';
+  if(key!==fx.pKey){fx.pKey=key;tRemove('precip');
+    if(type){const P=new Float32Array(cnt*3);for(let i=0;i<P.length;i++)P[i]=Math.random()-0.5;
+      const g=new THREE.BufferGeometry(); let o;
+      if(type==='rain'){g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(cnt*6),3));
+        o=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:'#d3e3ff',transparent:true,opacity:0.5,depthWrite:false}));}
+      else{g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(cnt*3),3));
+        o=new THREE.Points(g,new THREE.PointsMaterial({color:'#ffffff',map:getDot(),size:1,transparent:true,depthWrite:false,opacity:0.95}));}
+      o.frustumCulled=false; o.renderOrder=7; o.userData={type,P,cnt}; tAdd('precip',o);}}
+  const o=tmeshes.precip; if(o){const ws=w.wind_speed_10m||0,to=((w.wind_direction_10m||0)+180)*D2R;o.userData.wx=Math.sin(to)*ws;o.userData.wz=-Math.cos(to)*ws;}
+}
+function stepPrecip(dt){
+  const o=tmeshes.precip;if(!o) return; const u=o.userData,P=u.P,a=o.geometry.attributes.position.array;
+  const dist=camera.position.distanceTo(controls.target),L=clamp(dist*1.3,cur.bb.S*0.03,cur.bb.S*1.2);
+  o.position.set(controls.target.x,controls.target.y+L*0.2,controls.target.z); o.scale.setScalar(L);
+  const rain=u.type==='rain', v=rain?1.3:0.11, k=rain?0.045:0.03, dx=u.wx*k, dz=u.wz*k;
+  for(let i=0;i<u.cnt;i++){const j=i*3;
+    P[j+1]-=v*dt; P[j]+=dx*dt; P[j+2]+=dz*dt;
+    if(P[j+1]<-0.5)P[j+1]+=1; if(P[j]>0.5)P[j]-=1; else if(P[j]<-0.5)P[j]+=1; if(P[j+2]>0.5)P[j+2]-=1; else if(P[j+2]<-0.5)P[j+2]+=1;
+    if(rain){const l=0.03,q=i*6,nn=Math.hypot(dx,v,dz);a[q]=P[j];a[q+1]=P[j+1];a[q+2]=P[j+2];a[q+3]=P[j]-dx/nn*l;a[q+4]=P[j+1]+v/nn*l;a[q+5]=P[j+2]-dz/nn*l;}
+    else{a[j]=P[j]+Math.sin(fx.t*1.3+i)*0.006;a[j+1]=P[j+1];a[j+2]=P[j+2]+Math.cos(fx.t*1.1+i*0.7)*0.006;}}
+  if(!rain) o.material.size=L*0.006;
+  o.geometry.attributes.position.needsUpdate=true;
+}
+
+// --- windstroming (lijntjes die over het terrein stromen)
+function updateFlow(w){
+  if(!wx.wind||!w){tRemove('flow');return;}
+  if(!tmeshes.flow){const N=650,g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*6),3)); g.setAttribute('color',new THREE.BufferAttribute(new Float32Array(N*8),4));
+    const o=new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,depthWrite:false}));o.frustumCulled=false;o.renderOrder=8;
+    o.userData={N,X:new Float32Array(N),Z:new Float32Array(N),age:new Float32Array(N),life:new Float32Array(N),init:false};tAdd('flow',o);}
+  const u=tmeshes.flow.userData,sp=w.wind_speed_10m||0;u.sp=sp;u.to=((w.wind_direction_10m||0)+180)*D2R;
+  u.col=new THREE.Color(sp<5?'#bbf7d0':sp<10?'#fde68a':sp<15?'#fdba74':'#fca5a5');
+}
+function stepFlow(dt){
+  const o=tmeshes.flow;if(!o) return;const u=o.userData,S=cur.bb.S,pos=o.geometry.attributes.position.array,col=o.geometry.attributes.color.array;
+  const dist=camera.position.distanceTo(controls.target),L=clamp(dist*1.6,S*0.05,S*1.05);
+  const cx=clamp(controls.target.x,-S/2+L/2,S/2-L/2),cz=clamp(controls.target.z,-S/2+L/2,S/2-L/2);
+  const vs=L*0.035*(0.35+Math.min(u.sp,20)/6),bx=Math.sin(u.to),bz=-Math.cos(u.to),h=L*0.005,c=u.col;
+  for(let i=0;i<u.N;i++){
+    u.age[i]+=dt;
+    if(!u.init||u.age[i]>u.life[i]||Math.abs(u.X[i]-cx)>L/2||Math.abs(u.Z[i]-cz)>L/2){u.X[i]=cx+(Math.random()-0.5)*L;u.Z[i]=cz+(Math.random()-0.5)*L;u.age[i]=u.init?0:Math.random()*3;u.life[i]=1.8+Math.random()*2.6;}
+    const x=u.X[i],z=u.Z[i],an=0.4*Math.sin(x/L*6.3+fx.t*0.35)*Math.cos(z/L*5.1-fx.t*0.25),ca=Math.cos(an),sa=Math.sin(an);
+    const ux=bx*ca-bz*sa,uz=bx*sa+bz*ca; u.X[i]=x+ux*vs*dt; u.Z[i]=z+uz*vs*dt;
+    const tx=u.X[i]-ux*vs*0.7,tz=u.Z[i]-uz*vs*0.7,q=i*6,f=Math.sin(Math.PI*Math.min(1,u.age[i]/u.life[i]));
+    pos[q]=u.X[i];pos[q+1]=(inArea(u.X[i],u.Z[i])?surfaceY(u.X[i],u.Z[i]):0)+h;pos[q+2]=u.Z[i];
+    pos[q+3]=tx;pos[q+4]=(inArea(tx,tz)?surfaceY(tx,tz):0)+h;pos[q+5]=tz;
+    const r=i*8;col[r]=c.r;col[r+1]=c.g;col[r+2]=c.b;col[r+3]=0.9*f;col[r+4]=c.r;col[r+5]=c.g;col[r+6]=c.b;col[r+7]=0;}
+  u.init=true; o.geometry.attributes.position.needsUpdate=true; o.geometry.attributes.color.needsUpdate=true;
+}
+
+// --- per frame
+function wxFrame(now){
+  const dt=Math.min(0.1,fx.last?(now-fx.last)/1000:0.016); fx.last=now; fx.t+=dt;
+  if(!cur||!terrain||!wx.enabled) return;
+  if(skyDome&&skyDome.visible){skyDome.position.copy(camera.position);skyDome.scale.setScalar(camera.far*0.8);}
+  const sF=fx.play?90:14; fx.drift.x+=fx.cw.x*dt*sF; fx.drift.y+=fx.cw.y*dt*sF;
+  const span=2*cur.bb.S; fx.drift.x=((fx.drift.x%span)+span)%span; fx.drift.y=((fx.drift.y%span)+span)%span;
+  stepPrecip(dt); stepFlow(dt);
+  const U=terrain.material.uniforms;
+  if(fx.storm){if(now>fx.next){fx.flashT=now;fx.next=now+2500+Math.random()*7000;}
+    const e=now-fx.flashT; fx.flash=e<70?1:e<130?0.15:e<200?0.75:e<700?Math.max(0,0.5*(1-(e-200)/500)):0;}
+  else fx.flash=0;
+  U.lightK.value=fx.lk+fx.flash*1.3; if(skyDome) skyDome.material.uniforms.flash.value=fx.flash*0.6;
 }
 async function loadRadar(){
   const r=await fetch('https://api.rainviewer.com/public/weather-maps.json');const js=await r.json();
@@ -1522,10 +1677,10 @@ async function startXR(){
     try{const viewer=await s.requestReferenceSpace('viewer');
       try{xrHit=await s.requestHitTestSource({space:viewer,entityTypes:['plane','point']});}catch(eT){xrHit=await s.requestHitTestSource({space:viewer});}}
     catch(e){console.warn('geen hit-test',e); xrHit=null; setTimeout(()=>{if(!xrPlaced) xrPlaceFixed();},600);}
-    $('xrUI').classList.remove('hidden'); xrSeen=0; $('xrMsg').textContent='Zoeken naar oppervlak… beweeg de telefoon langzaam (v6 · 13-11 08:10)';
+    $('xrUI').classList.remove('hidden'); xrSeen=0; $('xrMsg').textContent='Zoeken naar oppervlak… beweeg de telefoon langzaam (v7 · 13-11 08:30)';
     xrSaved={bg:scene.background,fogN:terrain.material.uniforms.fogN.value,fogF:terrain.material.uniforms.fogF.value};
     scene.background=null; terrain.material.uniforms.fogN.value=1e9; terrain.material.uniforms.fogF.value=2e9;
-    world.visible=false; xrPlaced=false; if(tmeshes.cloud) tmeshes.cloud.visible=false; if(marker) marker.visible=false;
+    world.visible=false; xrPlaced=false; ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); if(skyDome) skyDome.visible=false; xrSaved.cloudOn=terrain.material.uniforms.cloudOn.value; terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; if(marker) marker.visible=false;
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1562,7 +1717,7 @@ function endXR(){
   xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
-  if(tmeshes.cloud) tmeshes.cloud.visible=true;
+  ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); if(wx.enabled) setTimeout(()=>applyWx(),60);
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=xrPlaceHere;
