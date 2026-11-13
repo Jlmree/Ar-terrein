@@ -85,6 +85,8 @@ input[type=range]{flex:1}
 #tools{right:10px;top:calc(66px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
 #tools button{width:46px;height:46px;border-radius:50%;border:none;background:#16181dd8;color:#fff;font-size:21px;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0}
 #tools button.on{background:#2563eb}
+#tools{gap:6px!important}#tools button{width:42px!important;height:42px!important;font-size:19px!important}
+.sv{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #2a2e37}
 #tool .head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px;margin-bottom:4px}
 #toolB{max-height:56vh;overflow:auto}
 .note{font-size:12.5px;color:#b9bdc7;line-height:1.4;margin:4px 0}
@@ -119,7 +121,9 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div id="map"></div>
   <div class="topbar">
     <form id="sf"><input id="q" placeholder="Plaats, MGRS (32U LD 14 49) of lat,lon" autocomplete="off"><button class="btn">Zoek</button></form>
-    <div id="cinfo" class="pill">Midden: …</div>
+    <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap"><div id="cinfo" class="pill">Midden: …</div><button class="pill" id="savedB" style="border:none;cursor:pointer">📂 Opgeslagen</button></div>
+    <div id="netP" class="pill hidden" style="background:#fbbf24">📴 Offline – open een opgeslagen gebied via 📂</div>
+    <div id="joinP" class="pill hidden" style="background:#22c55e;color:#fff;cursor:pointer"></div>
   </div>
   <div class="panel">
     <div class="row"><span class="t">Gebied</span><div class="chips" id="sizes"></div></div>
@@ -152,7 +156,9 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
     <button data-t="meas" title="Meten &amp; route">📏</button>
     <button data-t="wx" title="Weer, zon &amp; maan">⛅</button>
     <button data-t="ar" title="AR">🕶</button>
-    <button data-t="exp" title="Exporteren">⤓</button>
+    <button data-t="tac" title="Tactische symbolen">🎖</button>
+    <button data-t="share" title="Live delen">👥</button>
+    <button data-t="exp" title="Exporteren &amp; offline">⤓</button>
   </div>
   <div id="tool" class="panel hidden"><div class="head"><span id="toolT"></span><button class="btn sm dark" id="toolX">✕</button></div><div id="toolB"></div></div>
   <div id="info" class="hud hidden"><div><div class="m" id="iM"></div><div id="iD"></div></div><button class="btn sm" id="iCopy">Kopieer</button><button class="btn sm dark" id="iX">✕</button></div>
@@ -181,13 +187,17 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v8 · 13-11 08:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v9 · 13-11 09:15. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
   <div id="loading" class="hidden"><div class="spin"></div><div id="loadT">Laden…</div></div>
 </div>
 
+<div id="savedM" class="screen hidden" style="z-index:60;background:#0f1115ee;display:flex;align-items:flex-end;justify-content:center">
+  <div class="panel" style="position:relative;left:auto;right:auto;bottom:auto;width:calc(100% - 16px);margin:8px;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px"><span>📂 Opgeslagen gebieden</span><button class="btn sm dark" id="savedX">✕</button></div>
+    <div id="savedL"></div></div></div>
 <!-- ============ VELD-AR ============ -->
 <div id="far" class="screen hidden">
   <video id="farV" playsinline muted autoplay></video><canvas id="farC"></canvas>
@@ -327,11 +337,11 @@ function bbLatLng(bb){const sw=G.invMerc(bb.x0,bb.y0), ne=G.invMerc(bb.x1,bb.y1)
 /* =================== SCHERM 1: kaart =================== */
 const map=L.map('map',{zoomControl:false}).setView([state.lat,state.lon],state.zoom);
 const bases={
-  'Topografisch':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'© OpenTopoMap © OSM'}),
-  'Topo 1:25.000 (NL)':L.tileLayer.wms('https://service.pdok.nl/brt/top25raster/wms/v1_0',{layers:'top25raster',format:'image/png',maxZoom:19,attribution:'© Kadaster'}),
-  'BRT (NL)':L.tileLayer('https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/standaard/EPSG:3857/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© Kadaster/PDOK'}),
-  'Luchtfoto (NL)':L.tileLayer('https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',{maxZoom:19,attribution:'© PDOK'}),
-  'OpenStreetMap':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}),
+  'Topografisch':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',crossOrigin:true,attribution:'© OpenTopoMap © OSM'}),
+  'Topo 1:25.000 (NL)':L.tileLayer.wms('https://service.pdok.nl/brt/top25raster/wms/v1_0',{layers:'top25raster',format:'image/png',maxZoom:19,crossOrigin:true,attribution:'© Kadaster'}),
+  'BRT (NL)':L.tileLayer('https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/standaard/EPSG:3857/{z}/{x}/{y}.png',{maxZoom:19,crossOrigin:true,attribution:'© Kadaster/PDOK'}),
+  'Luchtfoto (NL)':L.tileLayer('https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg',{maxZoom:19,crossOrigin:true,attribution:'© PDOK'}),
+  'OpenStreetMap':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,crossOrigin:true,attribution:'© OpenStreetMap'}),
 };
 bases['Topografisch'].addTo(map);
 L.control.layers(bases,null,{position:'topright'}).addTo(map);
@@ -394,13 +404,16 @@ $('sf').onsubmit=async(e)=>{
   }catch(err){$('cinfo').textContent='Zoeken mislukt (geen verbinding?)';$('cinfo').classList.add('err');}
 };
 
+function enterView(p){
+  $('pick').classList.add('hidden'); $('view').classList.remove('hidden');
+  initThree();
+  $('layerSel3').value=p.layer; $('demSel3').value=p.dem;
+  build(p);
+}
 $('go').onclick=()=>{
   const c=map.getCenter();
   state.layer=$('layerSel').value; state.dem=$('demSel').value; state.hiq=$('hiq').checked; lsSet('terrein3d',state);
-  $('pick').classList.add('hidden'); $('view').classList.remove('hidden');
-  initThree();
-  $('layerSel3').value=state.layer; $('demSel3').value=state.dem;
-  build({lat:c.lat,lon:c.lng,sizeKm:state.size,layer:state.layer,dem:state.dem,hiq:state.hiq});
+  enterView({lat:c.lat,lon:c.lng,sizeKm:state.size,layer:state.layer,dem:state.dem,hiq:state.hiq});
 };
 $('back').onclick=()=>{$('view').classList.add('hidden');$('pick').classList.remove('hidden');running=false;map.invalidateSize();};
 
@@ -567,7 +580,7 @@ nwr["natural"="water"]["name"](${bx});
 );out geom;`;
   const eps=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
   let last;
-  for(const ep of eps){try{const r=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+  for(const ep of eps){try{const r=await fetch(ep+'?data='+encodeURIComponent(q));
     if(!r.ok) throw new Error('HTTP '+r.status); return await r.json();}catch(e){last=e;}}
   throw last;
 }
@@ -690,6 +703,7 @@ async function build(p){
     hideLoad();
     if($('tSlope').checked){computeSlope();redrawSurf(mainSurf);}
     if(wx.enabled){wxShadowKey='';applyWx();loadWeather().then(applyWx).catch(e=>console.warn(e));}
+    onAreaLoaded(!!p.fromDoc);
     if(toolMode==='meas') updateMeas(); else if(toolMode==='vs'&&$('vsInfo')) $('vsInfo').textContent='Tik op het terrein om een waarnemer te plaatsen.';
     if(note) toast(note);
   }catch(e){
@@ -828,6 +842,7 @@ function redrawSurf(sf){
   if($('tSlope').checked&&cur.slopeCanvas) drawAnalysis(ctx,s,sf.bb,cur.slopeCanvas);
   if(cur.vsCanvas) drawAnalysis(ctx,s,sf.bb,cur.vsCanvas);
   if($('tRoads').checked&&cur.feats) drawRoads(ctx,s,sf.bb);
+  if(typeof doc!=='undefined') drawTac(ctx,s,sf.bb);
   if($('tGrid').checked) drawGrid(ctx,s,sf.bb);
   sf.tex.needsUpdate=true;
 }
@@ -995,6 +1010,7 @@ function pick(e){
   const wx=hit.point.x, wz=hit.point.z;
   if(toolMode==='vs'){runViewshed(wx,wz);return;}
   if(toolMode==='meas'){addMeas(wx,wz);return;}
+  if(toolMode==='tac'){tacTap(wx,wz);return;}
   showInfo(wx,wz,hit.point.y);
 }
 function showInfo(wx,wz,y){
@@ -1085,7 +1101,7 @@ function toolsExag(){
   if(!cur) return;
   if(cur.vsObs&&tmeshes.vs) tmeshes.vs.position.y=surfaceY(cur.vsObs.x,cur.vsObs.z);
   if(cur.meas&&cur.meas.length) updateMeas(true);
-  placeClouds();
+  placeClouds(); renderTac(); renderPeers();
 }
 function toolsFeatures(){if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
@@ -1096,7 +1112,7 @@ function openTool(t){
   if(toolMode===t){closeTool();return;}
   toolMode=t; document.querySelectorAll('#tools button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   $('tool').classList.remove('hidden'); $('ctrl').classList.add('hidden');
-  ({vs:uiVS,meas:uiMeas,wx:uiWx,ar:uiAR,exp:uiExp})[t]();
+  ({vs:uiVS,meas:uiMeas,wx:uiWx,ar:uiAR,exp:uiExp,tac:uiTac,share:uiShare})[t]();
 }
 function closeTool(){toolMode=null;document.querySelectorAll('#tools button').forEach(b=>b.classList.remove('on'));
   $('tool').classList.add('hidden');$('ctrl').classList.remove('hidden');if(radTimer){clearInterval(radTimer);radTimer=null;}}
@@ -1113,12 +1129,12 @@ function uiVS(){
   <div id="vsInfo" class="note">Tik op het terrein om een waarnemer te plaatsen. <span style="color:#4ade80">Groen</span> = zichtbaar, <span style="color:#f87171">rood</span> = dode hoek.</div>
   <div class="row"><button class="btn sm dark" id="vsClr">Wissen</button></div>`;
   $('vsE').value=String(vsOpt.eye);$('vsT').value=String(vsOpt.tgt);$('vsR').value=String(vsOpt.range);
-  const ch=()=>{vsOpt.eye=+$('vsE').value;vsOpt.tgt=+$('vsT').value;vsOpt.range=+$('vsR').value;state.vsEye=vsOpt.eye;state.vsTgt=vsOpt.tgt;state.vsR=vsOpt.range;lsSet('terrein3d',state);if(cur.vsObs)computeVS();};
+  const ch=()=>{vsOpt.eye=+$('vsE').value;vsOpt.tgt=+$('vsT').value;vsOpt.range=+$('vsR').value;state.vsEye=vsOpt.eye;state.vsTgt=vsOpt.tgt;state.vsR=vsOpt.range;lsSet('terrein3d',state);if(cur.vsObs){computeVS();docTouch('vs');}};
   $('vsE').onchange=ch;$('vsT').onchange=ch;$('vsR').onchange=ch;
-  $('vsClr').onclick=()=>{cur.vsObs=null;cur.vsCanvas=null;tRemove('vs');redrawTexture();$('vsInfo').textContent='Tik op het terrein om een waarnemer te plaatsen.';};
+  $('vsClr').onclick=()=>{cur.vsObs=null;cur.vsCanvas=null;tRemove('vs');redrawTexture();docTouch('vs');$('vsInfo').textContent='Tik op het terrein om een waarnemer te plaatsen.';};
   if(cur.vsObs) computeVS();
 }
-function runViewshed(wx,wz){cur.vsObs={x:wx,z:wz};computeVS();}
+function runViewshed(wx,wz){cur.vsObs={x:wx,z:wz};computeVS();docTouch('vs');}
 function computeVS(){
   const o=cur.vsObs;if(!o) return;
   const {n,E,bb}=cur,S=bb.S,cell=S/(n-1),O=obstacleGrid();
@@ -1159,7 +1175,7 @@ $('tSlope').onchange=()=>{if(!cur) return; if($('tSlope').checked){if(!cur.slope
 
 /* ---------- 📏 meten, zichtlijn, profiel ---------- */
 const measOpt={dec:state.dec!=null?+state.dec:2.5};
-function addMeas(wx,wz){if(!cur.meas) cur.meas=[];cur.meas.push({x:wx,z:wz});updateMeas();}
+function addMeas(wx,wz){if(!cur.meas) cur.meas=[];cur.meas.push({x:wx,z:wz});updateMeas();docTouch('meas');}
 function uiMeas(){
   $('toolT').textContent='📏 Meten & route';
   tb.innerHTML=`<div class="note">Tik punten op het terrein. Afstand, richting (streep ‰ en graden) en hoogteprofiel worden direct berekend. Zichtlijn loopt van punt 1 naar het laatste punt (hoogtes van 👁 Zichtbereik).</div>
@@ -1169,8 +1185,8 @@ function uiMeas(){
   <div class="row"><span class="t">Declinatie</span><input id="mDec" type="number" step="0.1" value="${measOpt.dec}" style="width:76px"><span class="note">° oost (kaartrand)</span></div>
   <div class="row"><button class="btn sm dark" id="mUndo">↶ Terug</button><button class="btn sm dark" id="mClr">Wissen</button><button class="btn sm" id="mGpx">GPX opslaan</button></div>`;
   $('mDec').onchange=()=>{measOpt.dec=+$('mDec').value||0;state.dec=measOpt.dec;lsSet('terrein3d',state);updateMeas();};
-  $('mUndo').onclick=()=>{if(cur.meas&&cur.meas.length){cur.meas.pop();updateMeas();}};
-  $('mClr').onclick=()=>{cur.meas=[];updateMeas();};
+  $('mUndo').onclick=()=>{if(cur.meas&&cur.meas.length){cur.meas.pop();updateMeas();docTouch('meas');}};
+  $('mClr').onclick=()=>{cur.meas=[];updateMeas();docTouch('meas');};
   $('mGpx').onclick=exportGPX;
   updateMeas();
 }
@@ -1236,7 +1252,7 @@ function drawProfile(p){
 
 /* ---------- ⤓ export ---------- */
 function uiExp(){
-  $('toolT').textContent='⤓ Exporteren';
+  $('toolT').textContent='⤓ Exporteren & offline';
   const sc=150/cur.bb.S, auto=clamp(Math.round(12/Math.max(0.1,(cur.eMax-cur.eMin)*sc)),1,40);
   tb.innerHTML=`<div class="note"><b>GPX</b> – meetpunten als waypoints, route én track (Garmin Connect → Training → Koersen → Importeren, of Garmin Explore/BaseCamp).</div>
   <div class="row"><button class="btn sm" id="eGpx">GPX opslaan</button><button class="btn sm dark" id="eCopy">Kopieer MGRS-lijst</button></div>
@@ -1246,7 +1262,9 @@ function uiExp(){
   <div class="row"><span class="t">Overhoging</span><input id="eX" type="number" value="${auto}" step="0.5" style="width:80px"> ×</div>
   <div class="row"><label class="tg"><input type="checkbox" id="eT" ${useCanopy()?'':'disabled'}> Bos als verhoging (+15 m)</label></div>
   <div id="eInfo" class="note"></div>
-  <div class="row"><button class="btn sm" id="eStl">STL opslaan</button></div>`;
+  <div class="row"><button class="btn sm" id="eStl">STL opslaan</button></div>
+  <div id="eOff" style="margin-top:12px;border-top:1px solid #2a2e37;padding-top:8px"></div>`;
+  uiExpOffline();
   const info=()=>{const w=+$('eW').value||150,x=+$('eX').value||1;$('eInfo').textContent=`Schaal 1:${Math.round(cur.bb.S*1000/w).toLocaleString('nl-NL')} · reliëf in print ${nf((cur.eMax-cur.eMin)*x*w/cur.bb.S,1)} mm`;};
   ['eW','eX'].forEach(id=>$(id).oninput=info);info();
   $('eGpx').onclick=exportGPX;
@@ -1778,6 +1796,8 @@ function farTargets(){
   for(const p of cur.pois) T.push({la:p.la,lo:p.lo,nm:p.ic+' '+p.nm,c:'#fff'});
   (cur.meas||[]).forEach((p,i)=>{const [la,lo]=w2ll(p.x,p.z);T.push({la,lo,nm:'📍 WP'+(i+1),c:'#ffd400'});});
   if(cur.vsObs){const [la,lo]=w2ll(cur.vsObs.x,cur.vsObs.z);T.push({la,lo,nm:'👁 Waarnemer',c:'#facc15'});}
+  for(const t of tacList()) if(t.kind==='unit'){const a=AFF[t.aff]||AFF.u;T.push({la:t.pts[0][0],lo:t.pts[0][1],nm:'🎖 '+((UTYPES.find(u=>u[0]===t.type)||['',''])[1])+(t.label?' '+t.label:''),c:a.fill});}
+  for(const p of Object.values(share.peers)) if(p.lat!=null&&Date.now()-p.seen<120000) T.push({la:p.lat,lo:p.lon,nm:'🔵 '+(p.name||'?'),c:'#93c5fd'});
   return T;
 }
 function farDraw(){
@@ -1852,6 +1872,366 @@ function updateCelest(){
   g.add(u.lab,u.mlab);
   if($('xrInfo')) $('xrInfo').textContent=`${hhmm(t)} · zon ${sp.alt>0?nf(sp.alt,0)+'° hoog':'onder'} · maan ${Math.round(mi.f*100)}% ${fase}${mp.alt<0?' (onder)':''}`;
 }
+
+
+/* =================================================================
+   GEDEELDE TOESTAND (doc): gebied, meetpunten, waarnemer, symbolen
+   ================================================================= */
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+let doc=(()=>{try{const d=JSON.parse(localStorage.getItem('terrein3d_doc')||'null');if(d&&d.tac) return d;}catch(e){}return {area:null,meas:null,vs:null,tac:{}};})();
+let docSaveT=null;
+function persistDoc(){clearTimeout(docSaveT);docSaveT=setTimeout(()=>{try{localStorage.setItem('terrein3d_doc',JSON.stringify(doc));}catch(e){}},400);}
+const sameArea=(a,b)=>a&&b&&Math.abs(a.lat-b.lat)<1e-6&&Math.abs(a.lon-b.lon)<1e-6&&Math.abs(a.size-b.size)<1e-6;
+function curArea(){return {lat:cur.bb.lat,lon:cur.bb.lon,size:cur.bb.S/1000,dem:state.dem,layer:cur.layer};}
+function docTouch(f){
+  if(!cur) return; const now=Date.now();
+  if(f==='meas') doc.meas={pts:(cur.meas||[]).map(p=>w2ll(p.x,p.z)),ts:now};
+  if(f==='vs') doc.vs={pt:cur.vsObs?w2ll(cur.vsObs.x,cur.vsObs.z):null,eye:vsOpt.eye,tgt:vsOpt.tgt,range:vsOpt.range,ts:now};
+  if(f==='area') doc.area={...curArea(),ts:now,by:share.name||''};
+  persistDoc(); if(share.on) schedulePublish();
+}
+function applyDocMeas(){
+  if(!cur) return; const pts=doc.meas&&doc.meas.pts||[];
+  cur.meas=pts.map(([la,lo])=>{const [x,z]=ll2w(la,lo);return {x,z};}).filter(p=>inArea(p.x,p.z)); updateMeas(toolMode!=='meas');
+}
+function applyDocVs(){
+  if(!cur) return; const v=doc.vs;
+  if(v&&v.pt){vsOpt.eye=v.eye??vsOpt.eye;vsOpt.tgt=v.tgt??vsOpt.tgt;vsOpt.range=v.range??vsOpt.range;const [x,z]=ll2w(v.pt[0],v.pt[1]);
+    if(inArea(x,z)){cur.vsObs={x,z};computeVS();return;}}
+  cur.vsObs=null;cur.vsCanvas=null;tRemove('vs');redrawTexture();
+}
+function onAreaLoaded(fromDoc){
+  const a=curArea();
+  if(!fromDoc&&!sameArea(doc.area,a)){const now=Date.now();doc.area={...a,ts:now,by:share.name||''};doc.meas={pts:[],ts:now};doc.vs={pt:null,ts:now};persistDoc();if(share.on) schedulePublish();}
+  else{applyDocMeas();applyDocVs();}
+  renderTac(); renderPeers(); redrawTexture();
+}
+
+/* =================================================================
+   🎖 TACTISCHE SYMBOLEN (vereenvoudigd APP-6)
+   ================================================================= */
+const AFF={f:{n:'Eigen',fill:'#80e0ff',col:'#1d4ed8'},h:{n:'Vijand',fill:'#ff8080',col:'#dc2626'},n:{n:'Neutraal',fill:'#aaffaa',col:'#15803d'},u:{n:'Onbekend',fill:'#ffff80',col:'#a16207'}};
+const UTYPES=[['inf','Infanterie'],['mech','Gemech. infanterie'],['arm','Pantser'],['rec','Verkenning'],['art','Artillerie'],['eng','Genie'],['ad','Luchtverdediging'],['sig','Verbindingen'],['med','Geneeskundig'],['log','Logistiek'],['hq','Staf / HQ'],['op','Waarnemingspost (OP)'],['rv','Verzamelpunt (RV)'],['tgt','Doel']];
+const ECH=[['','geen'],['sq','Groep •'],['sec','Sectie ••'],['plt','Peloton •••'],['coy','Compagnie I'],['bn','Bataljon II'],['bde','Brigade X']];
+const ECHS={sq:'•',sec:'••',plt:'•••',coy:'I',bn:'II',bde:'X'};
+const LTYPES=[['pl','Fase-lijn'],['bnd','Grens'],['axis','Aanvalspijl'],['area','Gebied / doel']];
+const tacUI={aff:'f',type:'inf',ech:'',label:'',mode:'unit',lt:'pl',draft:[]};
+const symCache={};
+function symCanvas(it){
+  const key=[it.aff,it.type,it.ech,it.label].join('|'); if(symCache[key]) return symCache[key];
+  const W=220,H=210,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),a=AFF[it.aff]||AFF.u,cx=W/2,cy=92;
+  x.lineWidth=5;x.strokeStyle='#000';x.lineJoin='round';x.lineCap='round';
+  let box=null,top=50;
+  if(it.type==='op'){x.beginPath();x.moveTo(cx,cy-42);x.lineTo(cx+40,cy+28);x.lineTo(cx-40,cy+28);x.closePath();x.fillStyle=a.fill;x.fill();x.stroke();x.fillStyle='#000';x.beginPath();x.arc(cx,cy+6,6,0,7);x.fill();top=cy-46;}
+  else if(it.type==='rv'){x.beginPath();x.arc(cx,cy,34,0,7);x.fillStyle=a.fill;x.fill();x.stroke();x.fillStyle='#000';x.font='bold 30px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText('RV',cx,cy+1);top=cy-38;}
+  else if(it.type==='tgt'){x.strokeStyle=a.col;x.lineWidth=6;x.beginPath();x.arc(cx,cy,30,0,7);x.stroke();x.beginPath();x.moveTo(cx-46,cy);x.lineTo(cx+46,cy);x.moveTo(cx,cy-46);x.lineTo(cx,cy+46);x.stroke();top=cy-50;}
+  else{
+    const path=()=>{x.beginPath();
+      if(it.aff==='f'){x.rect(cx-50,cy-33,100,66);box=[cx-50,cy-33,cx+50,cy+33];top=cy-33;}
+      else if(it.aff==='h'){x.moveTo(cx,cy-52);x.lineTo(cx+52,cy);x.lineTo(cx,cy+52);x.lineTo(cx-52,cy);x.closePath();box=[cx-27,cy-24,cx+27,cy+24];top=cy-52;}
+      else if(it.aff==='n'){x.rect(cx-37,cy-37,74,74);box=[cx-37,cy-37,cx+37,cy+37];top=cy-37;}
+      else{x.roundRect(cx-40,cy-40,80,80,22);box=[cx-32,cy-30,cx+32,cy+30];top=cy-40;}};
+    path();x.fillStyle=a.fill;x.fill();x.save();path();x.clip();
+    const [x0,y0,x1,y1]=box,w=x1-x0,h=y1-y0,mx=(x0+x1)/2,my=(y0+y1)/2;x.beginPath();x.lineWidth=4;
+    const X=()=>{x.moveTo(x0,y0);x.lineTo(x1,y1);x.moveTo(x1,y0);x.lineTo(x0,y1);};
+    const O=()=>{x.moveTo(mx+w*0.3,my);x.ellipse(mx,my,w*0.3,h*0.26,0,0,Math.PI*2);};
+    switch(it.type){
+      case 'inf':X();break; case 'arm':O();break; case 'mech':X();x.stroke();x.beginPath();O();break;
+      case 'rec':x.moveTo(x0,y1);x.lineTo(x1,y0);break;
+      case 'art':x.stroke();x.beginPath();x.fillStyle='#000';x.arc(mx,my,8,0,7);x.fill();x.beginPath();break;
+      case 'eng':{const y=my-h*0.08,l=mx-w*0.28,r=mx+w*0.28;x.moveTo(l,y);x.lineTo(r,y);for(const px of [l,mx,r]){x.moveTo(px,y);x.lineTo(px,y+h*0.25);}break;}
+      case 'ad':x.moveTo(mx-w*0.36,y1);x.ellipse(mx,y1,w*0.36,h*0.5,0,Math.PI,0);break;
+      case 'sig':x.moveTo(x0,y0+h*0.25);x.lineTo(mx-w*0.08,my+h*0.18);x.lineTo(mx+w*0.08,my-h*0.18);x.lineTo(x1,y1-h*0.25);break;
+      case 'med':x.moveTo(mx,y0);x.lineTo(mx,y1);x.moveTo(x0,my);x.lineTo(x1,my);break;
+      case 'log':x.moveTo(x0,y1-h*0.25);x.lineTo(x1,y1-h*0.25);break;
+    }
+    x.stroke();x.restore();x.lineWidth=5;x.strokeStyle='#000';path();x.stroke();
+    if(it.type==='hq'){x.beginPath();x.moveTo(it.aff==='h'?cx-52:box[0]-(it.aff==='u'?8:0),it.aff==='h'?cy:cy+(it.aff==='f'?33:it.aff==='n'?37:40));x.lineTo(it.aff==='h'?cx-52:box[0]-(it.aff==='u'?8:0),H-46);x.stroke();}
+  }
+  if(it.ech&&ECHS[it.ech]){x.fillStyle='#000';x.font='bold 30px system-ui';x.textAlign='center';x.textBaseline='bottom';x.fillText(ECHS[it.ech],cx,top-2);}
+  if(it.label){x.font='bold 26px system-ui';x.textAlign='center';x.textBaseline='bottom';x.lineWidth=6;x.strokeStyle='rgba(255,255,255,0.95)';x.strokeText(it.label,cx,H-8);x.fillStyle='#000';x.fillText(it.label,cx,H-8);}
+  symCache[key]=c; return c;
+}
+const tacList=()=>Object.values(doc.tac).filter(t=>!t.del);
+function renderTac(){
+  tRemove('tac'); if(!cur) return; const g=new THREE.Group(), S=cur.bb.S;
+  for(const t of tacList()){ if(t.kind!=='unit') continue; const [x,z]=ll2w(t.pts[0][0],t.pts[0][1]); if(!inArea(x,z)) continue;
+    const y=surfaceY(x,z), cv=symCanvas(t), tx=new THREE.CanvasTexture(cv);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,sizeAttenuation:false,depthTest:false,transparent:true}));
+    sp.center.set(0.5,0); sp.scale.set(0.085,0.085*cv.height/cv.width,1); sp.position.set(x,y+S*0.004,z); sp.renderOrder=15; g.add(sp);
+    const pole=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,y,z),new THREE.Vector3(x,y+S*0.004,z)]),new THREE.LineBasicMaterial({color:'#000'}));g.add(pole);}
+  tAdd('tac',g);
+}
+function drawTac(ctx,s,bb){
+  const L=tacList().filter(t=>t.kind==='line'), w=Math.max(2,s/480), P=pts=>pts.map(([la,lo])=>llTo(bb,s,la,lo));
+  const label=(t,x,y,col)=>{if(!t) return;ctx.font=`bold ${Math.round(w*7)}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=w*1.6;ctx.strokeStyle='rgba(255,255,255,.95)';ctx.strokeText(t,x,y);ctx.fillStyle=col;ctx.fillText(t,x,y);};
+  const draw=(t,draft)=>{const p=P(t.pts),a=AFF[t.aff]||AFF.f;if(p.length<1) return;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(draft?[w*3,w*2]:[]);
+    const line=()=>{ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));};
+    if(t.lt==='area'&&p.length>2){line();ctx.closePath();ctx.fillStyle=a.col+'26';ctx.fill();ctx.strokeStyle=a.col;ctx.lineWidth=w*1.4;ctx.stroke();
+      const c=p.reduce((s,q)=>[s[0]+q[0]/p.length,s[1]+q[1]/p.length],[0,0]);label(t.label||'',c[0],c[1],a.col);}
+    else if(t.lt==='axis'){ctx.strokeStyle=a.col;ctx.lineWidth=w*2.4;line();ctx.stroke();
+      if(p.length>1){const [ax,ay]=p[p.length-2],[bx,by]=p[p.length-1],an=Math.atan2(by-ay,bx-ax),hs=w*9;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(bx+Math.cos(an)*hs*0.3,by+Math.sin(an)*hs*0.3);
+        ctx.lineTo(bx-Math.cos(an-0.5)*hs,by-Math.sin(an-0.5)*hs);ctx.lineTo(bx-Math.cos(an+0.5)*hs,by-Math.sin(an+0.5)*hs);ctx.closePath();ctx.fillStyle=a.col;ctx.fill();
+        const m=p[Math.floor((p.length-1)/2)];label(t.label||'',m[0],m[1]-w*6,a.col);}}
+    else{ctx.strokeStyle='#111';ctx.lineWidth=t.lt==='bnd'?w*2.2:w*1.3;line();ctx.stroke();
+      if(t.lt==='bnd'&&p.length>1){const m=p[Math.floor(p.length/2)];label(ECHS[t.ech]||'',m[0],m[1]-w*5,'#111');}
+      const e=p[p.length-1];label((t.lt==='pl'?'FL ':'')+(t.label||''),e[0]+w*4,e[1]-w*5,'#111');}
+    ctx.setLineDash([]);};
+  for(const t of L) draw(t,false);
+  if(toolMode==='tac'&&tacUI.mode==='line'&&tacUI.draft.length) draw({pts:tacUI.draft,lt:tacUI.lt,aff:tacUI.aff,label:tacUI.label},true);
+}
+function tacChanged(){renderTac();redrawTexture();persistDoc();if(share.on) schedulePublish();if(toolMode==='tac') tacListUI();}
+function tacTap(wx,wz){
+  const ll=w2ll(wx,wz),now=Date.now();
+  if(tacUI.mode==='unit'){const id=uid();doc.tac[id]={id,kind:'unit',aff:tacUI.aff,type:tacUI.type,ech:tacUI.ech,label:tacUI.label,pts:[ll],ts:now,by:share.name||''};tacChanged();}
+  else{tacUI.draft.push(ll);redrawTexture();const b=$('tDone');if(b) b.textContent=`Lijn klaar (${tacUI.draft.length})`;}
+}
+function uiTac(){
+  $('toolT').textContent='🎖 Tactisch';
+  tb.innerHTML=`<div class="row"><span class="t">Partij</span><div class="chips" id="tAff">${Object.entries(AFF).map(([k,v])=>`<button class="chip" data-a="${k}" style="border:2px solid ${v.fill}">${v.n}</button>`).join('')}</div></div>
+  <div class="row"><span class="t">Soort</span><div class="chips" id="tMode"><button class="chip" data-m="unit">Symbool</button><button class="chip" data-m="line">Lijn / gebied</button></div></div>
+  <div id="tUnitRow"><div class="row"><span class="t">Type</span><select id="tType">${UTYPES.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></div>
+    <div class="row"><span class="t">Grootte</span><select id="tEch">${ECH.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></div></div>
+  <div id="tLineRow"><div class="row"><span class="t">Lijntype</span><select id="tLt">${LTYPES.map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></div>
+    <div class="row"><button class="btn sm" id="tDone">Lijn klaar (0)</button><button class="btn sm dark" id="tCancel">Annuleer</button></div></div>
+  <div class="row"><span class="t">Naam</span><input id="tLabel" placeholder="bijv. 1/A of OBJ GOUD" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"></div>
+  <div class="row" style="align-items:flex-start"><canvas id="tPrev" width="220" height="210" style="width:74px;height:70px;background:#e5e7eb;border-radius:8px;flex:0 0 auto"></canvas><div class="note" id="tHint"></div></div>
+  <div id="tList" class="mlist"></div>
+  <div class="row"><button class="btn sm dark" id="tClr">Alles wissen</button></div>
+  <div class="note">Symbolen zijn vereenvoudigd naar NATO APP-6. Ze zijn ook zichtbaar in AR op tafel en in veld-AR, en worden gedeeld via 👥.</div>`;
+  const sync=()=>{
+    document.querySelectorAll('#tAff .chip').forEach(b=>b.classList.toggle('on',b.dataset.a===tacUI.aff));
+    document.querySelectorAll('#tMode .chip').forEach(b=>b.classList.toggle('on',b.dataset.m===tacUI.mode));
+    $('tUnitRow').style.display=tacUI.mode==='unit'?'':'none'; $('tLineRow').style.display=tacUI.mode==='line'?'':'none';
+    $('tType').value=tacUI.type;$('tEch').value=tacUI.ech;$('tLt').value=tacUI.lt;$('tLabel').value=tacUI.label;
+    const pv=$('tPrev'),px=pv.getContext('2d');px.clearRect(0,0,220,210);
+    if(tacUI.mode==='unit') px.drawImage(symCanvas({aff:tacUI.aff,type:tacUI.type,ech:tacUI.ech,label:tacUI.label}),0,0);
+    else{px.fillStyle='#333';px.font='bold 26px system-ui';px.textAlign='center';px.fillText(LTYPES.find(l=>l[0]===tacUI.lt)[1],110,110);}
+    $('tHint').innerHTML=tacUI.mode==='unit'?'Tik op het terrein om dit symbool te plaatsen.':'Tik punten op het terrein en druk op <b>Lijn klaar</b>. Een gebied heeft minstens 3 punten nodig.';
+    $('tDone').textContent=`Lijn klaar (${tacUI.draft.length})`; redrawTexture();
+  };
+  document.querySelectorAll('#tAff .chip').forEach(b=>b.onclick=()=>{tacUI.aff=b.dataset.a;sync();});
+  document.querySelectorAll('#tMode .chip').forEach(b=>b.onclick=()=>{tacUI.mode=b.dataset.m;tacUI.draft=[];sync();});
+  $('tType').onchange=()=>{tacUI.type=$('tType').value;sync();}; $('tEch').onchange=()=>{tacUI.ech=$('tEch').value;sync();};
+  $('tLt').onchange=()=>{tacUI.lt=$('tLt').value;sync();}; $('tLabel').oninput=()=>{tacUI.label=$('tLabel').value.slice(0,24);const pv=$('tPrev').getContext('2d');if(tacUI.mode==='unit'){pv.clearRect(0,0,220,210);pv.drawImage(symCanvas({aff:tacUI.aff,type:tacUI.type,ech:tacUI.ech,label:tacUI.label}),0,0);}};
+  $('tDone').onclick=()=>{const need=tacUI.lt==='area'?3:2;if(tacUI.draft.length<need){toast(`Minstens ${need} punten nodig`);return;}
+    const id=uid();doc.tac[id]={id,kind:'line',lt:tacUI.lt,aff:tacUI.aff,ech:tacUI.ech,label:tacUI.label,pts:tacUI.draft.slice(),ts:Date.now(),by:share.name||''};tacUI.draft=[];tacChanged();sync();};
+  $('tCancel').onclick=()=>{tacUI.draft=[];sync();};
+  $('tClr').onclick=()=>{const now=Date.now();for(const t of tacList()){t.del=true;t.ts=now;}tacChanged();};
+  sync(); tacListUI();
+}
+function tacListUI(){
+  const el=$('tList');if(!el) return; const L=tacList();
+  if(!L.length){el.innerHTML='<i>Nog geen symbolen of lijnen.</i>';return;}
+  el.innerHTML=L.map(t=>{const a=AFF[t.aff]||AFF.u,nm=t.kind==='unit'?(UTYPES.find(u=>u[0]===t.type)||['',''])[1]:(LTYPES.find(l=>l[0]===t.lt)||['',''])[1];
+    const [la,lo]=t.pts[0];return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:10px;height:10px;border-radius:2px;background:${a.fill};flex:0 0 auto"></span><span style="flex:1">${nm}${t.label?' · <b>'+t.label.replace(/</g,'&lt;')+'</b>':''}${t.kind==='unit'?' · '+G.toMGRS(la,lo,4):''}${t.by?' <span style="color:#8a8f9a">('+t.by.replace(/</g,'&lt;')+')</span>':''}</span><button class="btn sm dark" data-del="${t.id}" style="padding:3px 9px">✕</button></div>`;}).join('');
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const t=doc.tac[b.dataset.del];if(t){t.del=true;t.ts=Date.now();tacChanged();}});
+}
+
+/* =================================================================
+   👥 LIVE DELEN – end-to-end versleuteld (AES-GCM) via openbare MQTT
+   ================================================================= */
+const share={on:false,client:null,code:'',name:state.name||'',topic:'',key:null,peers:{},me:(()=>{try{let m=localStorage.getItem('terrein3d_me');if(!m){m='p'+uid();localStorage.setItem('terrein3d_me',m);}return m;}catch(e){return 'p'+uid();}})(),
+  gps:false,watch:null,myPos:null,pubT:null,hbT:null,broker:'',status:'',gotDoc:false};
+const BROKERS=['wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt','wss://test.mosquitto.org:8081'];
+const CODECH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const te=new TextEncoder(),td=new TextDecoder();
+const normCode=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+const fmtCode=c=>c.replace(/(.{3})(?=.)/g,'$1-');
+function newCode(){const r=crypto.getRandomValues(new Uint8Array(9));return [...r].map(b=>CODECH[b%CODECH.length]).join('');}
+const b64=u=>{let s='';for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s);};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function deriveKey(code){const base=await crypto.subtle.importKey('raw',te.encode('t3d:'+code),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt:te.encode('terrein3d-v1'),iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
+async function topicFor(code){const h=new Uint8Array(await crypto.subtle.digest('SHA-256',te.encode('t3d-topic:'+code)));return 'terrein3d/v1/'+[...h.slice(0,12)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+async function seal(o){const iv=crypto.getRandomValues(new Uint8Array(12)),ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},share.key,te.encode(JSON.stringify(o))));const b=new Uint8Array(12+ct.length);b.set(iv);b.set(ct,12);return b64(b);}
+async function unseal(s){const b=unb64(s);return JSON.parse(td.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b.slice(0,12)},share.key,b.slice(12))));}
+async function loadMqtt(){
+  if(window.mqtt) return;
+  for(const u of ['https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js','https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js']){
+    try{await new Promise((res,rej)=>{const s=document.createElement('script');s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s);});if(window.mqtt) return;}catch(e){}}
+  throw new Error('deel-bibliotheek niet geladen');
+}
+function setShareStatus(t){share.status=t;const e=$('shSt');if(e) e.innerHTML=t;updateShareBadge();}
+function updateShareBadge(){const b=document.querySelector('#tools button[data-t="share"]');if(b) b.style.boxShadow=share.on?'0 0 0 3px #22c55e':'';}
+async function shareJoin(code,isNew){
+  code=normCode(code); if(code.length<6) throw new Error('Code te kort');
+  if(share.on) shareLeave();
+  setShareStatus('⏳ Verbinden…');
+  share.code=code; share.key=await deriveKey(code); share.topic=await topicFor(code); share.gotDoc=false; share.peers={};
+  await loadMqtt();
+  let client=null;
+  for(const b of BROKERS){
+    try{client=await new Promise((res,rej)=>{const c=mqtt.connect(b,{clientId:'t3d_'+share.me.slice(0,10)+'_'+Math.random().toString(16).slice(2,6),clean:true,connectTimeout:7000,reconnectPeriod:4000,keepalive:30});
+      const to=setTimeout(()=>{c.end(true);rej(new Error('timeout'));},8000);
+      c.once('connect',()=>{clearTimeout(to);res(c);}); c.once('error',e=>{clearTimeout(to);c.end(true);rej(e);});});
+      share.broker=b;break;}catch(e){console.warn('broker',b,e);}
+  }
+  if(!client) {setShareStatus('❌ Geen verbinding met een deel-server');throw new Error('Geen verbinding met een deel-server');}
+  share.client=client; share.on=true;
+  client.on('message',onShareMsg);
+  client.on('reconnect',()=>setShareStatus('⏳ Opnieuw verbinden…'));
+  client.on('connect',()=>{setShareStatus('🟢 Verbonden');});
+  client.on('offline',()=>setShareStatus('🔴 Geen verbinding'));
+  client.subscribe([share.topic+'/doc',share.topic+'/pos'],{qos:1});
+  setShareStatus('🟢 Verbonden · '+new URL(share.broker).hostname);
+  try{history.replaceState(null,'','#room-'+code);}catch(e){location.hash='room-'+code;}
+  if(isNew){if(cur) docTouch('area'); sharePublish();}
+  else setTimeout(()=>{if(!share.gotDoc&&share.on){toast('Nog niemand anders in deze sessie – jouw kaart wordt gedeeld');if(cur&&!doc.area) docTouch('area');sharePublish();}},3500);
+  shareHeartbeat(); share.hbT=setInterval(shareHeartbeat,share.gps?5000:15000);
+  if(toolMode==='share') uiShare();
+}
+function shareLeave(){
+  if(share.client){try{share.client.end(true);}catch(e){}}
+  share.client=null;share.on=false;clearInterval(share.hbT);share.peers={};renderPeers();setShareStatus('');
+  try{history.replaceState(null,'',location.pathname);}catch(e){}
+  if(toolMode==='share') uiShare();
+}
+function schedulePublish(){clearTimeout(share.pubT);share.pubT=setTimeout(sharePublish,350);}
+async function sharePublish(){
+  if(!share.on||!share.client) return;
+  const payload=await seal({from:share.me,name:share.name,area:doc.area,meas:doc.meas,vs:doc.vs,tac:doc.tac});
+  share.client.publish(share.topic+'/doc',payload,{qos:1,retain:true});
+}
+async function shareHeartbeat(){
+  if(!share.on||!share.client) return;
+  const p={id:share.me,name:share.name||'Deelnemer',t:Date.now()};
+  if(share.gps&&share.myPos){p.lat=share.myPos.latitude;p.lon=share.myPos.longitude;p.acc=Math.round(share.myPos.accuracy);p.hd=share.myPos.heading;}
+  share.client.publish(share.topic+'/pos',await seal(p),{qos:0});
+}
+async function onShareMsg(topic,msg){
+  let d; try{d=await unseal(typeof msg==='string'?msg:td.decode(msg));}catch(e){return;}
+  if(topic.endsWith('/pos')){if(d.id===share.me) return; share.peers[d.id]={...d,seen:Date.now()}; renderPeers(); if(toolMode==='share') sharePeersUI(); return;}
+  if(topic.endsWith('/doc')){share.gotDoc=true; mergeDoc(d);}
+}
+function mergeDoc(d){
+  let localNewer=false, tacCh=false, load=false, mCh=false, vCh=false;
+  const newer=(a,b)=>a&&(!b||a.ts>b.ts);
+  if(newer(d.area,doc.area)){doc.area=d.area; if(!cur||!sameArea(d.area,curArea())) load=true;}
+  else if(newer(doc.area,d.area)) localNewer=true;
+  if(newer(d.meas,doc.meas)){doc.meas=d.meas;mCh=true;} else if(newer(doc.meas,d.meas)) localNewer=true;
+  if(newer(d.vs,doc.vs)){doc.vs=d.vs;vCh=true;} else if(newer(doc.vs,d.vs)) localNewer=true;
+  const rt=d.tac||{};
+  for(const id in rt){if(!doc.tac[id]||rt[id].ts>doc.tac[id].ts){doc.tac[id]=rt[id];tacCh=true;}}
+  for(const id in doc.tac){if(!rt[id]||doc.tac[id].ts>rt[id].ts) localNewer=true;}
+  persistDoc(); if(localNewer) schedulePublish();
+  if(load){toast(`Gebied gedeeld${doc.area.by?' door '+doc.area.by:''} – laden…`);loadDocArea();return;}
+  if(!cur) return;
+  if(mCh) applyDocMeas(); if(vCh) applyDocVs();
+  if(tacCh){renderTac();redrawTexture();if(toolMode==='tac') tacListUI();}
+}
+function loadDocArea(){
+  const a=doc.area;if(!a) return;
+  state.lat=a.lat;state.lon=a.lon;state.size=a.size;if(a.dem)state.dem=a.dem;if(a.layer)state.layer=a.layer;lsSet('terrein3d',state);
+  enterView({lat:a.lat,lon:a.lon,sizeKm:a.size,layer:state.layer,dem:state.dem,hiq:state.hiq,fromDoc:true});
+}
+// eigen GPS
+function setShareGps(on){
+  share.gps=on; clearInterval(share.hbT); if(share.on) share.hbT=setInterval(shareHeartbeat,on?5000:15000);
+  if(on&&share.watch==null&&navigator.geolocation) share.watch=navigator.geolocation.watchPosition(p=>{share.myPos=p.coords;renderPeers();},e=>toast('GPS: '+e.message),{enableHighAccuracy:true,maximumAge:3000});
+  if(!on&&share.watch!=null){navigator.geolocation.clearWatch(share.watch);share.watch=null;share.myPos=null;renderPeers();}
+}
+function personSprite(name,col){
+  const c=document.createElement('canvas');c.width=240;c.height=150;const x=c.getContext('2d');
+  x.fillStyle=col;x.strokeStyle='#fff';x.lineWidth=6;x.beginPath();x.arc(120,104,26,0,7);x.fill();x.stroke();
+  x.fillStyle='#fff';x.beginPath();x.arc(120,96,8,0,7);x.fill();x.fillRect(112,104,16,14);
+  x.font='bold 30px system-ui';x.textAlign='center';x.textBaseline='bottom';x.lineWidth=7;x.strokeStyle='rgba(0,0,0,.75)';x.strokeText(name,120,66);x.fillStyle='#fff';x.fillText(name,120,66);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),sizeAttenuation:false,depthTest:false,transparent:true}));
+  s.center.set(0.5,0.13);s.scale.set(0.09,0.09*150/240,1);s.renderOrder=16;return s;
+}
+function renderPeers(){
+  tRemove('peers'); if(!cur) return; const g=new THREE.Group(), now=Date.now();
+  const add=(p,name,col)=>{const [x,z]=ll2w(p.lat,p.lon);if(!inArea(x,z)) return;const s=personSprite(name,col);s.position.set(x,surfaceY(x,z),z);g.add(s);};
+  for(const p of Object.values(share.peers)) if(p.lat!=null&&now-p.seen<120000) add(p,p.name||'?','#2563eb');
+  if(share.gps&&share.myPos) add({lat:share.myPos.latitude,lon:share.myPos.longitude},'Jij','#16a34a');
+  tAdd('peers',g);
+}
+function shareLink(){return location.origin+location.pathname+'#room-'+share.code;}
+function uiShare(){
+  $('toolT').textContent='👥 Live delen';
+  if(!share.on){
+    tb.innerHTML=`<div class="row"><span class="t">Jouw naam</span><input id="shName" value="${(share.name||'').replace(/"/g,'&quot;')}" placeholder="bijv. Jelmer / 1-1" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"></div>
+    <div class="row"><button class="btn sm" id="shNew">Nieuwe sessie starten</button></div>
+    <div class="row"><span class="t">Code</span><input id="shCode" placeholder="ABC-DEF-GHJ" autocapitalize="characters" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee;letter-spacing:1px"><button class="btn sm dark" id="shJoin">Deelnemen</button></div>
+    <div id="shSt" class="note">${share.status||''}</div>
+    <div class="note">Iedereen met de code of link ziet hetzelfde gebied, dezelfde meetpunten, waarnemer en tactische symbolen, en desgewenst elkaars GPS-positie – ook in AR.<br>
+    🔒 Alles wordt op je telefoon versleuteld (AES-256) vóór het via een openbare server gaat; zonder code is het onleesbaar. Toch: <b>geen echte operationele gegevens</b> delen.</div>`;
+    const nm=()=>{share.name=$('shName').value.trim().slice(0,20)||'Deelnemer';state.name=share.name;lsSet('terrein3d',state);};
+    $('shNew').onclick=async()=>{nm();try{await shareJoin(newCode(),true);}catch(e){setShareStatus('❌ '+e.message);}};
+    $('shJoin').onclick=async()=>{nm();try{await shareJoin($('shCode').value,false);}catch(e){setShareStatus('❌ '+e.message);}};
+    return;
+  }
+  tb.innerHTML=`<div class="row"><span class="t">Code</span><b style="font-size:20px;letter-spacing:2px">${fmtCode(share.code)}</b></div>
+  <div class="row"><button class="btn sm" id="shCopy">Kopieer uitnodigingslink</button><button class="btn sm dark" id="shCopyC">Kopieer code</button></div>
+  <div class="note" style="word-break:break-all">${shareLink()}</div>
+  <div class="row"><label class="tg"><input type="checkbox" id="shGps" ${share.gps?'checked':''}> Deel mijn GPS-positie</label></div>
+  <div id="shSt" class="note">${share.status}</div>
+  <div class="note"><b>Deelnemers</b></div><div id="shPeers" class="mlist"></div>
+  <div class="row"><button class="btn sm dark" id="shLeave">Sessie verlaten</button></div>
+  <div class="note">🔒 Versleuteld (AES-256, sleutel afgeleid van de code). Deel de code alleen met je eigen groep.</div>`;
+  const cp=async t=>{try{await navigator.clipboard.writeText(t);toast('Gekopieerd');}catch(e){toast('Kopiëren niet toegestaan – selecteer de tekst');}};
+  $('shCopy').onclick=()=>cp(shareLink()); $('shCopyC').onclick=()=>cp(fmtCode(share.code));
+  $('shGps').onchange=()=>setShareGps($('shGps').checked);
+  $('shLeave').onclick=shareLeave;
+  sharePeersUI();
+}
+function sharePeersUI(){
+  const el=$('shPeers');if(!el) return; const now=Date.now(),L=Object.values(share.peers).filter(p=>now-p.seen<60000);
+  el.innerHTML=`<div>🟢 <b>${(share.name||'Jij').replace(/</g,'&lt;')}</b> (jij)${share.gps&&share.myPos?' · '+G.toMGRS(share.myPos.latitude,share.myPos.longitude,4):''}</div>`+
+    (L.length?L.map(p=>`<div>🔵 <b>${String(p.name||'?').replace(/</g,'&lt;')}</b>${p.lat!=null?' · '+G.toMGRS(p.lat,p.lon,4)+(share.myPos?' · '+fmtDist(hav(share.myPos.latitude,share.myPos.longitude,p.lat,p.lon))+' '+toMil(brg(share.myPos.latitude,share.myPos.longitude,p.lat,p.lon))+'‰':''):' · geen GPS'} · ${Math.round((now-p.seen)/1000)} s</div>`).join(''):'<div><i>Nog niemand anders – deel de link.</i></div>');
+}
+setInterval(()=>{if(share.on){renderPeers();if(toolMode==='share') sharePeersUI();}},10000);
+
+/* =================================================================
+   💾 OFFLINE: service worker + opgeslagen gebieden
+   ================================================================= */
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+  navigator.serviceWorker.register('sw.js').then(()=>{try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}}).catch(e=>console.warn('sw',e));
+}
+const savedGet=()=>{try{return JSON.parse(localStorage.getItem('terrein3d_saved')||'[]');}catch(e){return [];}};
+const savedSet=L=>{try{localStorage.setItem('terrein3d_saved',JSON.stringify(L));}catch(e){toast('Opslaan mislukt (opslag vol?)');}};
+async function saveOffline(name){
+  if(!cur) return;
+  const L=savedGet(),a={...curArea()},item={id:uid(),name:name||G.toMGRS(a.lat,a.lon,3),area:a,hiq:state.hiq,doc:JSON.parse(JSON.stringify({meas:doc.meas,vs:doc.vs})),savedAt:Date.now()};
+  L.unshift(item); savedSet(L.slice(0,30));
+  // weer en kenmerken ook in de cache zetten
+  try{await loadWeather();}catch(e){} try{await loadOverpass(cur.bb);}catch(e){}
+  toast('Gebied offline opgeslagen ✓'); if(toolMode==='exp') uiExpOffline();
+}
+function openSaved(item){
+  doc.meas=item.doc&&item.doc.meas||null; doc.vs=item.doc&&item.doc.vs||null; doc.area={...item.area,ts:Date.now(),by:share.name||''}; persistDoc();
+  state.lat=item.area.lat;state.lon=item.area.lon;state.size=item.area.size;state.dem=item.area.dem||state.dem;state.layer=item.area.layer||state.layer;state.hiq=!!item.hiq;lsSet('terrein3d',state);
+  $('savedM').classList.add('hidden');
+  enterView({lat:item.area.lat,lon:item.area.lon,sizeKm:item.area.size,layer:state.layer,dem:state.dem,hiq:state.hiq,fromDoc:true});
+  if(share.on) schedulePublish();
+}
+function showSaved(){
+  const L=savedGet(),el=$('savedL');
+  el.innerHTML=L.length?L.map(it=>`<div class="sv"><div style="flex:1"><b>${it.name.replace(/</g,'&lt;')}</b><div class="note">${it.area.size}×${it.area.size} km · ${new Date(it.savedAt).toLocaleDateString('nl-NL')} · ${(LAYERS[it.area.layer]||{name:''}).name}</div></div>
+    <button class="btn sm" data-o="${it.id}">Open</button><button class="btn sm dark" data-d="${it.id}">✕</button></div>`).join(''):'<div class="note">Nog geen opgeslagen gebieden. Laad een gebied en kies ⤓ → <b>Offline opslaan</b>.</div>';
+  el.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>openSaved(L.find(x=>x.id===b.dataset.o)));
+  el.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{savedSet(savedGet().filter(x=>x.id!==b.dataset.d));showSaved();});
+  $('savedM').classList.remove('hidden');
+}
+$('savedB').onclick=showSaved; $('savedX').onclick=()=>$('savedM').classList.add('hidden');
+async function uiExpOffline(){
+  const el=$('eOff');if(!el) return;
+  let est='';try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();est=`Gebruikt: ${(e.usage/1048576).toFixed(0)} MB van ~${(e.quota/1073741824).toFixed(1)} GB.`;}}catch(e){}
+  const sw=('serviceWorker' in navigator)&&navigator.serviceWorker.controller;
+  el.innerHTML=`<div class="note"><b>💾 Offline</b> – alles wat je bekijkt (kaart, hoogtes, kenmerken, weer) wordt bewaard. Sla een gebied op om het later zonder internet te openen via 📂 op het startscherm.</div>
+  <div class="row"><input id="eOffN" placeholder="Naam, bijv. Oefening Havelte" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"><button class="btn sm" id="eOffS">Offline opslaan</button></div>
+  <div class="note">${sw?'✅ Offline-modus actief.':'⚠️ Offline-modus wordt actief na één keer herladen van de pagina (alleen via https).'} ${est} Tip: zoom vooraf in op de stukken die je scherp wilt hebben.</div>
+  <div class="row"><button class="btn sm dark" id="eOffC">Offline-opslag wissen</button></div>`;
+  $('eOffS').onclick=()=>saveOffline($('eOffN').value.trim());
+  $('eOffC').onclick=async()=>{try{for(const k of await caches.keys()) if(k.startsWith('t3d-data')) await caches.delete(k);toast('Offline-opslag gewist');uiExpOffline();}catch(e){toast('Wissen mislukt');}};
+}
+function updateNet(){const p=$('netP');if(!p) return;p.classList.toggle('hidden',navigator.onLine);}
+window.addEventListener('online',updateNet);window.addEventListener('offline',updateNet);updateNet();
+// uitnodigingslink #room-CODE
+(function(){const m=location.hash.match(/^#room-([A-Z0-9]{6,})$/i);if(!m) return;const code=normCode(m[1]);
+  const b=$('joinP');b.innerHTML=`👥 Deelnemen aan sessie <b>${fmtCode(code)}</b> – tik hier`;b.classList.remove('hidden');
+  b.onclick=async()=>{share.name=share.name||state.name||'Deelnemer';
+    b.innerHTML='⏳ Verbinden…';try{await shareJoin(code,false);b.innerHTML=`🟢 Verbonden met <b>${fmtCode(code)}</b> – wacht op gebied…`;setTimeout(()=>b.classList.add('hidden'),6000);}catch(e){b.innerHTML='❌ '+e.message;}};})();
 
 </script>
 </body>
