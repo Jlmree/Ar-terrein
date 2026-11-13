@@ -62,6 +62,9 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 .lbl.off{display:none!important}
 .hud{position:absolute;z-index:10;top:calc(8px + env(safe-area-inset-top))}
 #back{left:8px;z-index:30}
+#meBtn{right:66px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:20px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
+#meBtn.on{background:#16a34a}
+#meHud{left:8px;right:8px;top:calc(92px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
 #compass{right:10px;width:48px;height:48px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0;border:none}
 #compass svg{width:100%;height:100%;display:block}
 #info{left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top));background:#16181df0;border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 2px 10px #0007;max-width:calc(100% - 16px);font-variant-numeric:tabular-nums;display:flex;gap:10px;align-items:center}
@@ -148,6 +151,8 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <button id="back" class="btn dark hud">◀ Kaart</button>
   <div id="stat" class="hud"></div>
   <div id="det" class="hud"></div>
+  <button id="meBtn" class="hud" title="Naar mijn positie">📍</button>
+  <div id="meHud" class="hud hidden"></div>
   <button id="compass" class="hud" title="Noord boven">
     <svg viewBox="0 0 48 48"><g id="needle" style="transform-origin:24px 24px">
       <polygon points="24,6 29,24 19,24" fill="#ef4444"/><polygon points="24,42 29,24 19,24" fill="#cbd5e1"/>
@@ -189,9 +194,10 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tDetail" checked> Scherper bij inzoomen</label>
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
         <label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label>
+        <label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v11 · 13-11 09:10. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v12 · 13-11 09:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -217,7 +223,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
-  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen</button><button data-l="time">⏱ Tijd</button></div>
+  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="time">⏱ Tijd</button></div>
   <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
   <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
@@ -1108,7 +1114,7 @@ function toolsExag(){
   if(!cur) return;
   if(cur.vsObs&&tmeshes.vs) tmeshes.vs.position.y=surfaceY(cur.vsObs.x,cur.vsObs.z);
   if(cur.meas&&cur.meas.length) updateMeas(true);
-  placeClouds(); renderTac(); renderPeers();
+  placeClouds(); renderTac(); renderPeers(); renderMe();
 }
 function toolsFeatures(){if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
@@ -1715,7 +1721,7 @@ async function startXR(){
     if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
       $('xrT').value=wx.ofs;}
     else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
-    xrL.tac=tacOn(); xrLayersUI(); renderTac(); renderPeers();
+    xrL.tac=tacOn(); xrLayersUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1735,7 +1741,7 @@ function xrApplyLayers(){
   for(const k of ['clouds','precip','flow']) if(tmeshes[k]) tmeshes[k].visible=xrL.wx&&xrWx;
   if(tmeshes.celest) tmeshes.celest.visible=xrL.sky&&xrWx;
   for(const k of ['meas','vs']) if(tmeshes[k]) tmeshes[k].visible=xrL.meas;
-  if(tmeshes.peers) tmeshes.peers.visible=xrL.peers;
+  if(tmeshes.peers) tmeshes.peers.visible=xrL.peers; if(tmeshes.me) tmeshes.me.visible=xrL.peers;
   if(tmeshes.tac) tmeshes.tac.visible=xrL.tac;
   if(terrain&&!(xrL.wx&&xrWx)){terrain.material.uniforms.cloudOn.value=0;terrain.material.uniforms.gfog.value=0;}
 }
@@ -1776,7 +1782,7 @@ function endXR(){
   xrDropAnchor(); xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
-  ['clouds','precip','flow','meas','vs','peers'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); setTimeout(()=>{renderTac();renderPeers();},80); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
+  ['clouds','precip','flow','meas','vs','peers'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); setTimeout(()=>{renderTac();renderPeers();tRemove('me');renderMe();},80); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
   if(wx.enabled) setTimeout(()=>{fx.cKey='';applyWx();},60);
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
@@ -1953,6 +1959,7 @@ function onAreaLoaded(fromDoc){
   if(!fromDoc&&!sameArea(doc.area,a)){const now=Date.now();doc.area={...a,ts:now,by:share.name||''};doc.meas={pts:[],ts:now};doc.vs={pt:null,ts:now};persistDoc();if(share.on) schedulePublish();}
   else{applyDocMeas();applyDocVs();}
   renderTac(); renderPeers(); redrawTexture();
+  tRemove('me'); if(meOn()) {meStart(); renderMe();}
 }
 
 /* =================================================================
@@ -2178,8 +2185,7 @@ function loadDocArea(){
 // eigen GPS
 function setShareGps(on){
   share.gps=on; clearInterval(share.hbT); if(share.on) share.hbT=setInterval(shareHeartbeat,on?5000:15000);
-  if(on&&share.watch==null&&navigator.geolocation) share.watch=navigator.geolocation.watchPosition(p=>{share.myPos=p.coords;renderPeers();},e=>toast('GPS: '+e.message),{enableHighAccuracy:true,maximumAge:3000});
-  if(!on&&share.watch!=null){navigator.geolocation.clearWatch(share.watch);share.watch=null;share.myPos=null;renderPeers();}
+  if(on) meStart();
 }
 function personSprite(name,col){
   const c=document.createElement('canvas');c.width=240;c.height=150;const x=c.getContext('2d');
@@ -2194,7 +2200,6 @@ function renderPeers(){
   tRemove('peers'); if(!cur) return; const g=new THREE.Group(), now=Date.now();
   const add=(p,name,col)=>{const [x,z]=ll2w(p.lat,p.lon);if(!inArea(x,z)) return;const s=personSprite(name,col);s.position.set(x,surfaceY(x,z),z);g.add(s);};
   for(const p of Object.values(share.peers)) if(p.lat!=null&&now-p.seen<120000) add(p,p.name||'?','#2563eb');
-  if(share.gps&&share.myPos) add({lat:share.myPos.latitude,lon:share.myPos.longitude},'Jij','#16a34a');
   tAdd('peers',g);
 }
 function shareLink(){return location.origin+location.pathname+'#room-'+share.code;}
@@ -2283,6 +2288,61 @@ window.addEventListener('online',updateNet);window.addEventListener('offline',up
   const b=$('joinP');b.innerHTML=`👥 Deelnemen aan sessie <b>${fmtCode(code)}</b> – tik hier`;b.classList.remove('hidden');
   b.onclick=async()=>{share.name=share.name||state.name||'Deelnemer';
     b.innerHTML='⏳ Verbinden…';try{await shareJoin(code,false);b.innerHTML=`🟢 Verbonden met <b>${fmtCode(code)}</b> – wacht op gebied…`;setTimeout(()=>b.classList.add('hidden'),6000);}catch(e){b.innerHTML='❌ '+e.message;}};})();
+
+
+/* =================================================================
+   📍 EIGEN POSITIE op de 3D-kaart
+   ================================================================= */
+const me={watch:null,pos:null,raw:null,acc:null,hd:null,fH:null,hu:null,hRaw:0,ori:false,follow:false,outT:0};
+function meOn(){const c=$('tMe');return !c||c.checked;}
+function meStart(){
+  if(me.watch!=null||!navigator.geolocation) return;
+  me.watch=navigator.geolocation.watchPosition(p=>{const c=p.coords;
+    if(!me.pos||hav(me.pos.lat,me.pos.lon,c.latitude,c.longitude)>40) me.pos={lat:c.latitude,lon:c.longitude};
+    else{const k=clamp(10/Math.max(5,c.accuracy),0.2,0.7);me.pos.lat+=(c.latitude-me.pos.lat)*k;me.pos.lon+=(c.longitude-me.pos.lon)*k;}
+    me.acc=c.accuracy; me.gpsHd=(c.speed>0.8&&c.heading!=null&&!isNaN(c.heading))?c.heading:null;
+    share.myPos={latitude:me.pos.lat,longitude:me.pos.lon,accuracy:c.accuracy,heading:me.gpsHd};
+    renderMe(); if(me.follow) meCenter(false);},
+    e=>{$('meHud').textContent='📍 GPS: '+e.message;$('meHud').classList.remove('hidden');},{enableHighAccuracy:true,maximumAge:2000});
+  if(!me.ori){me.ori=true;me.fH=new OneEuro(0.5,0.015);
+    const h=e=>{let hd=null;
+      if(e.webkitCompassHeading!=null) hd=e.webkitCompassHeading;
+      else if(e.alpha!=null&&(e.absolute||e.type==='deviceorientationabsolute')){const a=e.alpha*D2R,b=e.beta*D2R,g=e.gamma*D2R;
+        if(Math.abs(e.beta)<55){hd=wrap360(-e.alpha);} // telefoon plat: richting bovenkant
+        else{const vx=-Math.cos(a)*Math.sin(g)-Math.sin(a)*Math.sin(b)*Math.cos(g),vy=-Math.sin(a)*Math.sin(g)+Math.cos(a)*Math.sin(b)*Math.cos(g);hd=wrap360(Math.atan2(vx,vy)/D2R);}}
+      if(hd==null) return; if(me.hu==null){me.hu=hd;me.hRaw=hd;}else{me.hu+=((hd-me.hRaw+540)%360)-180;me.hRaw=hd;}
+      me.hd=wrap360(me.fH.filter(me.hu,e.timeStamp||performance.now()));};
+    if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',h); else window.addEventListener('deviceorientation',h);}
+}
+function meStop(){if(me.watch!=null){navigator.geolocation.clearWatch(me.watch);me.watch=null;}me.pos=null;if(!share.gps) share.myPos=null;tRemove('me');$('meHud').classList.add('hidden');}
+function renderMe(){
+  if(!cur||!me.pos||!meOn()){tRemove('me');return;}
+  const [x,z]=ll2w(me.pos.lat,me.pos.lon), hud=$('meHud');
+  if(!inArea(x,z)){tRemove('me');const [cl,co]=[cur.bb.lat,cur.bb.lon],d=hav(me.pos.lat,me.pos.lon,cl,co),b=brg(me.pos.lat,me.pos.lon,cl,co);
+    hud.innerHTML=`📍 Je bent buiten het gebied · midden op ${fmtDist(d)} · ${toMil(b)}‰`;hud.classList.remove('hidden');$('meBtn').style.opacity=0.5;return;}
+  hud.classList.add('hidden');$('meBtn').style.opacity=1;
+  let g=tmeshes.me;
+  if(!g){g=new THREE.Group();
+    const ring=new THREE.Mesh(new THREE.CircleGeometry(1,40).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#22c55e',transparent:true,opacity:0.18,depthWrite:false}));ring.renderOrder=9;
+    const edge=new THREE.Mesh(new THREE.RingGeometry(0.96,1,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#16a34a',transparent:true,opacity:0.7,depthWrite:false}));edge.renderOrder=9;
+    const cone=new THREE.Mesh(new THREE.ConeGeometry(0.35,1,3).rotateX(-Math.PI/2).translate(0,0,-0.5),new THREE.MeshBasicMaterial({color:'#16a34a',transparent:true,opacity:0.85,depthTest:false}));cone.renderOrder=17;
+    const spr=personSprite('Jij','#16a34a');
+    g.add(ring,edge,cone,spr);g.userData={ring,edge,cone,spr};tAdd('me',g);}
+  const u=g.userData,S=cur.bb.S,y=surfaceY(x,z),r=Math.max(me.acc||10,S/300);
+  for(const m of [u.ring,u.edge]){m.position.set(x,y+S*0.0015,z);m.scale.set(r,1,r);}
+  u.spr.position.set(x,y,z);
+  const hd=me.hd??me.gpsHd; u.cone.visible=hd!=null; if(hd!=null){const L=S*0.035;u.cone.position.set(x,y+S*0.003,z);u.cone.scale.set(L,L,L);u.cone.rotation.y=-hd*D2R;}
+}
+function meCenter(snap){
+  if(!cur||!me.pos) {toast('Nog geen GPS-positie');return;} const [x,z]=ll2w(me.pos.lat,me.pos.lon);
+  if(!inArea(x,z)){toast('Je bent buiten het geladen gebied');return;}
+  const off=camera.position.clone().sub(controls.target), y=surfaceY(x,z);
+  controls.target.set(x,y,z); if(snap&&off.length()>cur.bb.S*0.5) off.setLength(cur.bb.S*0.35); camera.position.copy(controls.target).add(off); controls.update();
+}
+$('meBtn').onclick=()=>{if(!me.pos){meStart();toast('GPS zoeken…');return;} me.follow=!me.follow;$('meBtn').classList.toggle('on',me.follow);meCenter(true);if(me.follow) toast('Volgen aan – tik nogmaals om te stoppen');};
+$('tMe').onchange=()=>{state.me=$('tMe').checked;lsSet('terrein3d',state);if(meOn()) meStart(); else meStop();};
+if(state.me===false) $('tMe').checked=false;
+setInterval(()=>{if(tmeshes.me&&tmeshes.me.userData.cone.visible&&!renderer.xr.isPresenting) renderMe();},250);
 
 </script>
 </body>
