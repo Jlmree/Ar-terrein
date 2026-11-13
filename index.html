@@ -109,6 +109,9 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 #xrUI{position:fixed;inset:0;pointer-events:none;z-index:100;font-family:system-ui}
 #xrUI .xrb{position:absolute;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px;pointer-events:auto}
 #xrUI button{background:#16181de6;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:17px;font-weight:700}
+#xrUI .xrl{position:absolute;top:calc(58px + env(safe-area-inset-top));left:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;pointer-events:auto}
+#xrUI .xrl button{padding:6px 10px;font-size:13px;font-weight:600;opacity:.55}
+#xrUI .xrl button.on{opacity:1;background:#2563ebe6}
 #xrUI .xrt{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));background:#000a;border-radius:12px;padding:8px 10px;pointer-events:auto;color:#fff;font-size:13px}
 #xrUI .xrt button{padding:6px 12px;font-size:15px}
 #xrMsg{position:absolute;top:calc(20px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#000a;color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;white-space:nowrap}
@@ -185,9 +188,10 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tShade" checked> Reliëfschaduw</label>
         <label class="tg"><input type="checkbox" id="tDetail" checked> Scherper bij inzoomen</label>
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
+        <label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v9 · 13-11 09:15. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v10 · 13-11 09:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -212,6 +216,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
+  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen</button><button data-l="time">⏱ Tijd</button></div>
   <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
   <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
@@ -1031,6 +1036,7 @@ $('ci').onchange=updateContours;
 $('tShade').onchange=()=>{if(terrain)terrain.material.uniforms.shade.value=$('tShade').checked?1:0;};
 $('tTrees').onchange=placeTrees;
 $('tLabels').onchange=setLabelsVisible;
+$('tTac').onchange=()=>{renderTac();redrawTexture();};
 $('tGrid').onchange=redrawTexture; $('tRoads').onchange=redrawTexture;
 $('ovl').value=state.ovl||'off'; $('ovlA').value=state.ovlA||0.85; $('ovlAV').textContent=Math.round($('ovlA').value*100)+'%';
 $('ovl').onchange=()=>{state.ovl=$('ovl').value; lsSet('terrein3d',state); refreshOverlay(mainSurf); if(patch) refreshOverlay(patch.userData.surf);};
@@ -1706,8 +1712,9 @@ async function startXR(){
     world.visible=false; xrPlaced=false; if(skyDome) skyDome.visible=false; if(marker) marker.visible=false;
     xrWx=$('arWx')?$('arWx').checked:true;
     if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
-      $('xrT').value=wx.ofs; $('xrWxRow').style.display='';}
+      $('xrT').value=wx.ofs;}
     else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
+    xrL.tac=tacOn(); xrLayersUI(); renderTac(); renderPeers();
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1716,7 +1723,23 @@ async function startXR(){
 function xrPlaceFixed(){ // zonder vlakherkenning: 1 m voor je, 40 cm lager
   const k=xrSize/cur.bb.S; xrPlaneY=-0.4; world.scale.setScalar(k); world.position.set(0,xrPlaneY-(cur.skirtBase||0)*k,-1);
   world.visible=true; xrPlaced=true; $('xrMsg').textContent='Geen tafelherkenning: terrein 1 m voor je geplaatst';}
+const xrL={tac:true,wx:true,sky:true,meas:true,peers:true,time:false};
+function xrLayersUI(){document.querySelectorAll('#xrLayers button').forEach(b=>b.classList.toggle('on',!!xrL[b.dataset.l]));$('xrWxRow').style.display=xrL.time&&xrWx?'':'none';}
+document.querySelectorAll('#xrLayers button').forEach(b=>b.onclick=()=>{const l=b.dataset.l;xrL[l]=!xrL[l];
+  if(l==='wx'&&xrL.wx&&wx.enabled){fx.cKey='';applyWx();}
+  if(l==='tac'){const c=$('tTac');if(c)c.checked=xrL.tac;renderTac();redrawTexture();}
+  if((l==='wx'||l==='sky'||l==='time')&&!xrWx&&xrL[l]){xrWx=true;wx.enabled=true;buildCelest();applyWx();}
+  xrLayersUI();});
+function xrApplyLayers(){
+  for(const k of ['clouds','precip','flow']) if(tmeshes[k]) tmeshes[k].visible=xrL.wx&&xrWx;
+  if(tmeshes.celest) tmeshes.celest.visible=xrL.sky&&xrWx;
+  for(const k of ['meas','vs']) if(tmeshes[k]) tmeshes[k].visible=xrL.meas;
+  if(tmeshes.peers) tmeshes.peers.visible=xrL.peers;
+  if(tmeshes.tac) tmeshes.tac.visible=xrL.tac;
+  if(terrain&&!(xrL.wx&&xrWx)){terrain.material.uniforms.cloudOn.value=0;terrain.material.uniforms.gfog.value=0;}
+}
 function xrUpdate(frame){
+  xrApplyLayers();
   if(camera.near!==0.01){camera.near=0.01;camera.far=100;camera.updateProjectionMatrix();}
   if(!frame||!xrHit) return; const hits=frame.getHitTestResults(xrHit);
   if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
@@ -1744,12 +1767,12 @@ function endXR(){
   xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
-  ['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
+  ['clouds','precip','flow','meas','vs','peers'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=true;}); tRemove('celest'); setTimeout(()=>{renderTac();renderPeers();},80); if(xrPlay){clearInterval(xrPlay);xrPlay=null;}
   if(wx.enabled) setTimeout(()=>{fx.cKey='';applyWx();},60);
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=xrPlaceHere;
-for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
 $('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
 $('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';wxShadowKey='';applyWx();return;}
@@ -1953,17 +1976,19 @@ function symCanvas(it){
   symCache[key]=c; return c;
 }
 const tacList=()=>Object.values(doc.tac).filter(t=>!t.del);
+function tacOn(){const c=$('tTac');return !c||c.checked;}
 function renderTac(){
-  tRemove('tac'); if(!cur) return; const g=new THREE.Group(), S=cur.bb.S;
+  tRemove('tac'); if(!cur||!tacOn()) return; const g=new THREE.Group(), S=cur.bb.S, ar=renderer&&renderer.xr.isPresenting;
   for(const t of tacList()){ if(t.kind!=='unit') continue; const [x,z]=ll2w(t.pts[0][0],t.pts[0][1]); if(!inArea(x,z)) continue;
     const y=surfaceY(x,z), cv=symCanvas(t), tx=new THREE.CanvasTexture(cv);
-    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,sizeAttenuation:false,depthTest:false,transparent:true}));
-    sp.center.set(0.5,0); sp.scale.set(0.085,0.085*cv.height/cv.width,1); sp.position.set(x,y+S*0.004,z); sp.renderOrder=15; g.add(sp);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,sizeAttenuation:ar,depthTest:false,transparent:true}));
+    const k=ar?S*0.075:0.085; sp.center.set(0.5,0); sp.scale.set(k,k*cv.height/cv.width,1); sp.position.set(x,y+S*0.004,z); sp.renderOrder=15; g.add(sp);
     const pole=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,y,z),new THREE.Vector3(x,y+S*0.004,z)]),new THREE.LineBasicMaterial({color:'#000'}));g.add(pole);}
   tAdd('tac',g);
 }
 function drawTac(ctx,s,bb){
-  const L=tacList().filter(t=>t.kind==='line'), w=Math.max(2,s/480), P=pts=>pts.map(([la,lo])=>llTo(bb,s,la,lo));
+  if(!tacOn()&&!(toolMode==='tac')) return;
+  const L=tacOn()?tacList().filter(t=>t.kind==='line'):[], w=Math.max(2,s/480), P=pts=>pts.map(([la,lo])=>llTo(bb,s,la,lo));
   const label=(t,x,y,col)=>{if(!t) return;ctx.font=`bold ${Math.round(w*7)}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=w*1.6;ctx.strokeStyle='rgba(255,255,255,.95)';ctx.strokeText(t,x,y);ctx.fillStyle=col;ctx.fillText(t,x,y);};
   const draw=(t,draft)=>{const p=P(t.pts),a=AFF[t.aff]||AFF.f;if(p.length<1) return;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(draft?[w*3,w*2]:[]);
     const line=()=>{ctx.beginPath();p.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));};
@@ -2137,7 +2162,8 @@ function personSprite(name,col){
   x.fillStyle='#fff';x.beginPath();x.arc(120,96,8,0,7);x.fill();x.fillRect(112,104,16,14);
   x.font='bold 30px system-ui';x.textAlign='center';x.textBaseline='bottom';x.lineWidth=7;x.strokeStyle='rgba(0,0,0,.75)';x.strokeText(name,120,66);x.fillStyle='#fff';x.fillText(name,120,66);
   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),sizeAttenuation:false,depthTest:false,transparent:true}));
-  s.center.set(0.5,0.13);s.scale.set(0.09,0.09*150/240,1);s.renderOrder=16;return s;
+  const ar=renderer&&renderer.xr.isPresenting; if(ar){s.material.sizeAttenuation=true;}
+  const k=ar?cur.bb.S*0.07:0.09; s.center.set(0.5,0.13);s.scale.set(k,k*150/240,1);s.renderOrder=16;return s;
 }
 function renderPeers(){
   tRemove('peers'); if(!cur) return; const g=new THREE.Group(), now=Date.now();
