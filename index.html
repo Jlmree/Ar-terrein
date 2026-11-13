@@ -204,7 +204,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v18 · 13-11 14:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v19 · 13-11 15:15. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -1402,7 +1402,7 @@ function sunEvents(t,la,lo){ // op dezelfde (lokale) dag als t
 const sunVec=p=>new THREE.Vector3(Math.sin(p.b*D2R)*Math.cos(p.alt*D2R),Math.sin(p.alt*D2R),-Math.cos(p.b*D2R)*Math.cos(p.alt*D2R)).normalize();
 
 async function loadWeather(){
-  const {lat,lon}=cur.bb,V='temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,weather_code,cloud_cover,cloud_cover_low,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility';
+  const {lat,lon}=cur.bb,V='temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,weather_code,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility';
   const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=${V}&hourly=${V},precipitation_probability,snow_depth&wind_speed_unit=ms&timezone=auto&forecast_days=3`);
   if(!r.ok) throw new Error('weer HTTP '+r.status);
   const js=await r.json(); js._t=js.hourly.time.map(s=>Date.parse(s+'Z')-(js.utc_offset_seconds||0)*1000); js._bb=cur.bb; wx.data=js;
@@ -1447,11 +1447,15 @@ function uiWx(){
     try{if(!wx.radar) await loadRadar(); drawRadar();}catch(e){console.warn('radar',e);if($('radT')) $('radT').textContent='Radar niet beschikbaar';}
   })();
 }
+function cloudEff(w){ // effectieve bewolking: lage + middelbare wolken tellen, hoge sluierbewolking maar weinig
+  if(!w) return 0; if(w.cloud_cover_low==null&&w.cloud_cover_mid==null) return (w.cloud_cover??0)/100;
+  return clamp(Math.max(w.cloud_cover_low??0,(w.cloud_cover_mid??0)*0.85,(w.cloud_cover_high??0)*0.3)/100,0,1);
+}
 function applyWx(fast){
   if(!cur||!terrain) return;
   const t=wxTime(),w=wxAt(t),U=terrain.material.uniforms,S=cur.bb.S,{lat,lon}=cur.bb;
   const sp=sunPos(t,lat,lon),mp=moonPos(t,lat,lon),mi=moonIll(t);
-  const cc=w&&w.cloud_cover!=null?w.cloud_cover/100:0, rainy=w&&w.precipitation>0.1?1:0;
+  const cc=cloudEff(w), rainy=w&&w.precipitation>0.1?1:0;
   let amb=0.42,dirK=0.8,lightK=1,tint=[1,1,1],sky=SKY0.clone(),src=null;
   const sm=(a,b,x)=>{const k=clamp((x-a)/(b-a),0,1);return k*k*(3-2*k);};
   const day=sm(-6,8,sp.alt), dusk=sm(-10,-2,sp.alt)*(1-sm(3,12,sp.alt)), starK=1-sm(-14,-6,sp.alt);
@@ -1479,9 +1483,10 @@ function applyWx(fast){
   if(wx.mist&&w){
     if(w.visibility!=null){U.fogF.value=clamp(w.visibility,S*0.2,S*8);U.fogN.value=U.fogF.value*0.03;}
     const rh=w.relative_humidity_2m??0, ws=w.wind_speed_10m??5, v=w.visibility??20000;
-    let g=v<1000?0.85:v<3000?0.6:v<6000?0.3:0;
-    if(rh>=94&&ws<3.5&&sp.alt<12) g=Math.max(g,0.25+0.4*(rh-94)/6);
+    let g=v<1000?0.85:v<2000?0.5:(v<4000&&rh>90)?0.2:0;
+    if(rh>=97&&ws<2.5&&sp.alt<8) g=Math.max(g,0.2+0.3*(rh-97)/3);
     if([45,48].includes(w.weather_code)) g=Math.max(g,0.8);
+    if(renderer.xr.isPresenting) g*=0.5;
     U.gfog.value=g; U.gfH.value=clamp((cur.eMax-cur.eMin)*0.35,3,40); U.eMinU.value=cur.eMin;
     U.gfC.value.set(0.86*tint[0],0.88*tint[1],0.9*tint[2]);
   }else{U.fogN.value=S*0.35;U.fogF.value=S*5;}
@@ -1496,7 +1501,7 @@ function applyWx(fast){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
       $('wxNow').innerHTML=`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,1)} °C</div>
       <div>💨 ${DIRS[Math.round(wd/22.5)%16]} ${nf(ws,1)} m/s (${bft(ws)} Bft)</div><div>Stoten ${nf(w.wind_gusts_10m??0,1)} m/s · ${toMil(wd)}‰</div>
-      <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% (laag ${Math.round(w.cloud_cover_low??0)}%)</div>
+      <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% (L ${Math.round(w.cloud_cover_low??0)} · M ${Math.round(w.cloud_cover_mid??0)} · H ${Math.round(w.cloud_cover_high??0)})</div>
       <div>👁 zicht ${w.visibility!=null?fmtDist(w.visibility):'—'}</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>
       <div>💧 RV ${Math.round(w.relative_humidity_2m??0)}%</div><div>${w.snow_depth>0.005?'❄️ sneeuwdek '+Math.round(w.snow_depth*100)+' cm':''}</div>`;}
     else if(!wx.data) $('wxNow').textContent='Weer laden…';
@@ -1600,7 +1605,7 @@ function buildClouds(cov,base,strat){
   g.setAttribute('iOff',new THREE.InstancedBufferAttribute(off,3)); g.setAttribute('iScale',new THREE.InstancedBufferAttribute(sc,1)); g.setAttribute('iShade',new THREE.InstancedBufferAttribute(shd,1));
   g.instanceCount=N;
   const mat=new THREE.ShaderMaterial({vertexShader:PUFF_VS,fragmentShader:PUFF_FS,transparent:true,depthWrite:false,
-    uniforms:{drift:{value:fx.drift},span:{value:span},clipR:{value:renderer.xr.isPresenting?S/2:0},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:strat?0.7:0.85}}});
+    uniforms:{drift:{value:fx.drift},span:{value:span},clipR:{value:renderer.xr.isPresenting?S/2:0},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:(strat?0.7:0.85)*(renderer.xr.isPresenting?(strat?0.3:0.5):1)}}});
   const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.renderOrder=6; m.userData={base}; tAdd('clouds',m); placeClouds();
   // schaduwmasker
   const M=256,cv=document.createElement('canvas');cv.width=cv.height=M;const ctx=cv.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,M,M);ctx.globalCompositeOperation='lighter';
@@ -1612,7 +1617,7 @@ function buildClouds(cov,base,strat){
 function placeClouds(){const m=tmeshes.clouds;if(m&&cur) m.position.y=(cur.eMax-cur.eMin)*exag();}
 function updateClouds(w,tint,lightK,rainy){
   const U=terrain.material.uniforms;
-  const cov=w?Math.max(w.cloud_cover_low??0,(w.cloud_cover??0)*0.8)/100:0;
+  const cov=w?Math.max(w.cloud_cover_low??0,(w.cloud_cover_mid??0)*0.75)/100:0;
   if(!wx.cloud||!w||cov<0.04){tRemove('clouds');fx.cKey='';U.cloudOn.value=0;return;}
   const base=(w.temperature_2m!=null&&w.dew_point_2m!=null)?clamp(125*(w.temperature_2m-w.dew_point_2m),150,2500):800, strat=cov>0.85;
   const key=Math.round(cov*10)+'|'+strat+'|'+Math.round(base/150);
@@ -1970,7 +1975,8 @@ function updateCelest(){
   u.lab=textSprite(`☀️ ${nf(sp.alt,0)}° · ${toMil(sp.b)}‰\n${hhmm(t)}`,'#ffe08a',S*0.07); u.lab.position.copy(ps).add(new THREE.Vector3(0,S*0.07,0)); u.lab.visible=sp.alt>-3;
   u.mlab=textSprite(`🌙 ${Math.round(mi.f*100)}% ${fase}\n${nf(mp.alt,0)}° · ${toMil(mp.b)}‰`,'#dbe3ff',S*0.07); u.mlab.position.copy(pm).add(new THREE.Vector3(0,S*0.06,0)); u.mlab.visible=mp.alt>-3;
   g.add(u.lab,u.mlab);
-  if($('xrInfo')) $('xrInfo').textContent=`${hhmm(t)} · zon ${sp.alt>0?nf(sp.alt,0)+'° hoog':'onder'} · maan ${Math.round(mi.f*100)}% ${fase}${mp.alt<0?' (onder)':''}`;
+  const ww=wx.data?wxAt(t):null, wtxt=ww?` · ${WMO[ww.weather_code]||''} ${nf(ww.temperature_2m??0,0)}°C · laag/midden/hoog ${Math.round(ww.cloud_cover_low??0)}/${Math.round(ww.cloud_cover_mid??0)}/${Math.round(ww.cloud_cover_high??0)}%`:'';
+  if($('xrInfo')) $('xrInfo').textContent=`${hhmm(t)} · zon ${sp.alt>0?nf(sp.alt,0)+'° hoog':'onder'} · maan ${Math.round(mi.f*100)}% ${fase}${mp.alt<0?' (onder)':''}${wtxt}`;
 }
 
 
