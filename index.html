@@ -179,7 +179,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v6 · 13-11 08:10. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -200,7 +200,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
-  <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
+  <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
 <!-- ============ GEO (UTM / MGRS / Mercator) ============ -->
 <script>
@@ -1502,7 +1502,7 @@ function uiAR(){
   else $('arDiag').innerHTML=dg.join('<br>');
 }
 // --- WebXR tafel
-let xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
+let xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
 function arErr(m){const d=$('arDiag');if(d) d.innerHTML+='<br>❌ '+m; toast(m);}
 async function startXR(){
   if(!navigator.xr){arErr('WebXR niet beschikbaar (gebruik Chrome op Android, via https)');return;}
@@ -1519,12 +1519,13 @@ async function startXR(){
     xrCam={near:camera.near,far:camera.far}; camera.near=0.01; camera.far=100; camera.updateProjectionMatrix(); // dichtbij mogen komen
     renderer.xr.setReferenceSpaceType('local'); await renderer.xr.setSession(s);
     xrRef=renderer.xr.getReferenceSpace();
-    try{const viewer=await s.requestReferenceSpace('viewer'); xrHit=await s.requestHitTestSource({space:viewer});}
+    try{const viewer=await s.requestReferenceSpace('viewer');
+      try{xrHit=await s.requestHitTestSource({space:viewer,entityTypes:['plane','point']});}catch(eT){xrHit=await s.requestHitTestSource({space:viewer});}}
     catch(e){console.warn('geen hit-test',e); xrHit=null; setTimeout(()=>{if(!xrPlaced) xrPlaceFixed();},600);}
-    $('xrUI').classList.remove('hidden'); $('xrMsg').textContent='Richt op de tafel en tik om het terrein te plaatsen';
+    $('xrUI').classList.remove('hidden'); xrSeen=0; $('xrMsg').textContent='Zoeken naar oppervlak… beweeg de telefoon langzaam (v6 · 13-11 08:10)';
     xrSaved={bg:scene.background,fogN:terrain.material.uniforms.fogN.value,fogF:terrain.material.uniforms.fogF.value};
     scene.background=null; terrain.material.uniforms.fogN.value=1e9; terrain.material.uniforms.fogF.value=2e9;
-    world.visible=false; xrPlaced=false;
+    world.visible=false; xrPlaced=false; if(tmeshes.cloud) tmeshes.cloud.visible=false; if(marker) marker.visible=false;
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1534,9 +1535,19 @@ function xrPlaceFixed(){ // zonder vlakherkenning: 1 m voor je, 40 cm lager
   const k=xrSize/cur.bb.S; xrPlaneY=-0.4; world.scale.setScalar(k); world.position.set(0,xrPlaneY-(cur.skirtBase||0)*k,-1);
   world.visible=true; xrPlaced=true; $('xrMsg').textContent='Geen tafelherkenning: terrein 1 m voor je geplaatst';}
 function xrUpdate(frame){
+  if(camera.near!==0.01){camera.near=0.01;camera.far=100;camera.updateProjectionMatrix();}
   if(!frame||!xrHit) return; const hits=frame.getHitTestResults(xrHit);
-  if(hits.length){const pose=hits[0].getPose(xrRef);xrLast=pose;xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);}
-  else{xrReticle.visible=false;}
+  if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
+    if(!xrPlaced&&xrSeen!==1){xrSeen=1;$('xrMsg').textContent='Oppervlak gevonden – tik om te plaatsen';}}
+  else{xrReticle.visible=false;xrLast=null;
+    if(!xrPlaced&&xrSeen!==2){xrSeen=2;$('xrMsg').textContent='Zoeken… meer licht/structuur helpt, of tik "Plaats hier"';}}
+}
+function xrPlaceHere(){ // zonder oppervlak: 70 cm voor je, 35 cm onder ooghoogte
+  const c=renderer.xr.getCamera(),pos=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld),dir=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld));
+  dir.y=0; if(dir.lengthSq()<1e-6) dir.set(0,0,-1); dir.normalize();
+  const k=xrSize/cur.bb.S; xrPlaneY=pos.y-0.35; world.scale.setScalar(k);
+  world.position.set(pos.x+dir.x*0.7,xrPlaneY-(cur.skirtBase||0)*k,pos.z+dir.z*0.7);
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Zwevend geplaatst · ${Math.round(xrSize*100)} cm breed`;
 }
 function xrSelect(){
   if(xrPlaced||!xrLast) return;
@@ -1551,12 +1562,14 @@ function endXR(){
   xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
+  if(tmeshes.cloud) tmeshes.cloud.visible=true;
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
-for(const id of ['xrMinus','xrPlus','xrRot','xrMove','xrExit']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+$('xrHere').onclick=xrPlaceHere;
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrMinus').onclick=()=>xrRescale(1/1.25); $('xrPlus').onclick=()=>xrRescale(1.25);
 $('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;};
-$('xrMove').onclick=()=>{xrPlaced=false;world.visible=false;$('xrMsg').textContent='Tik om opnieuw te plaatsen';};
+$('xrMove').onclick=()=>{xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
 $('xrExit').onclick=()=>{const s=renderer.xr.getSession();if(s) s.end();};
 
 // --- veld-AR (camera + kompas + GPS)
