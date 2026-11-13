@@ -174,6 +174,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
     <div class="head" id="ctrlHead"><span>⚙ Instellingen</span><span id="feat"></span><span id="arrow">▲</span></div>
     <div class="body">
       <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
+      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
       <div class="row"><span class="t">Verkeerstempo</span><input type="range" id="lifeSp" min="1" max="10" step="1" value="1"><span class="val" id="lifeSpV">1×</span></div>
       <div class="row"><span class="t">Hoogtelijnen</span><select id="ci">
         <option value="auto">Automatisch</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="2.5">2,5 m</option><option value="5">5 m</option><option value="10">10 m</option><option value="25">25 m</option><option value="50">50 m</option><option value="0">Uit</option>
@@ -198,9 +199,12 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label>
         <label class="tg"><input type="checkbox" id="tBld" checked> 3D-gebouwen</label>
         <label class="tg"><input type="checkbox" id="tLife" checked> Verkeer &amp; leven</label>
+        <label class="tg"><input type="checkbox" id="tAhnT" checked> Boomhoogtes uit AHN</label>
+        <label class="tg"><input type="checkbox" id="tWater" checked> Water glinstert</label>
+        <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v17 · 13-11 14:25. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v18 · 13-11 14:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -639,13 +643,14 @@ function onResize(){if(!renderer) return; const w=innerWidth,h=innerHeight; rend
 const needle=document.getElementById('needle');
 let lastLblCheck=0;
 function frame(t,xrFrame){
-  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); if(tmeshes.life) lifeFrame(performance.now()); renderer.render(scene,camera); return;}
+  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); if(tmeshes.life) lifeFrame(performance.now()); if(terrain) terrain.material.uniforms.uT.value=performance.now()/1000; renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
   if(cur){const dd=camera.position.distanceTo(controls.target),nn=clamp(dd/400,0.3,Math.max(0.5,cur.bb.S/2000));if(Math.abs(nn-camera.near)/camera.near>0.25){camera.near=nn;camera.updateProjectionMatrix();}}
   if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
   if(tmeshes.me) meRot();
   if(tmeshes.life) lifeFrame(performance.now());
+  if(terrain) terrain.material.uniforms.uT.value=performance.now()/1000;
   needle.style.transform=`rotate(${controls.getAzimuthalAngle()}rad)`;
   renderer.render(scene,camera);
   if($('tLabels').checked){
@@ -660,21 +665,48 @@ const FS=`uniform sampler2D map; uniform sampler2D shMap; uniform vec3 sun; unif
 uniform float shOn; uniform vec4 uvR; uniform float amb; uniform float dirK; uniform float lightK; uniform vec3 tint;
 uniform sampler2D cloudMap; uniform float cloudOn; uniform vec2 cloudDrift; uniform float cloudSpan; uniform float cloudY; uniform float cloudK;
 uniform float gfog; uniform float gfH; uniform float eMinU; uniform vec3 gfC; uniform float wet; uniform float snow;
+uniform sampler2D lcMap; uniform float lcOn; uniform float uT; uniform float wave; uniform vec4 seas; uniform float heathK; uniform float atmOn;
 varying vec2 vUv; varying float vElev; varying vec3 vN; varying vec3 vW; varying vec3 vL;
 float cline(float v,float k){float f=v/k;float w=fwidth(f);float g=abs(fract(f-0.5)-0.5)/max(w,1e-6);return (1.0-clamp(g,0.0,1.0))*clamp(1.6-w*5.0,0.0,1.0);}
 void main(){
   vec3 col=texture2D(map,vUv).rgb; vec3 Nn=normalize(vN);
+  vec2 muv=uvR.xy+vUv*uvR.zw;
+  vec4 lc=lcOn>0.5?texture2D(lcMap,muv):vec4(0.0);
+  // seizoenen: groen (bos, gras, akkers) verkleurt
+  float veg=smoothstep(0.015,0.1,col.g-max(col.r,col.b))*(1.0-lc.r);
+  if(veg>0.0){float gy=dot(col,vec3(0.3,0.5,0.2));
+    vec3 spC=col*vec3(0.92,1.08,0.86)+vec3(0.03,0.05,0.0);
+    vec3 auF=vec3(col.g*1.08,col.g*0.66,col.b*0.35)+vec3(0.04,0.01,0.0), auO=vec3(col.g*0.86,col.g*0.84,col.b*0.55)+vec3(0.04,0.02,0.0);
+    vec3 auC=mix(auO,auF,lcOn>0.5?clamp(lc.b*1.3,0.0,1.0):0.6);
+    vec3 wiC=vec3(gy*0.98+0.05,gy*0.93+0.03,gy*0.82+0.02);
+    vec3 sc=col*seas.y+spC*seas.x+auC*seas.z+wiC*seas.w; col=mix(col,sc,veg);}
+  if(lc.g>0.01){vec3 hc=mix(vec3(0.45,0.4,0.27),vec3(0.66,0.36,0.64),heathK);col=mix(col,mix(col,hc,0.55),clamp(lc.g*1.2,0.0,1.0));}
   if(snow>0.0){float fl=smoothstep(0.5,0.9,Nn.y);col=mix(col,vec3(0.93,0.95,0.98),snow*fl);}
   if(wet>0.0){col*=1.0-0.22*wet;col=mix(col,col*col*1.7,0.22*wet);}
   if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a);}
-  vec2 muv=uvR.xy+vUv*uvR.zw;
   float sh=shOn>0.5?texture2D(shMap,muv).r:1.0;
   float cs=1.0; if(cloudOn>0.5){vec2 p=vL.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
   float d=max(dot(Nn,sun),0.0)*sh*cs;
   col*=mix(1.0,amb+dirK*d,shade);
   col*=tint*lightK;
   if(gfog>0.0){float low=1.0-smoothstep(0.0,gfH,vElev-eMinU); float fd2=length(vW-cameraPosition); col=mix(col,gfC*min(1.0,lightK),gfog*low*(0.35+0.65*smoothstep(0.0,fogF*0.4,fd2)));}
-  float fd=length(vW-cameraPosition);col=mix(col,fogC,smoothstep(fogN,fogF,fd)*0.85);
+  // water: rimpels, luchtspiegeling en zonneglinsteringen
+  if(lc.r>0.02){
+    vec3 V=normalize(cameraPosition-vW); vec2 p=vL.xz; float t=uT;
+    vec2 g=vec2(sin(p.x*0.7+t*1.3)+0.6*sin(p.x*1.9+p.y*1.3-t*2.1)+0.3*sin((p.x+p.y)*4.3+t*3.1)+0.2*sin(p.x*9.7-p.y*7.1+t*4.7),
+                sin(p.y*0.8-t*1.1)+0.6*sin(p.y*2.1-p.x*1.5+t*1.9)+0.3*sin((p.y-p.x)*4.7-t*2.9)+0.2*sin(p.y*10.3+p.x*6.1-t*5.3));
+    float wv=wave/(1.0+fwidth(p.x)*0.7); vec3 wn=normalize(vec3(g.x*wv,1.0,g.y*wv));
+    float fres=pow(1.0-max(dot(wn,V),0.0),3.0);
+    vec3 wc=mix(vec3(0.06,0.16,0.2)*tint*lightK,fogC,0.2+0.65*fres);
+    vec3 H=normalize(sun+V); float nh=max(dot(wn,H),0.0);
+    wc+=vec3(1.0,0.95,0.82)*(pow(nh,400.0)*4.0+pow(nh,60.0)*0.3)*dirK*sh*cs*step(0.0,sun.y)*lightK;
+    col=mix(col,wc,smoothstep(0.02,0.5,lc.r)*0.85);
+  }
+  // atmosfeer: luchtperspectief + strooilicht richting zon
+  float fd=length(vW-cameraPosition);
+  if(atmOn>0.5){float atm=1.0-exp(-max(fd-fogN,0.0)/max(fogF*0.5,1.0)); vec3 vd=normalize(vW-cameraPosition);
+    vec3 haze=fogC+vec3(1.0,0.82,0.55)*pow(max(dot(vd,sun),0.0),6.0)*0.3*dirK*lightK; col=mix(col,haze,clamp(atm,0.0,0.92));}
+  else col=mix(col,fogC,smoothstep(fogN,fogF,fd)*0.85);
   gl_FragColor=vec4(col,1.0);
 }`;
 
@@ -749,10 +781,11 @@ function buildTerrain(){
   g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('uv',new THREE.BufferAttribute(uv,2));
   g.setAttribute('elev',new THREE.BufferAttribute(E,1)); g.setIndex(new THREE.BufferAttribute(idx,1));
   const mat=new THREE.ShaderMaterial({vertexShader:VS,fragmentShader:FS,uniforms:{
-    map:{value:mainSurf.tex},sun:{value:sun},ci:{value:0},shade:{value:1},fogC:{value:new THREE.Color('#b9d1e4')},fogN:{value:S*1.5},fogF:{value:S*6},
+    map:{value:mainSurf.tex},sun:{value:sun},ci:{value:0},shade:{value:1},fogC:{value:new THREE.Color('#b9d1e4')},fogN:{value:S*0.35},fogF:{value:S*5},
     shMap:{value:WHITE1},shOn:{value:0},uvR:{value:new THREE.Vector4(0,0,1,1)},amb:{value:0.42},dirK:{value:0.8},lightK:{value:1},tint:{value:new THREE.Vector3(1,1,1)},
     cloudMap:{value:WHITE1},cloudOn:{value:0},cloudDrift:{value:new THREE.Vector2()},cloudSpan:{value:S*2},cloudY:{value:800},cloudK:{value:0},
-    gfog:{value:0},gfH:{value:10},eMinU:{value:0},gfC:{value:new THREE.Color(0.86,0.88,0.9)},wet:{value:0},snow:{value:0}}});
+    gfog:{value:0},gfH:{value:10},eMinU:{value:0},gfC:{value:new THREE.Color(0.86,0.88,0.9)},wet:{value:0},snow:{value:0},
+    lcMap:{value:WHITE1},lcOn:{value:0},uT:{value:0},wave:{value:0.12},seas:{value:new THREE.Vector4(0,1,0,0)},heathK:{value:0},atmOn:{value:1}}});
   terrain=new THREE.Mesh(g,mat); world.add(terrain);
   // rand (sokkel)
   const ring=[]; for(let i=0;i<n;i++)ring.push(i); for(let j=1;j<n;j++)ring.push(j*n+n-1); for(let i=n-2;i>=0;i--)ring.push((n-1)*n+i); for(let j=n-2;j>0;j--)ring.push(j*n); ring.push(0);
@@ -968,13 +1001,14 @@ function processFeatures(js){
   buildTrees(forests); buildLabels(); redrawTexture(); toolsFeatures();
 }
 function buildTrees(forests){
+  for(const tm of treeMeshes){world.remove(tm);tm.geometry.dispose();} treeMeshes=[];
   const M=1024, cv=document.createElement('canvas'); cv.width=cv.height=M; const ctx=cv.getContext('2d',{willReadFrequently:true});
   const path=(rings)=>{ctx.beginPath();for(const r of rings){r.forEach((p,i)=>{const [x,y]=llTo(cur.bb,M,p[0],p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();}};
   for(const f of forests){ctx.globalCompositeOperation='source-over';ctx.fillStyle=f.lt==='n'?'#f00':f.lt==='b'?'#0f0':'#ff0';path(f.outer);ctx.fill();
     if(f.inner.length){ctx.globalCompositeOperation='destination-out';path(f.inner);ctx.fill();}}
   ctx.globalCompositeOperation='source-over';
   const d=ctx.getImageData(0,0,M,M).data; let cnt=0; for(let i=3;i<d.length;i+=4) if(d[i]>127) cnt++;
-  {const n=cur.n, fg=new Uint8Array(n*n); for(let j=0;j<n;j++)for(let i=0;i<n;i++){const px=Math.round(i/(n-1)*(M-1)),py=Math.round(j/(n-1)*(M-1)); fg[j*n+i]=d[(py*M+px)*4+3]>127?1:0;} cur.forestGrid=cnt?fg:null; cur.obst=null;}
+  {const n=cur.n, fg=new Uint8Array(n*n); for(let j=0;j<n;j++)for(let i=0;i<n;i++){const px=Math.round(i/(n-1)*(M-1)),py=Math.round(j/(n-1)*(M-1)); fg[j*n+i]=d[(py*M+px)*4+3]>127?1:0;} cur.forestGrid=cnt?fg:null; cur.obst=null; cur.leafMask=cnt?{d,M}:null;}
   const S=cur.bb.S, km2=(S/1000)**2, maxT=state.hiq?24000:10000;
   const target=Math.min(maxT,Math.round(cnt/(M*M)*km2*2600));
   const trees=[]; let tries=0;
@@ -988,7 +1022,7 @@ function buildTrees(forests){
   const bg=new THREE.IcosahedronGeometry(0.5,1); bg.translate(0,0.62,0);
   const mk=(geo,list,base)=>{const m=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0xffffff,flatShading:true}),Math.max(1,list.length));
     m.count=list.length; const col=new THREE.Color();
-    list.forEach((t,i)=>{col.set(base).offsetHSL((t.c-0.5)*0.05,0,(t.c-0.5)*0.12);m.setColorAt(i,col);});
+    list.forEach((t,i)=>{treeColor(col,geo===cg,t);m.setColorAt(i,col);});
     m.userData.list=list; m.userData.con=geo===cg; m.userData.vf=vf; world.add(m); return m;};
   treeMeshes=[mk(cg,trees.filter(t=>t.con),'#2c5a33'),mk(bg,trees.filter(t=>!t.con),'#4d7f35')];
   placeTrees();
@@ -996,7 +1030,8 @@ function buildTrees(forests){
 function placeTrees(){
   const on=$('tTrees').checked, m4=new THREE.Matrix4(), q=new THREE.Quaternion(), p=new THREE.Vector3(), sc=new THREE.Vector3();
   for(const m of treeMeshes){m.visible=on; if(!on||!cur) continue; const vf=m.userData.vf;
-    m.userData.list.forEach((t,i)=>{const h=(m.userData.con?17:14)*t.s*vf, w=m.userData.con?h*0.42:h*0.75;
+    const bare=m.userData.con?1:1-0.25*(seasonW().w);
+    m.userData.list.forEach((t,i)=>{const h=t.h?t.h:(m.userData.con?17:14)*t.s*vf, w=(t.h?(m.userData.con?h*0.38:Math.min(h*0.8,14)):(m.userData.con?h*0.42:h*0.75))*bare;
       p.set(t.x,groundY(t.x,t.z)-0.3,t.z); sc.set(w,h,w); m4.compose(p,q,sc); m.setMatrixAt(i,m4);});
     m.instanceMatrix.needsUpdate=true; m.computeBoundingSphere();}
 }
@@ -1093,11 +1128,13 @@ function surfaceY(wx,wz){return (elevReal(wx,wz)-cur.eMin)*exag();}
 const useCanopy=()=>!!cur.forestGrid&&!cur.src.startsWith('AHN DSM');
 function forestAt(wx,wz){if(!cur.forestGrid) return 0;const n=cur.n,S=cur.bb.S,i=Math.round((wx+S/2)/S*(n-1)),j=Math.round((wz+S/2)/S*(n-1));return (i>=0&&j>=0&&i<n&&j<n)?cur.forestGrid[j*n+i]:0;}
 function obstacleGrid(){
+  if(cur.dsmObst) return cur.dsmObst;
   if(!useCanopy()) return cur.E;
   if(!cur.obst){const E=cur.E,O=new Float32Array(E.length);for(let k=0;k<E.length;k++)O[k]=E[k]+(cur.forestGrid[k]?CANOPY:0);cur.obst=O;}
   return cur.obst;
 }
-function obstNote(){return cur.src.startsWith('AHN DSM')?'Bomen en gebouwen zitten in de hoogtedata (AHN DSM).':useCanopy()?'Bos (OSM) als 15 m hoog meegeteld; gebouwen niet. Kies "AHN met bomen & gebouwen" voor de echte situatie.':'Alleen maaiveld: bos en gebouwen niet meegeteld.';}
+function obstAt(x,z,e){if(e==null) e=elevReal(x,z); if(cur.dsmObst){const n=cur.n,S=cur.bb.S;return Math.max(e,bilin(cur.dsmObst,n,n,(x+S/2)/S*(n-1),(z+S/2)/S*(n-1)));} return e+(useCanopy()&&forestAt(x,z)?CANOPY:0);}
+function obstNote(){return cur.dsmObst?'Bomen en gebouwen met echte hoogtes uit de AHN meegeteld.':cur.src.startsWith('AHN DSM')?'Bomen en gebouwen zitten in de hoogtedata (AHN DSM).':useCanopy()?'Bos (OSM) als 15 m hoog meegeteld; gebouwen niet. Kies "AHN met bomen & gebouwen" voor de echte situatie.':'Alleen maaiveld: bos en gebouwen niet meegeteld.';}
 function download(name,data,type){
   const b=new Blob([data],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);
@@ -1124,7 +1161,7 @@ function toolsExag(){
   if(tmeshes.bld){clearTimeout(bld.exT);bld.exT=setTimeout(buildBuildings,150);}
   if(tmeshes.brg){clearTimeout(bld.brT);bld.brT=setTimeout(buildBridges,150);}
 }
-function toolsFeatures(){buildBridges(); if(lifeOn()) loadLife();if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
+function toolsFeatures(){buildBridges(); if(lifeOn()) loadLife(); loadLandcover(); loadAhnTrees(); applySeason(true);if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
 /* ---------- paneel ---------- */
 let toolMode=null; const tb=$('toolB');
@@ -1238,14 +1275,14 @@ function updateMeas(only3d){
   const dd=[],ee=[],oo=[];let up=0,dn=0;
   if(P.length>1){for(let q=0;q<=N;q++){let s=q/N*Lw,k=0;while(k<seg.length-1&&s>seg[k]){s-=seg[k];k++;}
       const t=seg[k]?Math.min(1,s/seg[k]):0,x=P[k].x+(P[k+1].x-P[k].x)*t,z=P[k].z+(P[k+1].z-P[k].z)*t,e=elevReal(x,z);
-      dd.push(q/N*tot);ee.push(e);oo.push(e+(useCanopy()&&forestAt(x,z)?CANOPY:0));
+      dd.push(q/N*tot);ee.push(e);oo.push(obstAt(x,z,e));
       if(q){const de=e-ee[q-1];if(de>0)up+=de;else dn-=de;}}}
   if(P.length>1) rows+=`<div class="tot">Totaal ${fmtDist(tot)} · ↑ ${Math.round(up)} m · ↓ ${Math.round(dn)} m</div>`;
   $('mList').innerHTML=rows;
   // zichtlijn 1 → laatste (recht)
   let los=null;
   if(P.length>1){const A=P[0],Z=P[P.length-1],eA=elevReal(A.x,A.z)+vsOpt.eye,eZ=elevReal(Z.x,Z.z)+vsOpt.tgt,dAZ=hav(LL[0][0],LL[0][1],LL[LL.length-1][0],LL[LL.length-1][1]);
-    let block=null;for(let q=1;q<N;q++){const t=q/N,x=A.x+(Z.x-A.x)*t,z=A.z+(Z.z-A.z)*t,o=elevReal(x,z)+(useCanopy()&&forestAt(x,z)?CANOPY:0);
+    let block=null;for(let q=1;q<N;q++){const t=q/N,x=A.x+(Z.x-A.x)*t,z=A.z+(Z.z-A.z)*t,o=obstAt(x,z);
       if(o>eA+(eZ-eA)*t){block={d:t*dAZ,h:o};break;}}
     los={eA,eZ,block,straight:P.length===2};
     $('mLos').innerHTML=(block?`<b style="color:#f87171">Geen zicht</b> 1 → ${P.length}: geblokkeerd na ${fmtDist(block.d)} (${nf(block.h,1)} m).`:`<b style="color:#4ade80">Vrij zicht</b> 1 → ${P.length} over ${fmtDist(dAZ)}.`)+` Oog ${nf(vsOpt.eye,1)} m, doel ${nf(vsOpt.tgt,1)} m. ${obstNote()}`;}
@@ -1447,11 +1484,12 @@ function applyWx(fast){
     if([45,48].includes(w.weather_code)) g=Math.max(g,0.8);
     U.gfog.value=g; U.gfH.value=clamp((cur.eMax-cur.eMin)*0.35,3,40); U.eMinU.value=cur.eMin;
     U.gfC.value.set(0.86*tint[0],0.88*tint[1],0.9*tint[2]);
-  }else{U.fogN.value=S*1.5;U.fogF.value=S*6;}
+  }else{U.fogN.value=S*0.35;U.fogF.value=S*5;}
   // natte grond / sneeuwdek
   U.wet.value=w&&wx.rain?clamp((w._p3||0)/1.5,0,1)*0.9:0;
   U.snow.value=w&&wx.rain?clamp((w.snow_depth||0)/0.04,0,1):0;
   fx.storm=!!(w&&wx.rain&&w.weather_code>=95);
+  U.wave.value=w?0.05+Math.min(w.wind_speed_10m||0,16)*0.018:0.12; applySeason();
   updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w); updateCelest();
   // tekst
   if($('wxNow')){
@@ -2378,7 +2416,7 @@ async function loadBuildings(){
     if(!bld.data){const q=`[out:json][timeout:50];(way["building"](${bx});rel["building"]["type"="multipolygon"](${bx}););out geom;`;let js=null,last;
       for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw new Error('HTTP '+r.status);js=await r.json();break;}catch(e){last=e;}}
       if(!js) throw last; bld.data=js;}
-    if(!bld.dsm&&inNL(cur.bb.lat,cur.bb.lon)){try{bld.dsm=await loadAHN(cur.bb,Math.min(801,Math.round(cur.bb.S/4)+1),'dsm_05m',1.6);}catch(e){console.warn('DSM',e);bld.dsm=false;}}
+    if(!bld.dsm&&inNL(cur.bb.lat,cur.bb.lon)){try{bld.dsm=await getDSM();}catch(e){console.warn('DSM',e);bld.dsm=false;}}
     if(tk!==bld.tok||!cur) return;
     buildBuildings(); setDet('');
   }catch(e){console.warn('gebouwen',e);if(tk===bld.tok) setDet('gebouwen niet geladen');}
@@ -2654,9 +2692,128 @@ function lifeDeckY(w,s,x,z){ // hoogte voor voertuigen op een brug
   const r=w.src;if(!r) return null;bridgeEnds(r);return (deckElev(r,s/w.len,x,z)-cur.eMin)*exag()+0.2;
 }
 
+$('tWater').onchange=()=>{if(terrain) terrain.material.uniforms.lcOn.value=$('tWater').checked&&lcv.tex?1:0;};
+$('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAtm').checked?1:0;};
+$('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
+if(state.season) $('season').value=state.season;
+$('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
+
+/* =================================================================
+   🍂 SEIZOENEN, 💧 WATER-/HEIDEKAART en 🌳 ECHTE BOOMHOOGTES (AHN)
+   ================================================================= */
+// --- seizoenen: gewichten (lente, zomer, herfst, winter) naar datum van de tijdschuif
+const SEAS_K=[[0,[0,0,0,1]],[70,[0,0,0,1]],[110,[1,0,0,0]],[150,[0,1,0,0]],[245,[0,1,0,0]],[285,[0,0,1,0]],[318,[0,0,0.35,0.65]],[340,[0,0,0,1]],[366,[0,0,0,1]]];
+const SEAS_FIX={spring:[1,0,0,0],summer:[0,1,0,0],autumn:[0,0,1,0],winter:[0,0,0,1]};
+function doyOf(t){const d=new Date(t);return (d-new Date(d.getFullYear(),0,1))/864e5;}
+function seasonW(){
+  const m=$('season')?$('season').value:'auto'; let v;
+  if(m!=='auto') v=SEAS_FIX[m]; else{const d=doyOf(typeof wxTime==='function'?wxTime():Date.now());
+    let i=0;while(i<SEAS_K.length-2&&SEAS_K[i+1][0]<=d)i++;const [d0,a]=SEAS_K[i],[d1,b]=SEAS_K[i+1],f=clamp((d-d0)/((d1-d0)||1),0,1);v=a.map((x,k)=>x+(b[k]-x)*f);}
+  return {x:v[0],y:v[1],z:v[2],w:v[3]};
+}
+function heathK(){const m=$('season')?$('season').value:'auto';if(m==='summer') return 0.8;if(m!=='auto') return 0;const d=doyOf(typeof wxTime==='function'?wxTime():Date.now());return clamp(1-Math.abs(d-232)/28,0,1);}
+const TC={con:new THREE.Color('#2c5a33'),conW:new THREE.Color('#25472b'),sp:new THREE.Color('#79b546'),su:new THREE.Color('#4d7f35'),wi:new THREE.Color('#6e645b'),
+  au:['#c88a2a','#d9a83c','#b5541c','#8f3b1b','#a9a23a','#c9702a'].map(c=>new THREE.Color(c))};
+const _tc=new THREE.Color();
+function treeColor(out,con,t){
+  const w=seasonW();
+  if(con){out.copy(TC.con).lerp(TC.conW,w.w);}
+  else{const au=TC.au[Math.floor(t.c*TC.au.length)%TC.au.length];
+    out.setRGB(0,0,0).add(_tc.copy(TC.sp).multiplyScalar(w.x)).add(_tc.copy(TC.su).multiplyScalar(w.y)).add(_tc.copy(au).multiplyScalar(w.z)).add(_tc.copy(TC.wi).multiplyScalar(w.w));}
+  out.offsetHSL((t.c-0.5)*0.04,0,(t.c-0.5)*0.1);
+}
+let seasKey='';
+function applySeason(force){
+  if(!terrain) return; const w=seasonW(),hk=heathK(),U=terrain.material.uniforms,key=[w.x,w.y,w.z,w.w,hk].map(v=>v.toFixed(2)).join('|');
+  U.seas.value.set(w.x,w.y,w.z,w.w); U.heathK.value=hk;
+  if(key===seasKey&&!force) return; seasKey=key;
+  const c=new THREE.Color();
+  for(const m of treeMeshes){m.userData.list.forEach((t,i)=>{treeColor(c,m.userData.con,t);m.setColorAt(i,c);});if(m.instanceColor) m.instanceColor.needsUpdate=true;}
+  placeTrees();
+  const e=$('seasV'); if(e){const n=[['lente',w.x],['zomer',w.y],['herfst',w.z],['winter',w.w]].sort((a,b)=>b[1]-a[1]);e.textContent=n[0][0]+(hk>0.3?' · heide bloeit':'');}
+}
+
+// --- water en heide uit OpenStreetMap → masker voor glinsteringen en heidekleur
+const lcv={key:'',tok:0,tex:null};
+async function loadLandcover(){
+  if(!cur||!terrain) return; const tk=++lcv.tok,S=cur.bb.S,big=S>15000,b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`;
+  const q=`[out:json][timeout:60];(way["natural"="water"](${bx});rel["natural"="water"](${bx});way["waterway"="riverbank"](${bx});way["landuse"~"^(reservoir|basin)$"](${bx});
+way["waterway"~"^(river|canal${big?'':'|stream|ditch|drain'})$"](${bx});way["natural"="heath"](${bx});rel["natural"="heath"](${bx}););out geom;`;
+  let js=null;for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw 0;js=await r.json();break;}catch(e){}}
+  if(!js||tk!==lcv.tok||!cur||!terrain) return;
+  const M=S>15000?2048:2048,cv=document.createElement('canvas');cv.width=cv.height=M;const x=cv.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,M,M);
+  const P=([la,lo])=>llTo(cur.bb,M,la,lo), ring=r=>{r.forEach((p,i)=>{const [a,c]=P(p);i?x.lineTo(a,c):x.moveTo(a,c);});x.closePath();};
+  const WW={river:25,canal:16,stream:3,ditch:2,drain:2}, pm=M/S;
+  const polys=(el)=>{if(el.type==='way'&&el.geometry) return {o:[el.geometry.map(g=>[g.lat,g.lon])],i:[]};
+    if(el.type==='relation'&&el.members){const o=[],i=[];for(const m of el.members) if(m.geometry)(m.role==='inner'?i:o).push(m.geometry.map(g=>[g.lat,g.lon]));return {o:joinRings(o),i:joinRings(i)};}return null;};
+  x.globalCompositeOperation='lighter';
+  for(const el of js.elements){const t=el.tags||{};
+    if(t.waterway&&WW[t.waterway]&&el.type==='way'&&el.geometry){x.strokeStyle='rgb(255,0,0)';x.lineCap='round';x.lineJoin='round';x.lineWidth=Math.max(1.5,WW[t.waterway]*pm);
+      x.beginPath();el.geometry.forEach((g,i)=>{const [a,c]=P([g.lat,g.lon]);i?x.lineTo(a,c):x.moveTo(a,c);});x.stroke();continue;}
+    const pg=polys(el);if(!pg) continue; const heath=t.natural==='heath';
+    x.globalCompositeOperation='lighter';x.fillStyle=heath?'rgb(0,255,0)':'rgb(255,0,0)';x.beginPath();pg.o.forEach(ring);x.fill('evenodd');
+    if(pg.i.length){x.globalCompositeOperation='destination-out';x.beginPath();pg.i.forEach(ring);x.fill();x.globalCompositeOperation='lighter';}}
+  if(cur.feats&&cur.feats.forests){x.fillStyle='rgb(0,0,255)';for(const f of cur.feats.forests){x.globalCompositeOperation='lighter';x.beginPath();f.outer.forEach(ring);x.fill('evenodd');
+    if(f.inner.length){x.globalCompositeOperation='destination-out';x.beginPath();f.inner.forEach(ring);x.fill();}}}
+  x.globalCompositeOperation='source-over';
+  if(lcv.tex) lcv.tex.dispose(); lcv.tex=new THREE.CanvasTexture(cv); lcv.tex.minFilter=THREE.LinearMipmapLinearFilter;
+  const U=terrain.material.uniforms; U.lcMap.value=lcv.tex; U.lcOn.value=$('tWater').checked?1:0;
+}
+
+// --- echte boomhoogtes: kroonhoogte = AHN DSM − DTM, bomen op de toppen
+const dsmC={key:'',p:null};
+function getDSM(){const key=cur.bb.x0+'|'+cur.bb.S;if(dsmC.key!==key){dsmC.key=key;dsmC.p=loadAHN(cur.bb,Math.min(801,Math.round(cur.bb.S/4)+1),'dsm_05m',1.6);}return dsmC.p;}
+async function getBuildingData(){
+  if(bld.data&&bld.bbKey===cur.bb.x0+'|'+cur.bb.S) return bld.data;
+  const b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`,q=`[out:json][timeout:50];(way["building"](${bx});rel["building"]["type"="multipolygon"](${bx}););out geom;`;
+  for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw 0;const js=await r.json();bld.data=js;bld.bbKey=cur.bb.x0+'|'+cur.bb.S;return js;}catch(e){}}
+  return null;
+}
+const aht={tok:0};
+function ahnTreesOn(){const c=$('tAhnT');return c&&c.checked;}
+async function loadAhnTrees(){
+  if(!cur||!ahnTreesOn()||!inNL(cur.bb.lat,cur.bb.lon)||cur.src.startsWith('AHN DSM')||cur.bb.S>8000||!cur.src.startsWith('AHN')) return;
+  const tk=++aht.tok; setDet('🌳 boomhoogtes uit AHN laden…');
+  try{
+    const [dsm,bd]=await Promise.all([getDSM(),getBuildingData()]); if(tk!==aht.tok||!cur) return;
+    const D=dsm.E,m=Math.round(Math.sqrt(D.length)),S=cur.bb.S,cell=S/(m-1);
+    // gebouwen uitsluiten
+    const bc=document.createElement('canvas');bc.width=bc.height=m;const bx=bc.getContext('2d',{willReadFrequently:true});
+    if(bd){bx.fillStyle='#fff';bx.strokeStyle='#fff';bx.lineWidth=2;for(const el of bd.elements||[]){const rings=el.type==='way'&&el.geometry?[el.geometry]:(el.members||[]).filter(q=>q.geometry&&q.role!=='inner').map(q=>q.geometry);
+      for(const r of rings){bx.beginPath();r.forEach((g,i)=>{const [a,c]=llTo(cur.bb,m-1,g.lat,g.lon);i?bx.lineTo(a+0.5,c+0.5):bx.moveTo(a+0.5,c+0.5);});bx.closePath();bx.fill();bx.stroke();}}}
+    const bm=bx.getImageData(0,0,m,m).data;
+    const chm=new Float32Array(m*m);
+    for(let j=0;j<m;j++)for(let i=0;i<m;i++){const k=j*m+i;chm[k]=bm[k*4+3]>40?0:D[k]-elevAt(-S/2+i*cell,-S/2+j*cell);}
+    // toppen zoeken
+    const r=cell<=3?2:1,tops=[];
+    for(let j=r;j<m-r;j++)for(let i=r;i<m-r;i++){const k=j*m+i,h=chm[k];if(!(h>2.5&&h<50)) continue;let mx=true;
+      for(let y=-r;y<=r&&mx;y++)for(let xx=-r;xx<=r;xx++){if(!y&&!xx) continue;if(chm[k+y*m+xx]>h){mx=false;break;}}
+      if(mx) tops.push({x:-S/2+i*cell,z:-S/2+j*cell,h});}
+    const maxT=state.hiq?30000:14000; let list=tops; if(list.length>maxT){for(let i=list.length-1;i>0;i--){const q=Math.floor(Math.random()*(i+1));[list[i],list[q]]=[list[q],list[i]];}list=list.slice(0,maxT);}
+    // naald/loof uit OSM-bos (als bekend), anders loof
+    const lm=cur.leafMask;
+    const trees=list.map(t=>{let con=false;if(lm){const px=Math.round((t.x+S/2)/S*(lm.M-1)),py=Math.round((t.z+S/2)/S*(lm.M-1)),o=(py*lm.M+px)*4;
+        if(lm.d[o+3]>127){const rr=lm.d[o],gg=lm.d[o+1];con=(rr>127&&gg<128)?true:(gg>127&&rr<128)?false:Math.random()<0.45;}}
+      return {x:t.x+(Math.random()-0.5)*cell*0.6,z:t.z+(Math.random()-0.5)*cell*0.6,h:t.h,con,c:Math.random(),s:1};});
+    // obstakels voor zicht/schaduw: DSM op het terreinraster
+    const n=cur.n,O=new Float32Array(n*n);
+    for(let j=0;j<n;j++)for(let i=0;i<n;i++){const k=j*n+i;O[k]=Math.max(cur.E[k],bilin(D,m,m,i/(n-1)*(m-1),j/(n-1)*(m-1)));}
+    cur.dsmObst=O; cur.obst=null;
+    // bomen vervangen
+    for(const tm of treeMeshes){world.remove(tm);tm.geometry.dispose();} treeMeshes=[];
+    const cg=new THREE.ConeGeometry(0.5,1,7);cg.translate(0,0.5,0);const bg=new THREE.IcosahedronGeometry(0.5,1);bg.translate(0,0.55,0);
+    const mk=(geo,L,con)=>{const tm=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0xffffff,flatShading:true}),Math.max(1,L.length));tm.count=L.length;const c=new THREE.Color();
+      L.forEach((t,i)=>{treeColor(c,con,t);tm.setColorAt(i,c);});tm.userData={list:L,con,vf:1};world.add(tm);return tm;};
+    treeMeshes=[mk(cg,trees.filter(t=>t.con),true),mk(bg,trees.filter(t=>!t.con),false)];
+    cur.trees=trees; placeTrees(); seasKey=''; applySeason();
+    if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();}
+    setDet(''); const f=$('feat'); if(f) f.textContent=f.textContent.replace(/\d+ bomen/,trees.length+' bomen (AHN)');
+  }catch(e){console.warn('AHN-bomen',e);if(tk===aht.tok) setDet('boomhoogtes niet geladen – bos uit OSM');}
+}
+
 </script>
 </body>
 </html>
