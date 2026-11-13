@@ -200,7 +200,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tLife" checked> Verkeer &amp; leven</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v16 · 13-11 14:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v17 · 13-11 14:25. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -365,7 +365,7 @@ const rect=L.rectangle([[0,0],[0,0]],{color:'#e11d48',weight:2.5,fillOpacity:.06
 const gridLayer=L.layerGroup().addTo(map);
 const cross=L.circleMarker([0,0],{radius:4,color:'#e11d48',weight:2,fillOpacity:1,interactive:false}).addTo(map);
 
-const SIZES=[1,2,3,5,8,12];
+const SIZES=[1,2,3,5,8,12,20,30,50];
 for(const s of SIZES){const b=document.createElement('button');b.className='chip'+(s===state.size?' on':'');b.textContent=s+' km';
   b.onclick=()=>{state.size=s;document.querySelectorAll('#sizes .chip').forEach(c=>c.classList.toggle('on',c===b));updateSel();
     const bb=bbLatLng(bboxFor(map.getCenter().lat,map.getCenter().lng,s*1000));map.fitBounds([[bb.s,bb.w],[bb.n,bb.e]],{padding:[40,40],maxZoom:map.getZoom()<16?map.getZoom():16});};
@@ -503,7 +503,7 @@ async function loadAHN(bb,n,cov,ovs=1.6){
   if(((X1-X0)/0.5)*((Y1-Y0)/0.5)<5e6) tries.push(base);
   let buf=null, lastErr;
   for(const u of tries){
-    try{const r=await fetch(u); if(!r.ok) throw new Error('HTTP '+r.status); const b=await r.arrayBuffer(); const h=new Uint8Array(b,0,2);
+    try{const ac=new AbortController(),to=setTimeout(()=>ac.abort(),bb.S>15000?30000:45000);const r=await fetch(u,{signal:ac.signal}); if(!r.ok) throw new Error('HTTP '+r.status); const b=await r.arrayBuffer(); clearTimeout(to); const h=new Uint8Array(b,0,2);
       if((h[0]===0x49&&h[1]===0x49)||(h[0]===0x4d&&h[1]===0x4d)){buf=b;break;} throw new Error('geen TIFF');}
     catch(e){lastErr=e;}
   }
@@ -581,17 +581,17 @@ async function loadOverlay(bb,key,size){
 
 async function loadOverpass(bb){
   const b=bbLatLng(bb), bx=`${b.s},${b.w},${b.n},${b.e}`;
-  const q=`[out:json][timeout:40];(
-way["landuse"="forest"](${bx});way["natural"="wood"](${bx});rel["landuse"="forest"](${bx});rel["natural"="wood"](${bx});
-way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|cycleway|bridleway)$"](${bx});
+  const S=bb.S, big=S>15000, huge=S>25000;
+  const roadRe=huge?'motorway|trunk|primary|secondary':big?'motorway|trunk|primary|secondary|tertiary':'motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|cycleway|bridleway';
+  const q=`[out:json][timeout:${big?90:40}][maxsize:${big?300000000:120000000}];(
+${big?'':`way["landuse"="forest"](${bx});way["natural"="wood"](${bx});rel["landuse"="forest"](${bx});rel["natural"="wood"](${bx});`}
+way["highway"~"^(${roadRe})$"](${bx});
 node["natural"~"^(peak|hill)$"](${bx});
-node["place"~"^(city|town|village|hamlet)$"](${bx});
-nwr["man_made"~"^(tower|water_tower|windmill|lighthouse|mast)$"](${bx});
-nwr["historic"~"^(memorial|monument|archaeological_site|castle|windmill|ruins|megalith)$"](${bx});
-nwr["amenity"="place_of_worship"](${bx});
-nwr["tourism"~"^(viewpoint|attraction)$"](${bx});
+node["place"~"^(${big?'city|town|village':'city|town|village|hamlet'})$"](${bx});
+nwr["man_made"~"^(${big?'lighthouse':'tower|water_tower|windmill|lighthouse|mast'})$"](${bx});
+${big?`nwr["man_made"="tower"]["tower:type"="observation"](${bx});`:`nwr["historic"~"^(memorial|monument|archaeological_site|castle|windmill|ruins|megalith)$"](${bx});
+nwr["amenity"="place_of_worship"](${bx});nwr["tourism"~"^(viewpoint|attraction)$"](${bx});nwr["natural"="water"]["name"](${bx});`}
 way["landuse"="military"](${bx});
-nwr["natural"="water"]["name"](${bx});
 );out geom;`;
   const eps=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
   let last;
@@ -642,6 +642,7 @@ function frame(t,xrFrame){
   if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); if(tmeshes.life) lifeFrame(performance.now()); renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
+  if(cur){const dd=camera.position.distanceTo(controls.target),nn=clamp(dd/400,0.3,Math.max(0.5,cur.bb.S/2000));if(Math.abs(nn-camera.near)/camera.near>0.25){camera.near=nn;camera.updateProjectionMatrix();}}
   if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
   if(tmeshes.me) meRot();
   if(tmeshes.life) lifeFrame(performance.now());
@@ -690,7 +691,7 @@ function mkSurf(bb,cv){
 
 async function build(p){
   const tk=++token; disposeAll(); cur=null; $('feat').textContent='';
-  const bb=bboxFor(p.lat,p.lon,p.sizeKm*1000), n=p.hiq?513:321;
+  const big=p.sizeKm>=20, bb=bboxFor(p.lat,p.lon,p.sizeKm*1000), n=p.hiq?(big?769:513):(big?449:321);
   const maxTex=Math.min(maxTexCap,p.hiq?4096:2048);
   let dem, note='';
   try{
@@ -796,7 +797,7 @@ function setView(m){
   if(!cur) return; const S=cur.bb.S, h=(cur.eMax-cur.eMin)*exag();
   controls.target.set(0,h*0.4,0);
   camera.near=Math.max(0.5,S/2000); camera.far=S*20; camera.updateProjectionMatrix();
-  controls.minDistance=S*0.01; controls.maxDistance=S*3;
+  controls.minDistance=Math.min(S*0.01,40); controls.maxDistance=S*3;
   if(m==='top') camera.position.set(0,S*1.25,S*0.001);
   else if(m==='low') camera.position.set(0,h+S*0.08,S*0.55);
   else camera.position.set(0,S*0.55,S*0.75);
@@ -813,7 +814,7 @@ function maybePatch(){
   if(!cur||!terrain||!$('tDetail').checked||!running) return;
   const S=cur.bb.S, dist=camera.position.distanceTo(controls.target);
   if(dist>S*0.4){if(patch) removePatch(); return;}
-  const D=clamp(dist*1.5,Math.max(120,S/20),S/2.2);
+  const D=clamp(dist*1.5,150,S>15000?S/3:S/2.2);
   const cx=clamp(controls.target.x,-S/2+D/2,S/2-D/2), cz=clamp(controls.target.z,-S/2+D/2,S/2-D/2);
   if(patch){const u=patch.userData; if(Math.abs(u.D-D)/D<0.35&&Math.hypot(u.cx-cx,u.cz-cz)<D*0.2) return;}
   loadPatch(cx,cz,D);
@@ -1548,7 +1549,7 @@ function getNoise(){
 }
 function buildClouds(cov,base,strat){
   tRemove('clouds'); const S=cur.bb.S, span=2*S, puffs=[];
-  const nC=strat?Math.round(30+cov*30):Math.round(3+cov*26);
+  const af=clamp((S/3000)**2,1,12), nC=Math.round((strat?30+cov*30:3+cov*26)*Math.min(af,strat?3:8));
   for(let c=0;c<nC;c++){const cx=(Math.random()-0.5)*span,cz=(Math.random()-0.5)*span,R=strat?500+Math.random()*700:250+Math.random()*500;
     const np=strat?7:8+Math.floor(Math.random()*9);
     for(let p=0;p<np;p++){const a=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*R*(strat?1.2:0.8);
