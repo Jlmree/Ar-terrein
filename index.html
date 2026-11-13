@@ -1502,7 +1502,7 @@ function uiAR(){
   else $('arDiag').innerHTML=dg.join('<br>');
 }
 // --- WebXR tafel
-let xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
+let xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
 function arErr(m){const d=$('arDiag');if(d) d.innerHTML+='<br>❌ '+m; toast(m);}
 async function startXR(){
   if(!navigator.xr){arErr('WebXR niet beschikbaar (gebruik Chrome op Android, via https)');return;}
@@ -1516,6 +1516,7 @@ async function startXR(){
       catch(e2){console.warn(e2);
       if(!(location.protocol==='https:'||location.hostname==='localhost')) throw new Error('Chrome weigert AR voor een lokaal bestand ('+location.protocol+'). Open de pagina via een https-webadres.');
       s=await navigator.xr.requestSession('immersive-ar');}}
+    xrCam={near:camera.near,far:camera.far}; camera.near=0.01; camera.far=100; camera.updateProjectionMatrix(); // dichtbij mogen komen
     renderer.xr.setReferenceSpaceType('local'); await renderer.xr.setSession(s);
     xrRef=renderer.xr.getReferenceSpace();
     try{const viewer=await s.requestReferenceSpace('viewer'); xrHit=await s.requestHitTestSource({space:viewer});}
@@ -1527,7 +1528,7 @@ async function startXR(){
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
-  }catch(e){console.warn(e);$('xrUI').classList.add('hidden');arErr('AR starten mislukt: '+(e.name||'')+' '+(e.message||e));}
+  }catch(e){console.warn(e);$('xrUI').classList.add('hidden');if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}arErr('AR starten mislukt: '+(e.name||'')+' '+(e.message||e));}
 }
 function xrPlaceFixed(){ // zonder vlakherkenning: 1 m voor je, 40 cm lager
   const k=xrSize/cur.bb.S; xrPlaneY=-0.4; world.scale.setScalar(k); world.position.set(0,xrPlaneY-(cur.skirtBase||0)*k,-1);
@@ -1549,6 +1550,7 @@ function xrRescale(f){xrSize=clamp(xrSize*f,0.15,5);const k=xrSize/cur.bb.S;$('x
 function endXR(){
   xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
+  if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 for(const id of ['xrMinus','xrPlus','xrRot','xrMove','xrExit']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
