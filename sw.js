@@ -1,5 +1,5 @@
 /* Terrein3D service worker – offline cache */
-const APP = 't3d-app-v12';
+const APP = 't3d-app-v13';
 const DATA = 't3d-data-v1';
 const LIVE = /(open-meteo\.com|rainviewer\.com|nominatim\.openstreetmap\.org)$/;
 const NOCACHE = /(hivemq\.com|emqx\.io|mosquitto\.org)$/;
