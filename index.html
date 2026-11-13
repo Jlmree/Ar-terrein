@@ -174,7 +174,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
     <div class="head" id="ctrlHead"><span>⚙ Instellingen</span><span id="feat"></span><span id="arrow">▲</span></div>
     <div class="body">
       <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
-      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
+      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
       <div class="row"><span class="t">Verkeerstempo</span><input type="range" id="lifeSp" min="1" max="10" step="1" value="1"><span class="val" id="lifeSpV">1×</span></div>
       <div class="row"><span class="t">Hoogtelijnen</span><select id="ci">
         <option value="auto">Automatisch</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="2.5">2,5 m</option><option value="5">5 m</option><option value="10">10 m</option><option value="25">25 m</option><option value="50">50 m</option><option value="0">Uit</option>
@@ -204,7 +204,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v20 · 13-11 15:35. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v21 · 13-11 15:40. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -2715,7 +2715,7 @@ $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
    ================================================================= */
 // --- seizoenen: gewichten (lente, zomer, herfst, winter) naar datum van de tijdschuif
 const SEAS_K=[[0,[0,0,0,1]],[70,[0,0,0,1]],[110,[1,0,0,0]],[150,[0,1,0,0]],[245,[0,1,0,0]],[285,[0,0,1,0]],[318,[0,0,0.35,0.65]],[340,[0,0,0,1]],[366,[0,0,0,1]]];
-const SEAS_FIX={spring:[1,0,0,0],summer:[0,1,0,0],autumn:[0,0,1,0],winter:[0,0,0,1]};
+const SEAS_FIX={off:[0,1,0,0],spring:[1,0,0,0],summer:[0,1,0,0],autumn:[0,0,1,0],winter:[0,0,0,1]};
 function doyOf(t){const d=new Date(t);return (d-new Date(d.getFullYear(),0,1))/864e5;}
 function seasonW(){
   const m=$('season')?$('season').value:'auto'; let v;
@@ -2723,7 +2723,7 @@ function seasonW(){
     let i=0;while(i<SEAS_K.length-2&&SEAS_K[i+1][0]<=d)i++;const [d0,a]=SEAS_K[i],[d1,b]=SEAS_K[i+1],f=clamp((d-d0)/((d1-d0)||1),0,1);v=a.map((x,k)=>x+(b[k]-x)*f);}
   return {x:v[0],y:v[1],z:v[2],w:v[3]};
 }
-function heathK(){const m=$('season')?$('season').value:'auto';if(m==='summer') return 0.8;if(m!=='auto') return 0;const d=doyOf(typeof wxTime==='function'?wxTime():Date.now());return clamp(1-Math.abs(d-232)/28,0,1);}
+function heathK(){const m=$('season')?$('season').value:'auto';if(m==='off') return 0;if(m==='summer') return 0.8;if(m!=='auto') return 0;const d=doyOf(typeof wxTime==='function'?wxTime():Date.now());return clamp(1-Math.abs(d-232)/28,0,1);}
 const TC={con:new THREE.Color('#2c5a33'),conW:new THREE.Color('#25472b'),sp:new THREE.Color('#79b546'),su:new THREE.Color('#4d7f35'),wi:new THREE.Color('#6e645b'),
   au:['#c88a2a','#d9a83c','#b5541c','#8f3b1b','#a9a23a','#c9702a'].map(c=>new THREE.Color(c))};
 const _tc=new THREE.Color();
@@ -2742,7 +2742,7 @@ function applySeason(force){
   const c=new THREE.Color();
   for(const m of treeMeshes){m.userData.list.forEach((t,i)=>{treeColor(c,m.userData.con,t);m.setColorAt(i,c);});if(m.instanceColor) m.instanceColor.needsUpdate=true;}
   placeTrees();
-  const e=$('seasV'); if(e){const n=[['lente',w.x],['zomer',w.y],['herfst',w.z],['winter',w.w]].sort((a,b)=>b[1]-a[1]);e.textContent=n[0][0]+(hk>0.3?' · heide bloeit':'');}
+  const e=$('seasV'); if(e){const n=[['lente',w.x],['zomer',w.y],['herfst',w.z],['winter',w.w]].sort((a,b)=>b[1]-a[1]);e.textContent=$('season').value==='off'?'':n[0][0]+(hk>0.3?' · heide bloeit':'');}
 }
 
 // --- water en heide uit OpenStreetMap → masker voor glinsteringen en heidekleur
