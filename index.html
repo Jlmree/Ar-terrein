@@ -174,6 +174,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
     <div class="head" id="ctrlHead"><span>⚙ Instellingen</span><span id="feat"></span><span id="arrow">▲</span></div>
     <div class="body">
       <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
+      <div class="row"><span class="t">Verkeerstempo</span><input type="range" id="lifeSp" min="1" max="10" step="1" value="1"><span class="val" id="lifeSpV">1×</span></div>
       <div class="row"><span class="t">Hoogtelijnen</span><select id="ci">
         <option value="auto">Automatisch</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="2.5">2,5 m</option><option value="5">5 m</option><option value="10">10 m</option><option value="25">25 m</option><option value="50">50 m</option><option value="0">Uit</option>
       </select></div>
@@ -196,9 +197,10 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label>
         <label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label>
         <label class="tg"><input type="checkbox" id="tBld" checked> 3D-gebouwen</label>
+        <label class="tg"><input type="checkbox" id="tLife" checked> Verkeer &amp; leven</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v14 · 13-11 13:40. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v15 · 13-11 14:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -224,7 +226,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
-  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="time">⏱ Tijd</button></div>
+  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="life" class="on">🚗 Verkeer</button><button data-l="time">⏱ Tijd</button></div>
   <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
   <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
@@ -637,11 +639,12 @@ function onResize(){if(!renderer) return; const w=innerWidth,h=innerHeight; rend
 const needle=document.getElementById('needle');
 let lastLblCheck=0;
 function frame(t,xrFrame){
-  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); renderer.render(scene,camera); return;}
+  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); if(tmeshes.life) lifeFrame(performance.now()); renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
   if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
   if(tmeshes.me) meRot();
+  if(tmeshes.life) lifeFrame(performance.now());
   needle.style.transform=`rotate(${controls.getAzimuthalAngle()}rad)`;
   renderer.render(scene,camera);
   if($('tLabels').checked){
@@ -1119,7 +1122,7 @@ function toolsExag(){
   placeClouds(); renderTac(); renderPeers(); renderMe();
   if(tmeshes.bld){clearTimeout(bld.exT);bld.exT=setTimeout(buildBuildings,150);}
 }
-function toolsFeatures(){if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
+function toolsFeatures(){if(lifeOn()) loadLife();if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
 /* ---------- paneel ---------- */
 let toolMode=null; const tb=$('toolB');
@@ -1733,7 +1736,7 @@ async function startXR(){
 function xrPlaceFixed(){ // zonder vlakherkenning: 1 m voor je, 40 cm lager
   const k=xrSize/cur.bb.S; xrPlaneY=-0.4; world.scale.setScalar(k); world.position.set(0,xrPlaneY-(cur.skirtBase||0)*k,-1);
   world.visible=true; xrPlaced=true; $('xrMsg').textContent='Geen tafelherkenning: terrein 1 m voor je geplaatst';}
-const xrL={tac:true,wx:true,sky:true,meas:true,peers:true,bld:true,time:false};
+const xrL={tac:true,wx:true,sky:true,meas:true,peers:true,bld:true,life:true,time:false};
 function xrLayersUI(){document.querySelectorAll('#xrLayers button').forEach(b=>b.classList.toggle('on',!!xrL[b.dataset.l]));$('xrWxRow').style.display=xrL.time&&xrWx?'':'none';}
 document.querySelectorAll('#xrLayers button').forEach(b=>b.onclick=()=>{const l=b.dataset.l;xrL[l]=!xrL[l];
   if(l==='wx'&&xrL.wx&&wx.enabled){fx.cKey='';applyWx();}
@@ -1745,7 +1748,7 @@ function xrApplyLayers(){
   if(tmeshes.celest) tmeshes.celest.visible=xrL.sky&&xrWx;
   for(const k of ['meas','vs']) if(tmeshes[k]) tmeshes[k].visible=xrL.meas;
   if(tmeshes.peers) tmeshes.peers.visible=xrL.peers; if(tmeshes.me) tmeshes.me.visible=xrL.peers;
-  if(tmeshes.tac) tmeshes.tac.visible=xrL.tac; if(tmeshes.bld) tmeshes.bld.visible=xrL.bld;
+  if(tmeshes.tac) tmeshes.tac.visible=xrL.tac; if(tmeshes.bld) tmeshes.bld.visible=xrL.bld; if(tmeshes.life) tmeshes.life.visible=xrL.life;
   if(terrain&&!(xrL.wx&&xrWx)){terrain.material.uniforms.cloudOn.value=0;terrain.material.uniforms.gfog.value=0;}
 }
 function xrUpdate(frame){
@@ -2424,6 +2427,178 @@ function buildBuildings(){
 $('tBld').onchange=()=>{state.bld=$('tBld').checked;lsSet('terrein3d',state);if(bldOn()) loadBuildings(); else {bld.tok++;tRemove('bld');}};
 if(state.bld===false) $('tBld').checked=false;
 
+
+/* =================================================================
+   🚗 LEVEN OP DE KAART – gesimuleerd verkeer over echte OSM-wegen,
+   treinen over het spoor, boten, fietsers, wandelaars, windmolens
+   ================================================================= */
+const life={key:'',extra:null,ways:[],graph:{},agents:[],tur:[],m:{},last:0,tok:0,rot:0};
+function lifeOn(){const c=$('tLife');return c&&c.checked;}
+const LIFE_ALLOW={car:['motorway','trunk','primary','secondary','tertiary','unclassified','residential','service'],truck:['motorway','trunk','primary','secondary','tertiary'],
+  tractor:['track','unclassified'],bike:['cycleway','path','residential','unclassified','tertiary'],walk:['path','footway','track','residential','bridleway'],boat:['canal','river'],train:['rail','light_rail','tram','narrow_gauge']};
+const LIFE_V={motorway:30,trunk:24,primary:21,secondary:19,tertiary:15,unclassified:12,residential:8,service:5,track:5};
+const DENS=[0.15,0.1,0.08,0.08,0.12,0.25,0.55,0.95,1,0.75,0.65,0.7,0.75,0.7,0.7,0.8,0.95,1,0.85,0.6,0.45,0.35,0.28,0.2];
+const ptKey=(x,z)=>Math.round(x*2)+','+Math.round(z*2);
+async function loadLife(){
+  if(!cur||!lifeOn()){lifeClear();return;}
+  const tk=++life.tok,key=cur.bb.x0+'|'+cur.bb.S;
+  if(life.key!==key){life.extra=null;life.key=key;}
+  if(!life.extra){
+    const b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`;
+    const q=`[out:json][timeout:40];(way["railway"~"^(rail|light_rail|tram|narrow_gauge)$"](${bx});node["railway"~"^(station|halt)$"](${bx});way["waterway"~"^(canal|river)$"](${bx});node["power"="generator"]["generator:source"="wind"](${bx});node["generator:source"="wind"](${bx}););out geom;`;
+    for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+      try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw new Error(r.status);life.extra=await r.json();break;}catch(e){console.warn('leven',e);}}
+    if(!life.extra) life.extra={elements:[]};
+  }
+  if(tk!==life.tok||!cur) return;
+  buildLife();
+}
+function lifeClear(){life.tok++;life.agents=[];life.tur=[];tRemove('life');life.m={};}
+function addWay(kind,cls,ll){
+  const pts=ll.map(([la,lo])=>ll2w(la,lo)); if(pts.length<2) return;
+  const cum=[0];for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  const len=cum[cum.length-1]; if(len<5) return;
+  const w={id:life.ways.length,kind,cls,pts,cum,len};life.ways.push(w);
+  pts.forEach((p,j)=>{const k=ptKey(p[0],p[1]);(life.graph[k]=life.graph[k]||[]).push({w,j});});
+}
+function wayPos(w,s,ag){ // positie + richting op afstand s
+  s=clamp(s,0,w.len); let i=ag&&ag.seg!=null?ag.seg:0; if(i>=w.cum.length-1) i=w.cum.length-2;
+  while(i<w.cum.length-2&&w.cum[i+1]<s) i++; while(i>0&&w.cum[i]>s) i--; if(ag) ag.seg=i;
+  const a=w.pts[i],b=w.pts[i+1],l=(w.cum[i+1]-w.cum[i])||1,f=(s-w.cum[i])/l;
+  return [a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,(b[0]-a[0])/l,(b[1]-a[1])/l];
+}
+function mkBox(L,W,H,y0=0){return new THREE.BoxGeometry(W,H,L).translate(0,y0+H/2,0);}
+function lifeMesh(key,geo,count,color){
+  const mat=new THREE.MeshLambertMaterial({color:color||0xffffff,flatShading:true});
+  const m=new THREE.InstancedMesh(geo,mat,Math.max(1,count));m.count=count;m.frustumCulled=false;m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);life.m[key]=m;return m;
+}
+function buildLife(){
+  tRemove('life'); life.ways=[];life.graph={};life.agents=[];life.tur=[];life.m={};
+  if(!cur) return;
+  for(const r of (cur.feats&&cur.feats.roads)||[]) addWay('road',r.cls,r.pts);
+  const stations=[];
+  for(const el of (life.extra&&life.extra.elements)||[]){const t=el.tags||{};
+    if(el.type==='way'&&el.geometry){const ll=el.geometry.map(g=>[g.lat,g.lon]);
+      if(t.railway) addWay('rail',t.railway,ll); else if(t.waterway) addWay('water',t.waterway,ll);}
+    else if(el.type==='node'){const [x,z]=ll2w(el.lat,el.lon);
+      if(t.railway) stations.push([x,z]); else if(inArea(x,z)) life.tur.push({x,z,ph:Math.random()*6.28,h:parseFloat(t.height)||parseFloat(t['generator:height'])||100});}}
+  life.stations=stations;
+  const pool=(type)=>{const al=LIFE_ALLOW[type];return life.ways.filter(w=>al.includes(w.cls));};
+  const total=ws=>ws.reduce((s,w)=>s+w.len,0);
+  const spawn=(type,n)=>{const ws=pool(type);if(!ws.length||n<1) return;const T=total(ws);
+    for(let k=0;k<n;k++){let r=Math.random()*T,w=ws[0];for(const c of ws){r-=c.len;if(r<=0){w=c;break;}}
+      life.agents.push({type,w,s:Math.random()*w.len,dir:Math.random()<0.5?1:-1,v:0,vmax:0,rank:Math.random(),col:Math.random(),seg:0,trail:[],stop:0,cool:0});}};
+  const S=cur.bb.S,carLen=total(pool('car'));
+  spawn('car',Math.round(clamp(carLen/220,4,240))); spawn('truck',Math.round(clamp(total(pool('truck'))/1500,0,30)));
+  spawn('tractor',Math.round(clamp(total(pool('tractor'))/2500,0,12))); spawn('bike',Math.round(clamp(total(pool('bike'))/900,0,45)));
+  spawn('walk',Math.round(clamp(total(pool('walk'))/700,0,60))); spawn('boat',Math.round(clamp(total(pool('boat'))/1500,0,12)));
+  const rl=total(pool('train')); if(rl>300) spawn('train',Math.round(clamp(rl/5000,1,4)));
+  const cnt=t=>life.agents.filter(a=>a.type===t).length, g=new THREE.Group();
+  const nCar=cnt('car'),nTr=cnt('truck'),nTra=cnt('tractor'),nB=cnt('bike'),nW=cnt('walk'),nBo=cnt('boat'),nT=cnt('train');
+  if(nCar){g.add(lifeMesh('car',mkBox(4.4,1.8,1.0,0.25),nCar));g.add(lifeMesh('carTop',mkBox(2.3,1.6,0.6,1.25),nCar,0x22303c));}
+  if(nTr){g.add(lifeMesh('truck',mkBox(12,2.5,3.2,0.4),nTr));g.add(lifeMesh('truckCab',mkBox(2.2,2.5,2.6,0.4).translate(0,0,-7),nTr,0xdddddd));}
+  if(nTra) g.add(lifeMesh('tractor',mkBox(3.8,2.1,2.6,0.2),nTra));
+  if(nB) g.add(lifeMesh('bike',mkBox(1.8,0.5,1.7,0),nB));
+  if(nW) g.add(lifeMesh('walk',new THREE.CylinderGeometry(0.28,0.3,1.75,6).translate(0,0.88,0),nW));
+  if(nBo){g.add(lifeMesh('boat',mkBox(20,4.2,1.6,-0.6),nBo,0xf1f5f9));g.add(lifeMesh('boatTop',mkBox(6,3.4,2.2,1).translate(0,0,5),nBo,0x1e3a5f));}
+  if(nT) g.add(lifeMesh('wagon',mkBox(21,3,3.6,0.5),nT*6,0xffc917));
+  if(life.tur.length){const n=life.tur.length;
+    g.add(lifeMesh('tower',new THREE.CylinderGeometry(1.4,2.6,1,10).translate(0,0.5,0),n,0xf1f5f9));
+    g.add(lifeMesh('nacelle',mkBox(10,4,4,-2),n,0xe2e8f0));
+    const bl=[0,1,2].map(i=>new THREE.BoxGeometry(1.8,55,0.5).translate(0,27.5,0).rotateZ(i*Math.PI*2/3).toNonIndexed());
+    const pos=[];for(const b of bl) pos.push(...b.attributes.position.array);const bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));bg.computeVertexNormals();
+    g.add(lifeMesh('rotor',bg,n,0xf8fafc));}
+  // verlichting 's nachts
+  const nL=(nCar+nTr+nTra+nT)*2+nB, lg=new THREE.BufferGeometry();
+  lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(Math.max(1,nL)*3),3));lg.setAttribute('color',new THREE.BufferAttribute(new Float32Array(Math.max(1,nL)*3),3));
+  const lp=new THREE.Points(lg,new THREE.PointsMaterial({size:5,sizeAttenuation:false,vertexColors:true,transparent:true,depthWrite:false}));lp.frustumCulled=false;lp.renderOrder=12;life.m.lights=lp;g.add(lp);
+  // kleuren per voertuig
+  const C=new THREE.Color(),pal={car:['#e5e7eb','#111827','#9ca3af','#1e3a8a','#b91c1c','#f8fafc','#4b5563','#0f766e','#a16207','#7c2d12'],truck:['#f8fafc','#b91c1c','#1d4ed8','#e5e7eb'],tractor:['#15803d','#b91c1c','#1d4ed8'],bike:['#111827','#b91c1c','#1d4ed8','#e5e7eb'],walk:['#1f2937','#334155','#7f1d1d','#065f46','#1e3a8a','#78350f','#be185d']};
+  const idx={};for(const a of life.agents){const k=a.type;a.i=idx[k]=(idx[k]??-1)+1;const m=life.m[k];if(m&&pal[k]){C.set(pal[k][Math.floor(a.col*pal[k].length)]);m.setColorAt(a.i,C);}}
+  for(const k of Object.keys(pal)) if(life.m[k]&&life.m[k].instanceColor) life.m[k].instanceColor.needsUpdate=true;
+  tAdd('life',g);
+  const f=$('feat');if(f) f.textContent=f.textContent.replace(/ · \d+ in beweging/,'')+` · ${life.agents.length} in beweging`;
+}
+function enterWay(a,o){ // stap over op weg o.w bij punt o.j
+  const w=o.w,last=w.pts.length-1;a.w=w;a.s=w.cum[o.j];
+  a.dir=o.j===0?1:o.j===last?-1:(Math.random()<0.5?1:-1);
+  a.seg=a.dir>0?Math.min(o.j,last-1):Math.max(0,o.j-1);a.lastSeg=a.seg;
+}
+function junction(a,v){ // kruispunt bij punt v van de huidige weg
+  const w=a.w,p=w.pts[v],al=LIFE_ALLOW[a.type],opts=(life.graph[ptKey(p[0],p[1])]||[]).filter(o=>o.w!==w&&al.includes(o.w.cls));
+  return opts;
+}
+function nextWay(a){ // aan het eind van een weg: kies een aansluitende weg
+  const w=a.w,v=a.dir>0?w.pts.length-1:0,opts=junction(a,v);
+  if(!opts.length){a.dir=-a.dir;a.s=clamp(a.s,0,w.len);return;}
+  enterWay(a,opts[Math.floor(Math.random()*opts.length)]);
+}
+function maybeTurn(a){ // halverwege een weg afslaan bij een kruising
+  const i=a.seg; if(a.lastSeg==null){a.lastSeg=i;return;} if(i===a.lastSeg) return;
+  const v=a.dir>0?Math.max(i,a.lastSeg):Math.min(i,a.lastSeg)+1; a.lastSeg=i;
+  if(v<=0||v>=a.w.pts.length-1) return;
+  const opts=junction(a,v); if(!opts.length||Math.random()>(a.type==='train'?0.15:0.35)) return;
+  const over=Math.abs(a.s-a.w.cum[v]); enterWay(a,opts[Math.floor(Math.random()*opts.length)]); a.s=clamp(a.s+a.dir*over,0,a.w.len);
+}
+const _lm=new THREE.Matrix4(),_lq=new THREE.Quaternion(),_lp=new THREE.Vector3(),_ls=new THREE.Vector3(),_lY=new THREE.Vector3(0,1,0),_lZ=new THREE.Vector3(0,0,1),_lq2=new THREE.Quaternion();
+function lifeFrame(now){
+  if(!tmeshes.life||!cur) return;
+  const dt=Math.min(0.1,life.last?(now-life.last)/1000:0.016);life.last=now;
+  const S=cur.bb.S,ar=renderer.xr.isPresenting,sp=+($('lifeSp')?$('lifeSp').value:1),T=wxTime(),hr=new Date(T).getHours(),dens=DENS[hr];
+  const dist=ar?0:camera.position.distanceTo(controls.target),vs=ar?clamp(S/700,1,12):clamp(dist/320,1,10);
+  const night=sunPos(T,cur.bb.lat,cur.bb.lon).alt<-2,ex=exag();
+  const L=life.m.lights,la=L.geometry.attributes.position.array,lc=L.geometry.attributes.color.array;let li=0;
+  const put=(m,i,x,y,z,yaw,s)=>{_lq.setFromAxisAngle(_lY,yaw);_lp.set(x,y,z);_ls.set(s,s,s);_lm.compose(_lp,_lq,_ls);m.setMatrixAt(i,_lm);};
+  const hide=(m,i)=>{_lm.makeScale(0,0,0);m.setMatrixAt(i,_lm);};
+  const light=(x,y,z,r,g,b)=>{la[li*3]=x;la[li*3+1]=y;la[li*3+2]=z;lc[li*3]=r;lc[li*3+1]=g;lc[li*3+2]=b;li++;};
+  for(const a of life.agents){
+    const act=a.type==='train'||a.type==='boat'||(a.type==='walk'||a.type==='bike'?(hr>=6&&hr<=22&&a.rank<dens*1.1):a.rank<dens);
+    const m=life.m[a.type==='train'?'wagon':a.type];
+    if(!act){if(a.type==='car'){hide(m,a.i);hide(life.m.carTop,a.i);}else if(a.type==='truck'){hide(m,a.i);hide(life.m.truckCab,a.i);}else if(a.type==='boat'){hide(m,a.i);hide(life.m.boatTop,a.i);}else hide(m,a.i);continue;}
+    // snelheid
+    let vmax=a.type==='car'?(LIFE_V[a.w.cls]||10)*(0.85+a.col*0.3):a.type==='truck'?Math.min(24,LIFE_V[a.w.cls]||15):a.type==='tractor'?6:a.type==='bike'?4.5+a.col*1.5:a.type==='walk'?1.2+a.col*0.4:a.type==='boat'?2.5+a.col:28;
+    if(a.type==='train'){ // stoppen bij stations
+      if(a.stop>0){a.stop-=dt*sp;vmax=0;} else if(a.cool<=0){const [x,z]=wayPos(a.w,a.s,a);for(const st of life.stations) if(Math.hypot(st[0]-x,st[1]-z)<45){a.stop=25;a.cool=60;break;}} a.cool-=dt*sp;}
+    a.v+=(vmax-a.v)*Math.min(1,dt*sp*(a.type==='train'?0.25:1.2));
+    a.s+=a.dir*a.v*dt*sp; let guard=0;
+    while((a.s<0||a.s>a.w.len)&&guard++<4){const over=a.s<0?-a.s:a.s-a.w.len;nextWay(a);a.s+=a.dir*over;}
+    wayPos(a.w,a.s,a); maybeTurn(a);
+    const [x0,z0,tx0,tz0]=wayPos(a.w,a.s,a),tx=tx0*a.dir,tz=tz0*a.dir;
+    const side=a.type==='walk'?0.8:a.type==='bike'?2.2:a.type==='boat'?3:a.type==='train'?0:1.7;
+    const x=x0-tz*side*vs*(a.type==='train'?0:1), z=z0+tx*side*vs*(a.type==='train'?0:1); // rechts rijden
+    const inA=inArea(x,z), y=inA?surfaceY(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2)):0, yaw=Math.atan2(-tx,-tz);
+    if(a.type==='train'){
+      const tr=a.trail,last=tr[tr.length-1]; if(!last||Math.hypot(last[0]-x,last[2]-z)>2){tr.push([x,y,z]);if(tr.length>220) tr.shift();}
+      const ts=clamp(vs*0.6,1,5),gap=22*ts;
+      for(let k=0;k<6;k++){const mi=a.i*6+k;let need=k*gap+gap*0.5,px=x,py=y,pz=z,qx=x-tx,qz=z-tz,ok=k===0;
+        if(k>0){for(let j=tr.length-1;j>0;j--){const p=tr[j],q=tr[j-1],l=Math.hypot(p[0]-q[0],p[2]-q[2]);if(need<=l){const f=need/l;px=p[0]+(q[0]-p[0])*f;pz=p[2]+(q[2]-p[2])*f;py=p[1]+(q[1]-p[1])*f;qx=q[0];qz=q[2];ok=true;break;}need-=l;}}
+        if(!ok||!inArea(px,pz)){hide(life.m.wagon,mi);continue;}
+        const wy=k===0?yaw:Math.atan2(-(px-qx),-(pz-qz));put(life.m.wagon,mi,px,py,pz,wy,ts);}
+      if(night&&inA) light(x-tx*11*ts,y+2*ts,z-tz*11*ts,1,1,0.85);
+      continue;}
+    if(!inA){if(a.type==='car'){hide(m,a.i);hide(life.m.carTop,a.i);}else if(a.type==='truck'){hide(m,a.i);hide(life.m.truckCab,a.i);}else if(a.type==='boat'){hide(m,a.i);hide(life.m.boatTop,a.i);}else hide(m,a.i);continue;}
+    const s=a.type==='boat'?Math.max(1,vs*0.6):vs, yy=y+(a.type==='walk'?Math.abs(Math.sin(now*0.006+a.col*9))*0.08*s:0);
+    put(m,a.i,x,yy,z,yaw,s);
+    if(a.type==='car') put(life.m.carTop,a.i,x,yy,z,yaw,s); else if(a.type==='truck') put(life.m.truckCab,a.i,x,yy,z,yaw,s); else if(a.type==='boat') put(life.m.boatTop,a.i,x,yy,z,yaw,s);
+    if(night&&a.type!=='walk'&&a.type!=='boat'){const hl=(a.type==='truck'?6.5:2.3)*s;
+      if(a.type!=='bike') light(x+tx*hl,y+0.8*s,z+tz*hl,1,0.97,0.8); light(x-tx*hl,y+0.8*s,z-tz*hl,1,0.1,0.08);}
+  }
+  for(const k of ['car','carTop','truck','truckCab','tractor','bike','walk','boat','boatTop','wagon']) if(life.m[k]) life.m[k].instanceMatrix.needsUpdate=true;
+  // windmolens
+  if(life.tur.length&&life.m.tower){
+    const w=wx.data?wxAt(T):null,wd=w?w.wind_direction_10m||240:240,ws=w?w.wind_speed_10m||6:6;life.rot+=Math.min(2,ws*0.16)*dt*sp*(ws>3?1:0.2);
+    const yaw=Math.atan2(-Math.sin(wd*D2R),Math.cos(wd*D2R));
+    life.tur.forEach((t,i)=>{const y=surfaceY(t.x,t.z),h=t.h;
+      _lq.setFromAxisAngle(_lY,yaw);_lp.set(t.x,y,t.z);_ls.set(1,h,1);_lm.compose(_lp,_lq,_ls);life.m.tower.setMatrixAt(i,_lm);
+      _lp.set(t.x,y+h,t.z);_ls.set(1,1,1);_lm.compose(_lp,_lq,_ls);life.m.nacelle.setMatrixAt(i,_lm);
+      _lq2.setFromAxisAngle(_lZ,life.rot+t.ph);const q=_lq.clone().multiply(_lq2);const off=new THREE.Vector3(0,0,-5.5).applyQuaternion(_lq);
+      _lp.set(t.x+off.x,y+h,t.z+off.z);_lm.compose(_lp,q,_ls);life.m.rotor.setMatrixAt(i,_lm);});
+    for(const k of ['tower','nacelle','rotor']) life.m[k].instanceMatrix.needsUpdate=true;}
+  L.geometry.setDrawRange(0,li);L.geometry.attributes.position.needsUpdate=true;L.geometry.attributes.color.needsUpdate=true;L.visible=li>0;
+}
+$('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
+if(state.life===false) $('tLife').checked=false;
+$('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
 </script>
 </body>
 </html>
