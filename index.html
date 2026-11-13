@@ -61,23 +61,23 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 .lbl.place>div::after{background:#1e293bd0}
 .lbl.off{display:none!important}
 .hud{position:absolute;z-index:10;top:calc(8px + env(safe-area-inset-top))}
-#back{left:8px;z-index:30}
+#back{left:8px;z-index:30;width:44px;height:44px;padding:0;font-size:18px;border-radius:12px;top:calc(8px + env(safe-area-inset-top))}
 #meBtn{right:66px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:20px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
 #meBtn.on{background:#16a34a}
-#meHud{left:8px;right:8px;top:calc(92px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
+#meHud{left:8px;right:8px;top:calc(96px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
 #compass{right:10px;width:48px;height:48px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0;border:none}
 #compass svg{width:100%;height:100%;display:block}
-#info{left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top));background:#16181df0;border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 2px 10px #0007;max-width:calc(100% - 16px);font-variant-numeric:tabular-nums;display:flex;gap:10px;align-items:center}
-#info .m{font-weight:700;font-size:15px;letter-spacing:.3px}
-#det{left:50%;transform:translateX(-50%);top:calc(36px + env(safe-area-inset-top));font-size:11px;background:#16181dcc;border-radius:999px;padding:2px 9px;pointer-events:none;white-space:nowrap}
+#info{left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));background:#16181df0;border-radius:10px;padding:5px 6px 5px 10px;font-size:12px;box-shadow:0 2px 10px #0007;font-variant-numeric:tabular-nums;display:flex;gap:8px;align-items:center;flex-wrap:nowrap;overflow:hidden}
+#info #iD{flex:1;min-width:0;color:#b9bdc7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#info .m{font-weight:700;font-size:14px;letter-spacing:.2px;white-space:nowrap}
+#det{left:60px;transform:none;top:calc(40px + env(safe-area-inset-top));font-size:11px;background:#16181dcc;border-radius:999px;padding:2px 9px;pointer-events:none;white-space:nowrap}
 #det:empty{display:none}
-#stat{left:68px;right:68px;text-align:center;font-size:12px;color:#ddd;text-shadow:0 1px 3px #000;pointer-events:none;top:calc(14px + env(safe-area-inset-top))}
+#stat{left:60px;right:118px;text-align:left;font-size:11.5px;color:#e5e7eb;background:#16181dc8;border-radius:10px;padding:5px 9px;pointer-events:none;top:calc(10px + env(safe-area-inset-top));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #loading{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1115cc;gap:14px;font-size:15px;text-align:center;padding:20px}
 .spin{width:38px;height:38px;border:4px solid #fff3;border-top-color:#3b82f6;border-radius:50%;animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-#ctrl .head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:600;font-size:14px}
-#ctrl.collapsed .body{display:none}
-#ctrl .body{max-height:52vh;overflow:auto;margin-top:6px}
+#ctrl .head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px;margin-bottom:4px}
+#ctrl .body{max-height:44vh;overflow:auto}
 input[type=range]{flex:1}
 .val{width:42px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
 .tg{display:flex;align-items:center;gap:6px;font-size:14px;background:#2a2e37;border-radius:8px;padding:6px 9px}
@@ -85,13 +85,18 @@ input[type=range]{flex:1}
 .grid2{display:flex;flex-wrap:wrap;gap:6px}
 .attr{font-size:10.5px;color:#8a8f9a;margin-top:6px;line-height:1.35}
 #feat{font-size:12px;color:#a9adb8}
-#tools{right:10px;top:calc(66px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
-#tools button{width:46px;height:46px;border-radius:50%;border:none;background:#16181dd8;color:#fff;font-size:21px;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0}
-#tools button.on{background:#2563eb}
-#tools{gap:6px!important}#tools button{width:42px!important;height:42px!important;font-size:19px!important}
+#tools{position:absolute;z-index:12;left:0;right:0;bottom:0;padding:6px 6px calc(6px + env(safe-area-inset-bottom));display:flex;gap:4px;overflow-x:auto;background:#0f1115f0;border-top:1px solid #22252c;scrollbar-width:none}
+#tools::-webkit-scrollbar{display:none}
+#tools button{flex:1 1 0;min-width:42px;height:50px;border:none;border-radius:12px;background:transparent;color:#e5e7eb;cursor:pointer;padding:2px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+#tools button span{font-size:19px;line-height:1}#tools button i{font-style:normal;font-size:10px;color:#a9adb8;white-space:nowrap}
+#tools button.on{background:#2563eb}#tools button.on i{color:#fff}
+.sheet{bottom:calc(66px + env(safe-area-inset-bottom))!important;z-index:11;max-width:640px}
+.sheet.mini #toolB,.sheet.mini .body,.sheet.mini #feat{display:none}
+#ib,.ib{background:#2a2e37;color:#fff;border:none;border-radius:8px;width:30px;height:28px;font-size:14px;cursor:pointer;flex:0 0 auto}
 .sv{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #2a2e37}
 #tool .head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px;margin-bottom:4px}
-#toolB{max-height:56vh;overflow:auto}
+#toolB{max-height:40vh;overflow:auto}
+#tool.tap #toolB{max-height:30vh}
 .note{font-size:12.5px;color:#b9bdc7;line-height:1.4;margin:4px 0}
 .note b{color:#fff}
 .prof{width:100%;height:auto;background:#0f1115;border-radius:8px;margin-top:6px;display:block}
@@ -148,7 +153,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 <div id="view" class="screen hidden">
   <div id="three"></div>
   <div id="labels"></div>
-  <button id="back" class="btn dark hud">◀ Kaart</button>
+  <button id="back" class="btn dark hud" title="Terug naar de kaart">◀</button>
   <div id="stat" class="hud"></div>
   <div id="det" class="hud"></div>
   <button id="meBtn" class="hud" title="Naar mijn positie">📍</button>
@@ -159,19 +164,21 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
       <text x="24" y="5.5" font-size="0" fill="#fff">N</text></g>
       <circle cx="24" cy="24" r="2.5" fill="#111"/></svg>
   </button>
-  <div id="tools" class="hud">
-    <button data-t="vs" title="Zichtbereik">👁</button>
-    <button data-t="meas" title="Meten &amp; route">📏</button>
-    <button data-t="wx" title="Weer, zon &amp; maan">⛅</button>
-    <button data-t="ar" title="AR">🕶</button>
-    <button data-t="tac" title="Tactische symbolen">🎖</button>
-    <button data-t="share" title="Live delen">👥</button>
-    <button data-t="exp" title="Exporteren &amp; offline">⤓</button>
+  <div id="tools">
+    <button data-t="set"><span>⚙</span><i>Lagen</i></button>
+    <button data-t="vs"><span>👁</span><i>Zicht</i></button>
+    <button data-t="meas"><span>📏</span><i>Meten</i></button>
+    <button data-t="tac"><span>🎖</span><i>Tactisch</i></button>
+    <button data-t="wx"><span>⛅</span><i>Weer</i></button>
+    <button data-t="share"><span>👥</span><i>Delen</i></button>
+    <button data-t="ar"><span>🕶</span><i>AR</i></button>
+    <button data-t="exp"><span>⤓</span><i>Export</i></button>
   </div>
-  <div id="tool" class="panel hidden"><div class="head"><span id="toolT"></span><button class="btn sm dark" id="toolX">✕</button></div><div id="toolB"></div></div>
-  <div id="info" class="hud hidden"><div><div class="m" id="iM"></div><div id="iD"></div></div><button class="btn sm" id="iCopy">Kopieer</button><button class="btn sm dark" id="iX">✕</button></div>
-  <div id="ctrl" class="panel collapsed">
-    <div class="head" id="ctrlHead"><span>⚙ Instellingen</span><span id="feat"></span><span id="arrow">▲</span></div>
+  <div id="tool" class="panel sheet hidden"><div class="head"><span id="toolT"></span><span><button class="btn sm dark" id="toolMin" title="Inklappen">▾</button> <button class="btn sm dark" id="toolX">✕</button></span></div><div id="toolB"></div></div>
+  <div id="info" class="hud hidden"><span class="m" id="iM"></span><span id="iD"></span><button class="ib" id="iCopy" title="Kopieer">⧉</button><button class="ib" id="iX">✕</button></div>
+  <div id="ctrl" class="panel sheet hidden">
+    <div class="head" id="ctrlHead"><span>⚙ Lagen &amp; instellingen</span><span><button class="btn sm dark" id="ctrlMin">▾</button> <button class="btn sm dark" id="ctrlX">✕</button></span></div>
+    <div class="note" id="feat" style="margin:0 0 4px"></div>
     <div class="body">
       <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
       <div class="row"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
@@ -204,7 +211,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v21 · 13-11 15:40. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v22 · 13-11 21:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -712,6 +719,7 @@ void main(){
 
 function disposeAll(){
   for(const o of [terrain,skirt,marker,...treeMeshes]) if(o){world.remove(o);o.geometry&&o.geometry.dispose();}
+  marker=null;
   treeMeshes=[]; for(const l of labelObjs){world.remove(l.obj);l.obj.element.remove();} labelObjs=[];
   toolsDispose(); if(mainSurf) mainSurf.tex.dispose(); terrain=skirt=marker=null; mainSurf=null; removePatch(); $('info').classList.add('hidden');
 }
@@ -1071,14 +1079,16 @@ function showInfo(wx,wz,y){
   $('iM').textContent=G.toMGRS(lat,lon,5);
   $('iD').textContent=`${h.toFixed(1).replace('.',',')} m${cur.src.startsWith('AHN')?' NAP':''} · ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   $('info').classList.remove('hidden');
-  if(!marker){const g=new THREE.CylinderGeometry(1,1,1,8);g.translate(0,0.5,0);marker=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:'#e11d48'}));world.add(marker);}
-  const sz=S/400; marker.scale.set(sz*0.5,sz*14,sz*0.5); marker.userData={x:wx,z:wz}; marker.position.set(wx,y,wz); marker.visible=true;
+  if(marker){world.remove(marker);} marker=mkPin('#e11d48',0); world.add(marker);
+  marker.userData={x:wx,z:wz}; marker.position.set(wx,y,wz); marker.visible=true;
 }
 $('iX').onclick=()=>{$('info').classList.add('hidden');if(marker)marker.visible=false;};
 $('iCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('iM').textContent);$('iCopy').textContent='✓';}catch(e){$('iCopy').textContent='✗';}setTimeout(()=>$('iCopy').textContent='Kopieer',1200);};
 
 /* ---------- bediening ---------- */
-$('ctrlHead').onclick=()=>{const c=$('ctrl').classList.toggle('collapsed');$('arrow').textContent=c?'▲':'▼';};
+$('ctrlMin').onclick=()=>{const m=$('ctrl').classList.toggle('mini');$('ctrlMin').textContent=m?'▴':'▾';};
+$('ctrlX').onclick=()=>closeTool();
+$('toolMin').onclick=()=>{const m=$('tool').classList.toggle('mini');$('toolMin').textContent=m?'▴':'▾';};
 $('exag').oninput=applyExag;
 $('ci').onchange=updateContours;
 $('tShade').onchange=()=>{if(terrain)terrain.material.uniforms.shade.value=$('tShade').checked?1:0;};
@@ -1147,11 +1157,18 @@ function drawAnalysis(ctx,s,sbb,cv){
 const tmeshes={};
 function tAdd(key,obj){tRemove(key);tmeshes[key]=obj;world.add(obj);}
 function tRemove(key){const o=tmeshes[key];if(!o) return;world.remove(o);
-  o.traverse(c=>{if(c.geometry)c.geometry.dispose();if(c.material){(Array.isArray(c.material)?c.material:[c.material]).forEach(m=>{if(m.map)m.map.dispose();m.dispose();});}});
+  const keep=new Set(Object.values(pinTexCache));
+  o.traverse(c=>{if(c.geometry)c.geometry.dispose();if(c.material){(Array.isArray(c.material)?c.material:[c.material]).forEach(m=>{if(m.map&&!keep.has(m.map))m.map.dispose();m.dispose();});}});
   delete tmeshes[key];}
-function mkPin(color,h){const g=new THREE.Group(),r=h/45,m=new THREE.MeshBasicMaterial({color});
-  g.add(new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,8).translate(0,h/2,0),m));
-  g.add(new THREE.Mesh(new THREE.SphereGeometry(r*4,14,10).translate(0,h,0),m)); return g;}
+const pinTexCache={};
+function pinTex(color,label){const k=color+'|'+(label||'');if(pinTexCache[k]) return pinTexCache[k];
+  const c=document.createElement('canvas');c.width=96;c.height=128;const x=c.getContext('2d');
+  x.fillStyle=color;x.strokeStyle='#111';x.lineWidth=5;x.beginPath();x.moveTo(48,124);x.bezierCurveTo(40,98,8,80,8,46);x.arc(48,46,40,Math.PI,0);x.bezierCurveTo(88,80,56,98,48,124);x.closePath();x.fill();x.stroke();
+  x.fillStyle='#111';if(label){x.font='bold 42px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText(label,48,48);}else{x.beginPath();x.arc(48,46,13,0,7);x.fill();}
+  return pinTexCache[k]=new THREE.CanvasTexture(c);}
+function mkPin(color,h,label){ // speld met vaste schermgrootte (in AR op kaartschaal)
+  const ar=renderer.xr.isPresenting,s=new THREE.Sprite(new THREE.SpriteMaterial({map:pinTex(color,label),sizeAttenuation:ar,depthTest:false,transparent:true}));
+  s.center.set(0.5,0);const k=ar?cur.bb.S*0.035:0.06;s.scale.set(k*0.75,k,1);s.renderOrder=19;const g=new THREE.Group();g.add(s);g.userData.keepMap=true;return g;}
 function toolsDispose(){for(const k of Object.keys(tmeshes)) tRemove(k); wxShadowKey=''; wxFxOff();}
 function toolsExag(){
   if(!cur) return;
@@ -1166,14 +1183,17 @@ function toolsFeatures(){buildBridges(); if(lifeOn()) loadLife(); loadLandcover(
 /* ---------- paneel ---------- */
 let toolMode=null; const tb=$('toolB');
 function openTool(t){
-  if(!cur){toast('Eerst een gebied laden');return;}
+  if(!cur&&t!=='set'){toast('Eerst een gebied laden');return;}
   if(toolMode===t){closeTool();return;}
-  toolMode=t; document.querySelectorAll('#tools button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
-  $('tool').classList.remove('hidden'); $('ctrl').classList.add('hidden');
+  const prev=toolMode; toolMode=t; document.querySelectorAll('#tools button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  $('tool').classList.remove('mini');$('toolMin').textContent='▾';$('ctrl').classList.remove('mini');$('ctrlMin').textContent='▾';
+  if(t==='set'){$('tool').classList.add('hidden');$('ctrl').classList.remove('hidden');if(prev==='tac') redrawTexture();return;}
+  $('ctrl').classList.add('hidden'); $('tool').classList.remove('hidden'); $('tool').classList.toggle('tap',['vs','meas','tac'].includes(t));
   ({vs:uiVS,meas:uiMeas,wx:uiWx,ar:uiAR,exp:uiExp,tac:uiTac,share:uiShare})[t]();
+  if(prev==='tac'&&t!=='tac') redrawTexture();
 }
-function closeTool(){toolMode=null;document.querySelectorAll('#tools button').forEach(b=>b.classList.remove('on'));
-  $('tool').classList.add('hidden');$('ctrl').classList.remove('hidden');if(radTimer){clearInterval(radTimer);radTimer=null;}}
+function closeTool(){const prev=toolMode;toolMode=null;document.querySelectorAll('#tools button').forEach(b=>b.classList.remove('on'));
+  $('tool').classList.add('hidden');$('ctrl').classList.add('hidden');if(radTimer){clearInterval(radTimer);radTimer=null;}if(prev==='tac') redrawTexture();}
 document.querySelectorAll('#tools button').forEach(b=>b.onclick=()=>openTool(b.dataset.t));
 $('toolX').onclick=closeTool;
 
@@ -1258,9 +1278,7 @@ function updateMeas(only3d){
         for(let q=(k?1:0);q<=m;q++){const t=q/m,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;pts.push(new THREE.Vector3(x,surfaceY(x,z)+lift,z));}}
       const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:'#ffd400',depthTest:false,transparent:true}));ln.renderOrder=10;g.add(ln);}
     P.forEach((p,i)=>{const y=surfaceY(p.x,p.z),h=S/45;
-      const pin=mkPin(i===0?'#22c55e':(i===P.length-1&&P.length>1)?'#ef4444':'#ffd400',h);pin.position.set(p.x,y,p.z);g.add(pin);
-      const el=document.createElement('div');el.className='lbl wp';const inn=document.createElement('div');inn.textContent=String(i+1);el.appendChild(inn);
-      const o=new CSS2DObject(el);o.position.set(p.x,y+h,p.z);g.add(o);});
+      const pin=mkPin(i===0?'#22c55e':(i===P.length-1&&P.length>1)?'#ef4444':'#ffd400',h,String(i+1));pin.position.set(p.x,y,p.z);g.add(pin);});
     tAdd('meas',g);
   }
   if(only3d||!$('mList')) return;
@@ -1476,7 +1494,7 @@ function applyWx(fast){
     const hD=new THREE.Color(0.68,0.82,0.95),hN=new THREE.Color(0.04,0.06,0.12),hS=new THREE.Color(1.0,0.55,0.32);
     sky=hN.clone().lerp(hD,day).lerp(hS,dusk*0.5).lerp(new THREE.Color(0.62,0.65,0.7).multiplyScalar(0.15+0.85*day),D.cloudy.value*0.85);
   }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;dome.visible=false;}
-  if(renderer.xr.isPresenting) lightK=Math.max(lightK,0.4);
+  lightK=Math.max(lightK,renderer.xr.isPresenting?0.4:0.3); // kaart blijft leesbaar in het donker
   fx.lk=lightK; U.amb.value=amb;U.dirK.value=dirK;U.lightK.value=lightK;U.tint.value.set(...tint);
   if(!renderer.xr.isPresenting) scene.background=sky; U.fogC.value.copy(sky);
   hemiL.intensity=1.1*lightK; dirL.intensity=1.6*lightK*dirK;
@@ -1687,7 +1705,7 @@ function stepFlow(dt){
     const tx=u.X[i]-ux*vs*0.7,tz=u.Z[i]-uz*vs*0.7,q=i*6,f=Math.sin(Math.PI*Math.min(1,u.age[i]/u.life[i]));
     pos[q]=u.X[i];pos[q+1]=(inArea(u.X[i],u.Z[i])?surfaceY(u.X[i],u.Z[i]):0)+h;pos[q+2]=u.Z[i];
     pos[q+3]=tx;pos[q+4]=(inArea(tx,tz)?surfaceY(tx,tz):0)+h;pos[q+5]=tz;
-    const r=i*8;col[r]=c.r;col[r+1]=c.g;col[r+2]=c.b;col[r+3]=0.9*f;col[r+4]=c.r;col[r+5]=c.g;col[r+6]=c.b;col[r+7]=0;}
+    const r=i*8;col[r]=c.r;col[r+1]=c.g;col[r+2]=c.b;col[r+3]=0.9*f*Math.max(0.3,Math.min(1,fx.lk||1));col[r+4]=c.r;col[r+5]=c.g;col[r+6]=c.b;col[r+7]=0;}
   u.init=true; o.geometry.attributes.position.needsUpdate=true; o.geometry.attributes.color.needsUpdate=true;
 }
 
@@ -2190,7 +2208,8 @@ async function shareJoin(code,isNew){
   setShareStatus('🟢 Verbonden · '+new URL(share.broker).hostname);
   try{history.replaceState(null,'','#room-'+code);}catch(e){location.hash='room-'+code;}
   if(isNew){if(cur) docTouch('area'); sharePublish();}
-  else setTimeout(()=>{if(!share.gotDoc&&share.on){toast('Nog niemand anders in deze sessie – jouw kaart wordt gedeeld');if(cur&&!doc.area) docTouch('area');sharePublish();}},3500);
+  else{setTimeout(()=>{if(share.on&&!cur&&doc.area) loadDocArea();},2500); // terugkomen in dezelfde sessie
+    setTimeout(()=>{if(!share.gotDoc&&share.on){toast('Nog niemand anders in deze sessie – jouw kaart wordt gedeeld');if(cur&&!doc.area) docTouch('area');sharePublish();}},3500);}
   shareHeartbeat(); share.hbT=setInterval(shareHeartbeat,share.gps?5000:15000);
   if(toolMode==='share') uiShare();
 }
@@ -2706,6 +2725,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
