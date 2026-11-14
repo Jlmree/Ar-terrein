@@ -331,12 +331,13 @@ function setPos(geo, pts) { const a = geo.attributes.position; pts.forEach((p, i
 
 /* ================= scan-status ================= */
 let S = null, session = null, hitSource = null, exitArm = 0;
+window.__ks = () => S; // voor tests/simulatie
 const planeMeshes = new Map();
 
 function resetScan(mode = 'auto') {
   S = { step: 'floor', mode, floorY: null, votes: [], corners: [], closed: false, height: 2.6, openings: [], openType: 'deur',
     openFirst: null, aim: null, aimInfo: null, nearFirst: false, square: true, ceilY: null, liveH: null, finished: false, planesOn: false, cam: null,
-    depthOn: false, vox: new Map(), nvox: 0, trail: [], yaw: new Set(), ceilHist: new Map(), ceilN: 0, proposal: null, propKey: '', scanErr: null,
+    depthOn: false, vox: new Map(), nvox: 0, trail: [], yaw: new Set(), ceilHist: new Map(), ceilN: 0, floorHist: new Map(), proposal: null, propKey: '', scanErr: null,
     lastAnalyze: 0, lastCeil: 0, frameN: 0, ptsDirty: false };
   clearGroup(roomGroup); clearGroup(planesGroup); clearGroup(propGroup); planeMeshes.clear(); hidePreview(); reticle.visible = false;
   ptsGeo.setDrawRange(0, 0);
@@ -351,16 +352,16 @@ const propGroup = new THREE.Group(); arScene.add(propGroup);
 const propWallMat = new THREE.MeshBasicMaterial({ color: 0x66bb6a, transparent: true, opacity: .25, side: THREE.DoubleSide, depthWrite: false });
 const propLineMat = new THREE.LineBasicMaterial({ color: 0x9ccc65, depthTest: false });
 
-function addPoint(x, y, z, w) {
+function addPoint(x, y, z, w, o) {
   const k = Math.round(x / VS) + ',' + Math.round(y / VS) + ',' + Math.round(z / VS);
   const v = S.vox.get(k); if (v) { v.n += w; return; }
   if (S.nvox >= MAXP) return;
-  S.vox.set(k, { x, y, z, n: w });
+  S.vox.set(k, { x, y, z, n: w, cx: o.x, cy: o.y, cz: o.z }); // c = waar de camera stond
   ptsGeo.attributes.position.setXYZ(S.nvox++, x, y, z); S.ptsDirty = true;
 }
 const _inv = new THREE.Matrix4(), _vm = new THREE.Matrix4(), _p = new V3();
 function collect(frame, vp, o, d, hit) {
-  if (hit && Math.abs(hit.nrm.y) < 0.3) addPoint(hit.pos.x, hit.pos.y, hit.pos.z, 3);
+  if (hit && Math.abs(hit.nrm.y) < 0.3) addPoint(hit.pos.x, hit.pos.y, hit.pos.z, 3, o);
   const last = S.trail[S.trail.length - 1];
   if (!last || Math.hypot(o.x - last[0], o.z - last[1]) > 0.2) S.trail.push([o.x, o.z]);
   if (S.depthOn && (S.frameN++ & 1) === 0) {
@@ -374,7 +375,8 @@ function collect(frame, vp, o, d, hit) {
         try { z = di.getDepthInMeters(x, y); } catch (e) { continue; }
         if (!(z > 0.25 && z < 6)) continue;
         _p.set(2 * x - 1, 1 - 2 * y, -1).applyMatrix4(_inv); _p.multiplyScalar(z / -_p.z).applyMatrix4(_vm);
-        good++; addPoint(_p.x, _p.y, _p.z, 1);
+        good++; addPoint(_p.x, _p.y, _p.z, 1, o);
+        if (_p.y < o.y - 0.4) { const b = Math.round(_p.y / 0.02); S.floorHist.set(b, (S.floorHist.get(b) || 0) + 1); }
         if (d.y > 0.3 && _p.y - S.floorY > 1.8) { const b = Math.round(_p.y / 0.02); S.ceilHist.set(b, (S.ceilHist.get(b) || 0) + 1); S.ceilN++; }
       }
       if (good > 100 && Math.abs(d.y) < 0.75) S.yaw.add(Math.floor((Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * 12) % 12);
@@ -383,6 +385,19 @@ function collect(frame, vp, o, d, hit) {
     S.yaw.add(Math.floor((Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * 12) % 12);
   }
   if (S.ptsDirty && (S.frameN % 6 === 0 || !S.depthOn)) { ptsGeo.attributes.position.needsUpdate = true; ptsGeo.setDrawRange(0, S.nvox); S.ptsDirty = false; }
+}
+function estimateFloor() {
+  let mx = 0; const sm = b => (S.floorHist.get(b - 1) || 0) + (S.floorHist.get(b) || 0) + (S.floorHist.get(b + 1) || 0);
+  for (const b of S.floorHist.keys()) mx = Math.max(mx, sm(b));
+  if (mx < 300) return false;
+  let low = Infinity; for (const b of S.floorHist.keys()) if (sm(b) >= mx * 0.25 && b < low) low = b;
+  let bb = low; for (let b = low - 1; b <= low + 2; b++) if (sm(b) > sm(bb)) bb = b;
+  const y = bb * 0.02;
+  if (y < S.floorY - 0.06) {
+    S.floorY = y; S.ceilHist.clear(); S.ceilN = 0; S.ceilY = null; S.proposal = null; S.propKey = ''; clearGroup(propGroup);
+    toast('Vloer bijgesteld: lager vlak gevonden'); return true;
+  }
+  return false;
 }
 function estimateCeil() {
   let best = null, bc = 0;
@@ -416,8 +431,11 @@ function analyze() {
   for (let t = 0; t < 90; t += 2) { const r = t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
   const th0 = th;
   for (let t = -1.75; t <= 1.75; t += 0.25) { const r = th0 + t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
-  const c = Math.cos(th), s = Math.sin(th), R = [];
+  const c = Math.cos(th), s = Math.sin(th), R = [], Q = [];
   for (let k = 0; k < P.length; k += 3) R.push(P[k] * c + P[k + 1] * s, -P[k] * s + P[k + 1] * c, P[k + 2]);
+  // dekking van een muurlijn over de hele hoogte (onder/boven ramen en boven deuren zit ook muur)
+  const topC = S.ceilY ? S.ceilY - fy - 0.1 : 2.4;
+  for (const v of S.vox.values()) { const h = v.y - fy; if (h > 0.15 && h < topC) Q.push(v.x * c + v.z * s, -v.x * s + v.z * c, Math.min(3, v.n)); }
   const lines = ax => {
     const h = new Map(); let mn = Infinity, mx = -Infinity;
     for (let k = 0; k < R.length; k += 3) { const b = Math.round(R[k + ax] / BIN); h.set(b, (h.get(b) || 0) + R[k + 2]); if (b < mn) mn = b; if (b > mx) mx = b; }
@@ -430,9 +448,11 @@ function analyze() {
     for (const p of cand) { if (p.v < cand[0].v * 0.06) break; if (out.some(q => Math.abs(q.b - p.b) <= 5)) continue; out.push(p); }
     return out.map(p => {
       const c0 = p.b * BIN; let sw = 0, sx = 0; const cw = new Map();
-      for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.08) { sw += R[k + 2]; sx += u * R[k + 2]; const q = Math.floor(R[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + R[k + 2]); } }
+      for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.08) { sw += R[k + 2]; sx += u * R[k + 2]; } }
+      const cc = sx / sw;
+      for (let k = 0; k < Q.length; k += 3) { if (Math.abs(Q[k + ax] - cc) < 0.08) { const q = Math.floor(Q[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + Q[k + 2]); } }
       const cells = new Set(); for (const [q, w] of cw) if (w >= 4) cells.add(q);
-      return { c: sx / sw, cells };
+      return { c: cc, cells };
     }).filter(l => l.cells.size >= 3).sort((p, q) => p.c - q.c);
   };
   const X = lines(0), Z = lines(1);
@@ -444,8 +464,8 @@ function analyze() {
     let hit = 0; for (let k = k0; k <= k1; k++) if (line.cells.has(k)) hit++;
     return hit / (k1 - k0 + 1);
   };
-  const vBlock = (i, j) => cov(X[i], zs[j], zs[j + 1]) >= 0.35;   // lijn x=xs[i] tussen cel i-1 en i
-  const hBlock = (i, j) => cov(Z[j], xs[i], xs[i + 1]) >= 0.35;   // lijn z=zs[j] tussen cel j-1 en j
+  const vBlock = (i, j) => cov(X[i], zs[j], zs[j + 1]) >= 0.5;   // lijn x=xs[i] tussen cel i-1 en i
+  const hBlock = (i, j) => cov(Z[j], xs[i], xs[i + 1]) >= 0.5;   // lijn z=zs[j] tussen cel j-1 en j
   const inside = new Uint8Array(nx * nz), id = (i, j) => i * nz + j, queue = [];
   const cellOf = (x, z) => {
     let i = -1, j = -1; for (let a = 0; a < nx; a++) if (x >= xs[a] && x < xs[a + 1]) i = a; for (let b = 0; b < nz; b++) if (z >= zs[b] && z < zs[b + 1]) j = b;
@@ -509,7 +529,7 @@ function drawProposal(C) {
 function scanStep(o, d, now) {
   reticle.visible = false; hidePreview();
   if (now - S.lastAnalyze > 1500) {
-    S.lastAnalyze = now; estimateCeil();
+    S.lastAnalyze = now; estimateFloor(); estimateCeil();
     const r = analyze(); S.scanErr = r.err || null;
     if (r.corners) {
       S.proposal = r;
@@ -530,21 +550,27 @@ function acceptProposal() {
   else { S.step = 'height'; rebuildRoom(); updateUI(); }
 }
 
-/* ---------- deuren/ramen automatisch: punten die je dóór de muur heen ziet ---------- */
+/* ---------- deuren/ramen automatisch: wat je dóór de muur heen ziet ----------
+   per punt achter een muur: de kijklijn camera→punt snijdt de muur precies in de opening */
 function detectOpenings() {
   if (S.vox.size < 500) return 0;
   const C = S.corners.map(c => [c.x, c.z]), n = C.length, H = S.height, fy = S.floorY;
   const W = C.map((_, i) => ({ ...wallInfo(C, i), grid: new Map() }));
   for (const v of S.vox.values()) {
-    const h = v.y - fy; if (h < 0.05 || h > H - 0.08) continue;
-    if (pointInPoly(v.x, v.z, C)) continue;
-    let best = null, bd = 3;
+    if (v.cx == null || pointInPoly(v.x, v.z, C)) continue;
+    let best = null;
     for (let i = 0; i < n; i++) {
-      const w = W[i], dx = v.x - w.a[0], dz = v.z - w.a[1], s = dx * w.ux + dz * w.uz, dd = dx * w.ox + dz * w.oz;
-      if (s < 0.1 || s > w.L - 0.1 || dd < 0.25 || dd > bd) continue; bd = dd; best = { i, s };
+      const w = W[i];
+      const dc = (v.cx - w.a[0]) * w.ox + (v.cz - w.a[1]) * w.oz, dp = (v.x - w.a[0]) * w.ox + (v.z - w.a[1]) * w.oz;
+      if (dc >= 0 || dp < 0.25) continue;
+      const u = dc / (dc - dp);
+      const x = v.cx + u * (v.x - v.cx), z = v.cz + u * (v.z - v.cz), y = v.cy + u * (v.y - v.cy) - fy;
+      const s = (x - w.a[0]) * w.ux + (z - w.a[1]) * w.uz;
+      if (s < 0.05 || s > w.L - 0.05 || y < 0 || y > H) continue;
+      if (!best || u < best.u) best = { u, i, s, y };
     }
     if (!best) continue;
-    const g = W[best.i].grid, k = Math.floor(best.s / 0.1) + ',' + Math.floor(h / 0.1); g.set(k, (g.get(k) || 0) + v.n);
+    const g = W[best.i].grid, k = Math.floor(best.s / 0.1) + ',' + Math.floor(best.y / 0.1); g.set(k, (g.get(k) || 0) + v.n);
   }
   let added = 0;
   W.forEach((w, i) => {
@@ -628,7 +654,7 @@ function updatePlanes(frame, ref) {
     e.nrm = new V3(0, 1, 0).transformDirection(e.mesh.matrix);
     // vloer / plafond uit horizontale vlakken
     if (!e.vert && S.cam) {
-      if (e.nrm.y > 0.9 && e.pos.y < S.cam.y - 0.9 && S.step === 'floor' && e.r > 0.4) setFloor(e.pos.y);
+      if (e.nrm.y > 0.9 && e.pos.y < S.cam.y - 1.0 && S.step === 'floor' && e.r > 0.4) setFloor(e.pos.y);
       if (e.nrm.y < -0.9 && S.floorY != null && e.pos.y - S.floorY > 1.8) S.ceilY = e.pos.y;
     }
   }
@@ -740,13 +766,14 @@ function arFrame(frame, now) {
   if (S.step === 'floor') {
     const hp = hit && hit.pos, up = hit && hit.nrm.y > 0.9;
     if (S.step !== 'floor') return; // al gezet via vlakken
+    if (hp && up && hp.y > o.y - 1.0) { reticle.visible = true; reticle.position.copy(hp); reticle.quaternion.identity(); setRet(0xffb74d); setMsg('Dat lijkt een tafel of kast: richt op de vloer'); return; }
     if (hp && up) {
       reticle.visible = true; reticle.position.copy(hp); reticle.quaternion.identity(); setRet(0xffffff);
       S.votes.push(hp.y); if (S.votes.length > 40) S.votes.shift();
       const ys = [...S.votes].sort((a, b) => a - b), k = ys.length;
       if (k >= 20) {
         const med = ys[k >> 1], spread = ys[Math.floor(k * .85)] - ys[Math.floor(k * .15)];
-        if (spread < 0.03 && med < o.y - 0.6) { setFloor(med); return; }
+        if (spread < 0.03 && med < o.y - 1.0) { setFloor(med); return; }
       }
       setMsg('Vloer zoeken… ' + Math.min(99, Math.round(k / 20 * 100)) + '%');
     } else { reticle.visible = false; setMsg('Richt op de vloer en beweeg je telefoon rustig heen en weer'); }
@@ -828,7 +855,10 @@ function addOpening(h) {
   let s0 = Math.max(0.02, Math.min(f.s, h.s)), s1 = Math.min(L - 0.02, Math.max(f.s, h.s));
   let y0 = door ? 0 : Math.max(0.02, Math.min(f.y, h.y)), y1 = Math.min(S.height - (door ? 0.02 : 0.02), Math.max(f.y, h.y));
   if (s1 - s0 < 0.2 || y1 - y0 < 0.2) { toast('Te klein, probeer opnieuw'); return; }
-  for (const o of S.openings) if (o.wall === h.wi && s0 < o.s1 && s1 > o.s0 && y0 < o.y1 && y1 > o.y0) { toast('Overlapt met een andere opening'); return; }
+  const hits = o => o.wall === h.wi && s0 < o.s1 && s1 > o.s0 && y0 < o.y1 && y1 > o.y0;
+  if (S.openings.some(o => hits(o) && !o.auto)) { toast('Overlapt met een andere opening'); return; }
+  const before = S.openings.length; S.openings = S.openings.filter(o => !hits(o)); // jouw tikken winnen van de automatische
+  if (S.openings.length < before) toast('Automatische opening vervangen');
   S.openings.push({ type: S.openType, wall: h.wi, s0, s1, y0, y1 }); buzz();
   rebuildRoom();
 }
