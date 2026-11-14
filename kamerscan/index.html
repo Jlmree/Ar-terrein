@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0f1720">
+<title>KamerScan</title>
+<style>
+:root{--bg:#0f1720;--card:#18232f;--line:#2a3846;--txt:#e8eef4;--mut:#93a4b5;--acc:#4fc3f7;--ok:#66bb6a;--warn:#ffb74d;--door:#ffa726;--win:#80deea}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button{font:inherit;color:inherit;border:0;border-radius:14px;padding:12px 16px;background:var(--card);cursor:pointer}
+button.pri{background:var(--acc);color:#04202c;font-weight:700}
+button:disabled{opacity:.4}
+.screen{position:fixed;inset:0;overflow:auto}
+[hidden]{display:none!important}
+/* home */
+#home{padding:24px 18px 40px;max-width:620px;margin:0 auto;position:relative}
+#home h1{margin:8px 0 4px;font-size:30px}
+#home .sub{color:var(--mut);margin:0 0 18px}
+.big{display:block;width:100%;padding:18px;font-size:19px;margin:10px 0}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+#support{font-size:14px;padding:10px 12px;border-radius:12px;background:var(--card);margin:12px 0;color:var(--mut)}
+#support.ok{color:var(--ok)}#support.bad{color:var(--warn)}
+h2{font-size:18px;margin:26px 0 10px}
+.saved{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:14px;padding:12px 14px;margin:8px 0}
+.saved .n{flex:1;cursor:pointer}.saved .n b{display:block}.saved .n span{color:var(--mut);font-size:13px}
+.saved button{padding:8px 12px;background:#223142}
+details{background:var(--card);border-radius:14px;padding:12px 14px;margin:10px 0}
+summary{cursor:pointer;font-weight:600}
+details ol,details ul{padding-left:20px;margin:10px 0 4px;color:#c9d5e0}
+details li{margin:6px 0}
+/* AR overlay */
+#ar-ui{position:fixed;inset:0;display:none;pointer-events:none;font-size:15px}
+#ar-ui.on{display:block}
+#ar-top{position:absolute;left:10px;right:10px;top:10px;pointer-events:auto;display:flex;flex-direction:column;gap:6px}
+.chiprow{display:flex;gap:6px;align-items:center}
+.chip{background:rgba(15,23,32,.82);padding:6px 11px;border-radius:999px;font-size:13px;font-weight:600}
+#ar-step{background:var(--acc);color:#04202c}
+#ar-plane{color:var(--mut);font-weight:500}
+#ar-exit{margin-left:auto;background:rgba(15,23,32,.82);padding:6px 13px;border-radius:999px;font-size:14px}
+#ar-msg{background:rgba(15,23,32,.82);padding:10px 13px;border-radius:14px;font-size:16px;font-weight:600}
+#ar-cross{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:2px solid rgba(255,255,255,.9);border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+#ar-cross:after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;background:#fff;border-radius:50%}
+#ar-bottom{position:absolute;left:10px;right:10px;bottom:16px;pointer-events:auto;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+#ar-bottom button{background:rgba(15,23,32,.86);padding:13px 15px;font-weight:600}
+#ar-bottom button.pri{background:var(--acc);color:#04202c}
+#ar-bottom button.sel{outline:3px solid var(--acc)}
+#ar-hint{position:absolute;left:0;right:0;bottom:88px;text-align:center;font-size:13px;color:#dfe8ef;text-shadow:0 1px 3px #000}
+.toast{position:fixed;left:50%;top:40%;transform:translateX(-50%);background:rgba(0,0,0,.85);color:#fff;padding:10px 16px;border-radius:12px;font-weight:600;z-index:50;pointer-events:none;max-width:85vw;text-align:center}
+/* viewer */
+#viewer{display:flex;flex-direction:column;overflow:hidden}
+#vhead{display:flex;gap:8px;align-items:center;padding:10px}
+#vhead input{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:10px 12px;font:inherit;font-weight:600}
+#tabs{display:flex;gap:6px;padding:0 10px 8px}
+#tabs button{flex:1;padding:9px}
+#tabs button.on{background:var(--acc);color:#04202c;font-weight:700}
+#stage{position:relative;flex:1 1 55%;min-height:240px;margin:0 10px;border-radius:16px;overflow:hidden;background:#1a2330}
+#view3d,#planwrap{position:absolute;inset:0}
+#view3d canvas{width:100%!important;height:100%!important;display:block;touch-action:none}
+#ceilbtn{position:absolute;right:8px;top:8px;padding:7px 11px;font-size:13px;background:rgba(15,23,32,.8)}
+#panel{flex:0 1 auto;overflow:auto;padding:10px 10px 22px;max-height:45%}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.stat{background:var(--card);border-radius:12px;padding:8px 10px}
+.stat b{display:block;font-size:17px}.stat span{font-size:12px;color:var(--mut)}
+.walls{margin:10px 0;font-size:14px;color:#c9d5e0}
+.walls div{padding:5px 2px;border-bottom:1px solid var(--line)}
+.set{display:flex;gap:10px;align-items:center;margin:10px 0;font-size:14px}
+.set label{flex:1;color:var(--mut)}
+.set input,.set select{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px;font:inherit;width:120px}
+.exp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.exp button{padding:12px 6px;font-weight:600}
+.note{font-size:12px;color:var(--mut);margin-top:8px}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<div id="home" class="screen">
+  <h1>KamerScan</h1>
+  <p class="sub">Loop met je camera door een kamer en maak er een 3D-model van, met maten, deuren en ramen. Exporteer naar Blender.</p>
+  <button id="b-start" class="pri big">▶ Start scan</button>
+  <div class="row">
+    <button id="b-demo">Bekijk demo-kamer</button>
+    <button id="b-import">Importeer .json</button>
+  </div>
+  <input id="f-import" type="file" accept=".json,application/json" hidden>
+  <div id="support">AR-ondersteuning controleren…</div>
+
+  <details>
+    <summary>Zo werkt het</summary>
+    <ol>
+      <li><b>Vloer</b>: richt op de vloer en beweeg rustig heen en weer. De vloer wordt vanzelf herkend.</li>
+      <li><b>Hoeken</b>: richt de stip op elke hoek waar twee muren de vloer raken en tik op het scherm. Loop zo de kamer rond. Bij de eerste hoek terug: tik om te sluiten.</li>
+      <li><b>Plafond</b>: richt op de lijn waar muur en plafond elkaar raken en tik.</li>
+      <li><b>Deuren &amp; ramen</b>: kies Deur of Raam, tik twee tegenover elkaar liggende hoeken op de muur. Daarna <b>Klaar</b>.</li>
+    </ol>
+    <ul>
+      <li>Goed licht helpt; kale witte muren en glimmende vloeren zijn lastig.</li>
+      <li>Staat er een meubel in een hoek? Richt op het punt op de vloer recht onder de hoek; "Haaks" trekt muren recht.</li>
+      <li>Als je telefoon muren kan herkennen, worden hoeken automatisch gevonden (groene stip).</li>
+    </ul>
+  </details>
+
+  <h2>Opgeslagen kamers</h2>
+  <div id="saved"></div>
+</div>
+
+<!-- ============ AR OVERLAY ============ -->
+<div id="ar-ui">
+  <div id="ar-top">
+    <div class="chiprow">
+      <span id="ar-step" class="chip">1/4 Vloer</span>
+      <span id="ar-plane" class="chip"></span>
+      <button id="ar-exit">✕</button>
+    </div>
+    <div id="ar-msg">Richt op de vloer</div>
+  </div>
+  <div id="ar-cross"></div>
+  <div id="ar-hint"></div>
+  <div id="ar-bottom">
+    <button id="b-undo">↶ Terug</button>
+    <button id="b-square" class="sel">⊾ Haaks</button>
+    <button id="b-close" class="pri">Sluit kamer</button>
+    <button id="b-h260">Gebruik 2,60 m</button>
+    <button id="b-hceil" class="pri"></button>
+    <button id="b-door" class="sel">🚪 Deur</button>
+    <button id="b-win">🪟 Raam</button>
+    <button id="b-done" class="pri">✓ Klaar</button>
+  </div>
+  <div id="ar-toast" class="toast" hidden></div>
+</div>
+
+<!-- ============ VIEWER ============ -->
+<div id="viewer" class="screen" hidden>
+  <div id="vhead">
+    <button id="b-back">←</button>
+    <input id="v-name" maxlength="60">
+  </div>
+  <div id="tabs"><button data-t="3d" class="on">3D</button><button data-t="plan">Plattegrond</button></div>
+  <div id="stage">
+    <div id="view3d"></div>
+    <button id="ceilbtn">Plafond: uit</button>
+    <div id="planwrap" hidden><canvas id="plan"></canvas></div>
+  </div>
+  <div id="panel">
+    <div class="stats" id="stats"></div>
+    <div class="walls" id="walls"></div>
+    <div class="set"><label for="v-h">Plafondhoogte (cm)</label><input id="v-h" type="number" min="150" max="600" step="1"></div>
+    <div class="set"><label for="v-t">Wanddikte in model</label>
+      <select id="v-t"><option value="0">Geen (vlakken)</option><option value="0.05">5 cm</option><option value="0.1">10 cm</option><option value="0.15">15 cm</option><option value="0.2">20 cm</option></select></div>
+    <div class="exp">
+      <button id="x-glb">⬇ GLB</button><button id="x-obj">⬇ OBJ</button><button id="x-json">⬇ JSON</button>
+    </div>
+    <div class="note">Blender: Bestand → Importeren → glTF 2.0 (.glb). Muren, vloer, plafond, deuren en ramen zijn aparte objecten. Kamers worden automatisch op dit toestel bewaard.</div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
+
+const $ = id => document.getElementById(id);
+const V3 = THREE.Vector3, V2 = THREE.Vector2;
+const UP = new V3(0, 1, 0);
+const fmtM = v => v.toFixed(2).replace('.', ',') + ' m';
+const fmtCm = v => Math.round(v * 100) + ' cm';
+const buzz = () => { try { navigator.vibrate && navigator.vibrate(25); } catch (e) {} };
+
+let toastT;
+function toast(t, ms = 2200) {
+  const el = renderer.xr.isPresenting ? $('ar-toast') : $('toast');
+  el.textContent = t; el.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+/* ================= renderer ================= */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local');
+$('view3d').appendChild(renderer.domElement);
+
+/* ================= model bouwen (gedeeld door AR, viewer en export) ================= */
+const MATS = {
+  ar: {
+    wall: new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: .22, side: THREE.DoubleSide, depthWrite: false }),
+    floor: new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: .10, side: THREE.DoubleSide, depthWrite: false }),
+    ceil: null,
+    deur: new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false }),
+    raam: new THREE.MeshBasicMaterial({ color: 0x80deea, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false }),
+  },
+  std: {
+    wall: new THREE.MeshStandardMaterial({ name: 'Muur', color: 0xe9e4da, roughness: .9, side: THREE.DoubleSide }),
+    floor: new THREE.MeshStandardMaterial({ name: 'Vloer', color: 0xa47c5b, roughness: .8, side: THREE.DoubleSide }),
+    ceil: new THREE.MeshStandardMaterial({ name: 'Plafond', color: 0xf7f7f5, roughness: 1, side: THREE.DoubleSide }),
+    deur: new THREE.MeshStandardMaterial({ name: 'Deur', color: 0x8d6e63, roughness: .7, side: THREE.DoubleSide }),
+    raam: new THREE.MeshStandardMaterial({ name: 'Glas', color: 0x9fd8ff, roughness: .1, transparent: true, opacity: .45, side: THREE.DoubleSide }),
+  }
+};
+const EDGE_MAT = new THREE.LineBasicMaterial({ color: 0x55636f });
+
+function pointInPoly(x, z, C) {
+  let inside = false;
+  for (let i = 0, j = C.length - 1; i < C.length; j = i++) {
+    const xi = C[i][0], zi = C[i][1], xj = C[j][0], zj = C[j][1];
+    if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+// buitenwaartse normaal van muur i (in xz)
+function wallInfo(C, i) {
+  const a = C[i], b = C[(i + 1) % C.length];
+  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1e-9;
+  const ux = dx / L, uz = dz / L; let ox = -uz, oz = ux;
+  if (pointInPoly((a[0] + b[0]) / 2 + ox * 0.01, (a[1] + b[1]) / 2 + oz * 0.01, C)) { ox = -ox; oz = -oz; }
+  return { a, b, L, ux, uz, ox, oz };
+}
+
+function buildModel(room, { mode = 'view', thickness = 0, ceiling = true } = {}) {
+  const M = mode === 'ar' ? MATS.ar : MATS.std;
+  const T = mode === 'ar' ? 0 : thickness;
+  const g = new THREE.Group(); g.name = 'Kamer';
+  const C = room.corners, n = C.length, H = room.height;
+  if (n < 3) return g;
+  const fGeo = new THREE.ShapeGeometry(new THREE.Shape(C.map(p => new V2(p[0], -p[1]))));
+  fGeo.rotateX(-Math.PI / 2);
+  const floor = new THREE.Mesh(fGeo, M.floor); floor.name = 'Vloer'; g.add(floor);
+  if (ceiling && M.ceil) { const c = new THREE.Mesh(fGeo.clone().translate(0, H, 0), M.ceil); c.name = 'Plafond'; g.add(c); }
+  let dN = 0, rN = 0;
+  for (let i = 0; i < n; i++) {
+    const w = wallInfo(C, i); if (w.L < 0.01) continue;
+    const X = new V3(w.oz, 0, -w.ox), Z = new V3(w.ox, 0, w.oz);
+    const fwd = X.x * w.ux + X.z * w.uz > 0;
+    const e = T > 0 ? T : 0, Lx = w.L + 2 * e;
+    const org = fwd ? w.a : w.b;
+    const ox0 = org[0] - X.x * e, oz0 = org[1] - X.z * e;
+    const ops = (room.openings || []).filter(o => o.wall === i).map(o => {
+      const s0 = fwd ? o.s0 : w.L - o.s1, s1 = fwd ? o.s1 : w.L - o.s0;
+      return { ...o, ls0: s0 + e, ls1: s1 + e };
+    });
+    const doors = ops.filter(o => o.type === 'deur').sort((p, q) => p.ls0 - q.ls0);
+    const wins = ops.filter(o => o.type !== 'deur');
+    const sh = new THREE.Shape(); sh.moveTo(0, 0);
+    for (const d of doors) { const top = Math.min(d.y1, H - 0.02); sh.lineTo(d.ls0, 0); sh.lineTo(d.ls0, top); sh.lineTo(d.ls1, top); sh.lineTo(d.ls1, 0); }
+    sh.lineTo(Lx, 0); sh.lineTo(Lx, H); sh.lineTo(0, H);
+    for (const o of wins) {
+      const y0 = Math.max(0.01, o.y0), y1 = Math.min(H - 0.01, o.y1);
+      const p = new THREE.Path(); p.moveTo(o.ls0, y0); p.lineTo(o.ls1, y0); p.lineTo(o.ls1, y1); p.lineTo(o.ls0, y1); sh.holes.push(p);
+    }
+    const geo = T > 0 ? new THREE.ExtrudeGeometry(sh, { depth: T, bevelEnabled: false, curveSegments: 1 }) : new THREE.ShapeGeometry(sh);
+    const mtx = new THREE.Matrix4().makeBasis(X, UP, Z).setPosition(ox0, 0, oz0);
+    geo.applyMatrix4(mtx);
+    const wall = new THREE.Mesh(geo, M.wall); wall.name = 'Muur ' + (i + 1); g.add(wall);
+    if (mode === 'view') g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), EDGE_MAT));
+    for (const o of ops) {
+      const isD = o.type === 'deur';
+      const y0 = isD ? 0 : Math.max(0.01, o.y0), y1 = isD ? Math.min(o.y1, H - 0.02) : Math.min(H - 0.01, o.y1);
+      const ww = o.ls1 - o.ls0;
+      const pg = new THREE.PlaneGeometry(ww, y1 - y0); pg.translate(o.ls0 + ww / 2, y0 + (y1 - y0) / 2, T / 2); pg.applyMatrix4(mtx);
+      const pm = new THREE.Mesh(pg, isD ? M.deur : M.raam); pm.name = isD ? 'Deur ' + (++dN) : 'Raam ' + (++rN); g.add(pm);
+    }
+  }
+  return g;
+}
+function disposeGroup(g) { g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.map) { o.material.map.dispose(); o.material.dispose(); } }); }
+function clearGroup(g) { for (const c of [...g.children]) { g.remove(c); disposeGroup(c); } }
+
+function roomStats(room) {
+  const C = room.corners, n = C.length; let a2 = 0, per = 0;
+  for (let i = 0; i < n; i++) { const p = C[i], q = C[(i + 1) % n]; a2 += p[0] * q[1] - q[0] * p[1]; per += Math.hypot(q[0] - p[0], q[1] - p[1]); }
+  const area = Math.abs(a2) / 2;
+  const openA = (room.openings || []).reduce((s, o) => s + (o.s1 - o.s0) * (o.y1 - o.y0), 0);
+  return { area, per, vol: area * room.height, wallA: per * room.height - openA };
+}
+
+/* ================= AR-scène ================= */
+const arScene = new THREE.Scene();
+const arCam = new THREE.PerspectiveCamera(70, 1, 0.01, 50);
+const reticle = new THREE.Group();
+const retRing = new THREE.Mesh(new THREE.RingGeometry(0.045, 0.065, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
+const retDot = new THREE.Mesh(new THREE.CircleGeometry(0.012, 16).rotateX(-Math.PI / 2), retRing.material);
+retRing.renderOrder = retDot.renderOrder = 20;
+reticle.add(retRing, retDot); reticle.visible = false; arScene.add(reticle);
+const planesGroup = new THREE.Group(); arScene.add(planesGroup);
+const roomGroup = new THREE.Group(); arScene.add(roomGroup);
+const matPlaneV = new THREE.MeshBasicMaterial({ color: 0xab47bc, transparent: true, opacity: .16, side: THREE.DoubleSide, depthWrite: false });
+const matPlaneH = new THREE.MeshBasicMaterial({ color: 0x66bb6a, transparent: true, opacity: .10, side: THREE.DoubleSide, depthWrite: false });
+
+function makeLabel() {
+  const c = document.createElement('canvas'); c.width = 320; c.height = 96;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  s.scale.set(0.3, 0.09, 1); s.renderOrder = 30;
+  let cur = null;
+  s.setText = t => {
+    if (cur === t) return; cur = t;
+    const g = c.getContext('2d'); g.clearRect(0, 0, 320, 96);
+    g.font = 'bold 46px system-ui,sans-serif';
+    const w = Math.min(312, g.measureText(t).width + 44);
+    g.fillStyle = 'rgba(15,23,32,.85)'; g.beginPath(); g.roundRect((320 - w) / 2, 10, w, 76, 30); g.fill();
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, 160, 50);
+    tex.needsUpdate = true;
+  };
+  return s;
+}
+// voorbeeld-objecten (live meebewegend)
+const pvLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(), new V3()]), new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false }));
+pvLine.renderOrder = 15;
+const pvQuadGeo = new THREE.BufferGeometry(); pvQuadGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3)); pvQuadGeo.setIndex([0, 1, 2, 0, 2, 3]);
+const pvQuad = new THREE.Mesh(pvQuadGeo, new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: .15, side: THREE.DoubleSide, depthWrite: false }));
+const pvLabel = makeLabel();
+const MAXC = 64;
+const pvLoopGeo = new THREE.BufferGeometry(); pvLoopGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXC * 3), 3));
+const pvLoop = new THREE.LineLoop(pvLoopGeo, new THREE.LineBasicMaterial({ color: 0xffeb3b, depthTest: false })); pvLoop.renderOrder = 16;
+const pvRectGeo = new THREE.BufferGeometry(); pvRectGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+const pvRect = new THREE.LineLoop(pvRectGeo, new THREE.LineBasicMaterial({ color: 0xffa726, depthTest: false })); pvRect.renderOrder = 16;
+const preview = new THREE.Group(); preview.add(pvLine, pvQuad, pvLabel, pvLoop, pvRect); arScene.add(preview);
+function hidePreview() { for (const o of preview.children) o.visible = false; }
+function setPos(geo, pts) { const a = geo.attributes.position; pts.forEach((p, i) => a.setXYZ(i, p.x, p.y, p.z)); a.needsUpdate = true; geo.computeBoundingSphere(); }
+
+/* ================= scan-status ================= */
+let S = null, session = null, hitSource = null, exitArm = 0;
+const planeMeshes = new Map();
+
+function resetScan() {
+  S = { step: 'floor', floorY: null, votes: [], corners: [], closed: false, height: 2.6, openings: [], openType: 'deur',
+    openFirst: null, aim: null, aimInfo: null, nearFirst: false, square: true, ceilY: null, liveH: null, finished: false, planesOn: false, cam: null };
+  clearGroup(roomGroup); clearGroup(planesGroup); planeMeshes.clear(); hidePreview(); reticle.visible = false;
+}
+
+function worldRoom() { return { corners: S.corners.map(c => [c.x, c.z]), height: S.height, openings: S.openings }; }
+
+function rebuildRoom() {
+  clearGroup(roomGroup);
+  const fy = S.floorY; if (fy == null) return;
+  const dotGeo = new THREE.SphereGeometry(0.022, 12, 8), dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+  S.corners.forEach((c, i) => { const d = new THREE.Mesh(dotGeo, i === 0 ? new THREE.MeshBasicMaterial({ color: 0xffeb3b, depthTest: false }) : dotMat); d.position.set(c.x, fy, c.z); d.renderOrder = 18; roomGroup.add(d); });
+  const n = S.corners.length;
+  const segs = S.closed ? n : n - 1;
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false });
+  for (let i = 0; i < segs; i++) {
+    const a = S.corners[i], b = S.corners[(i + 1) % n];
+    const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(a.x, fy, a.z), new V3(b.x, fy, b.z)]), lineMat); ln.renderOrder = 15; roomGroup.add(ln);
+    const lb = makeLabel(); lb.setText(fmtM(Math.hypot(b.x - a.x, b.z - a.z))); lb.position.set((a.x + b.x) / 2, fy + 0.07, (a.z + b.z) / 2); roomGroup.add(lb);
+    if (!S.closed) {
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute([a.x, fy, a.z, b.x, fy, b.z, b.x, fy + S.height, b.z, a.x, fy + S.height, a.z], 3)); geo.setIndex([0, 1, 2, 0, 2, 3]);
+      roomGroup.add(new THREE.Mesh(geo, MATS.ar.wall));
+    }
+  }
+  if (S.closed) {
+    const m = buildModel(worldRoom(), { mode: 'ar' }); m.position.y = fy; roomGroup.add(m);
+    if (S.step === 'openings') {
+      const top = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(S.corners.map(c => new V3(c.x, fy + S.height, c.z))), lineMat); roomGroup.add(top);
+      for (const o of S.openings) {
+        const a = S.corners[o.wall], b = S.corners[(o.wall + 1) % n]; const L = Math.hypot(b.x - a.x, b.z - a.z);
+        const s = (o.s0 + o.s1) / 2 / L; const lb = makeLabel(); lb.setText(fmtCm(o.s1 - o.s0) + ' × ' + fmtCm(o.y1 - o.y0));
+        lb.position.set(a.x + (b.x - a.x) * s, fy + (o.y0 + o.y1) / 2, a.z + (b.z - a.z) * s); roomGroup.add(lb);
+      }
+    }
+  }
+}
+
+/* ---------- vlakherkenning (als de browser het ondersteunt) ---------- */
+function planeGeo(poly) {
+  const pos = [];
+  for (let i = 1; i < poly.length - 1; i++) pos.push(poly[0].x, 0, poly[0].z, poly[i].x, 0, poly[i].z, poly[i + 1].x, 0, poly[i + 1].z);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); return g;
+}
+function updatePlanes(frame, ref) {
+  const seen = new Set();
+  for (const pl of frame.detectedPlanes) {
+    seen.add(pl);
+    const pose = frame.getPose(pl.planeSpace, ref); if (!pose) continue;
+    let e = planeMeshes.get(pl);
+    if (!e || e.t !== pl.lastChangedTime) {
+      if (e) { planesGroup.remove(e.mesh); e.mesh.geometry.dispose(); }
+      const vert = pl.orientation === 'vertical';
+      const mesh = new THREE.Mesh(planeGeo(pl.polygon), vert ? matPlaneV : matPlaneH); mesh.matrixAutoUpdate = false; planesGroup.add(mesh);
+      let r = 0; for (const p of pl.polygon) r = Math.max(r, Math.hypot(p.x, p.z));
+      e = { mesh, t: pl.lastChangedTime, vert, r }; planeMeshes.set(pl, e);
+    }
+    e.mesh.matrix.fromArray(pose.transform.matrix); e.mesh.matrixWorldNeedsUpdate = true;
+    e.pos = new V3().setFromMatrixPosition(e.mesh.matrix);
+    e.nrm = new V3(0, 1, 0).transformDirection(e.mesh.matrix);
+    // vloer / plafond uit horizontale vlakken
+    if (!e.vert && S.cam) {
+      if (e.nrm.y > 0.9 && e.pos.y < S.cam.y - 0.9 && S.step === 'floor' && e.r > 0.4) setFloor(e.pos.y);
+      if (e.nrm.y < -0.9 && S.floorY != null && e.pos.y - S.floorY > 1.8) S.ceilY = e.pos.y;
+    }
+  }
+  for (const [pl, e] of planeMeshes) if (!seen.has(pl)) { planesGroup.remove(e.mesh); e.mesh.geometry.dispose(); planeMeshes.delete(pl); }
+}
+// hoek automatisch vinden: snijlijn van twee herkende muren
+function snapCorner(p) {
+  const walls = [];
+  for (const e of planeMeshes.values()) {
+    if (!e.vert || !e.nrm) continue;
+    const n = new V2(e.nrm.x, e.nrm.z); if (n.length() < 0.5) continue; n.normalize();
+    const d = n.x * (p.x - e.pos.x) + n.y * (p.z - e.pos.z);
+    if (Math.abs(d) > 0.35) continue;
+    if (Math.hypot(p.x - e.pos.x, p.z - e.pos.z) > e.r + 0.6) continue;
+    walls.push({ n, c: n.x * e.pos.x + n.y * e.pos.z });
+  }
+  let best = null, bd = 0.3;
+  for (let i = 0; i < walls.length; i++) for (let j = i + 1; j < walls.length; j++) {
+    const A = walls[i], B = walls[j]; if (Math.abs(A.n.dot(B.n)) > 0.5) continue;
+    const det = A.n.x * B.n.y - A.n.y * B.n.x; if (Math.abs(det) < 1e-3) continue;
+    const x = (A.c * B.n.y - B.c * A.n.y) / det, z = (A.n.x * B.c - B.n.x * A.c) / det;
+    const dd = Math.hypot(x - p.x, z - p.z); if (dd < bd) { bd = dd; best = { x, z }; }
+  }
+  return best;
+}
+
+/* ---------- stralen ---------- */
+function rayFloor(o, d) {
+  if (d.y > -0.05) return null;
+  const t = (S.floorY - o.y) / d.y; if (t > 12) return null;
+  return o.clone().addScaledVector(d, t);
+}
+function rayWalls(o, d, maxH) {
+  let best = null; const n = S.corners.length;
+  for (let i = 0; i < n; i++) {
+    const a = S.corners[i], b = S.corners[(i + 1) % n];
+    const ab = new V3(b.x - a.x, 0, b.z - a.z), L = ab.length(); if (L < 0.05) continue;
+    const u = ab.divideScalar(L), nr = new V3(-u.z, 0, u.x);
+    const den = nr.dot(d); if (Math.abs(den) < 1e-4) continue;
+    const t = nr.dot(new V3(a.x - o.x, 0, a.z - o.z)) / den; if (t <= 0.05) continue;
+    const q = o.clone().addScaledVector(d, t);
+    const s = (q.x - a.x) * u.x + (q.z - a.z) * u.z, y = q.y - S.floorY;
+    if (s < -0.05 || s > L + 0.05 || y < -0.1 || y > maxH) continue;
+    if (!best || t < best.t) best = { t, q, s: Math.max(0, Math.min(L, s)), y, wi: i, L, u, n: nr };
+  }
+  return best;
+}
+function squareAssist(p) {
+  const n = S.corners.length, a = S.corners[n - 2], b = S.corners[n - 1];
+  const u = new V2(b.x - a.x, b.z - a.z).normalize(), v = new V2(p.x - b.x, p.z - b.z), len = v.length();
+  if (len < 0.2) return null;
+  const vn = v.clone().divideScalar(len), lim = Math.cos(THREE.MathUtils.degToRad(7));
+  for (const dir of [u, new V2(-u.y, u.x), new V2(u.y, -u.x)]) {
+    if (vn.dot(dir) > lim) { const l = v.dot(dir); return new V3(b.x + dir.x * l, p.y, b.z + dir.y * l); }
+  }
+  return null;
+}
+
+/* ---------- UI in AR ---------- */
+let lastMsg = '';
+function setMsg(t) { if (t !== lastMsg) { lastMsg = t; $('ar-msg').textContent = t; } }
+function setRet(color) { retRing.material.color.setHex(color); }
+function updateUI() {
+  const st = S.step;
+  $('ar-step').textContent = { floor: '1/4 Vloer', corners: '2/4 Hoeken', height: '3/4 Plafond', openings: '4/4 Deuren & ramen' }[st];
+  $('ar-plane').textContent = S.planesOn ? 'Muurherkenning aan' : 'Muurherkenning uit';
+  const show = (id, v) => { $(id).hidden = !v; };
+  show('b-undo', st !== 'floor' || false);
+  show('b-square', st === 'corners'); $('b-square').classList.toggle('sel', S.square);
+  show('b-close', st === 'corners' && S.corners.length >= 3);
+  show('b-h260', st === 'height');
+  show('b-hceil', st === 'height' && S.ceilY != null);
+  if (S.ceilY != null) $('b-hceil').textContent = 'Plafond gevonden: ' + fmtM(S.ceilY - S.floorY);
+  show('b-door', st === 'openings'); show('b-win', st === 'openings'); show('b-done', st === 'openings');
+  $('b-door').classList.toggle('sel', S.openType === 'deur'); $('b-win').classList.toggle('sel', S.openType === 'raam');
+  $('ar-hint').textContent = st === 'corners' ? 'Tik ergens op het scherm om een hoek te zetten' : st === 'openings' ? (S.openings.length ? S.openings.length + ' opening(en) toegevoegd' : 'Geen deuren of ramen? Tik op Klaar') : '';
+  exitArm = 0; $('ar-exit').textContent = '✕';
+}
+
+function setFloor(y) {
+  if (S.step !== 'floor') return;
+  S.floorY = y; S.step = 'corners'; buzz(); toast('Vloer gevonden'); updateUI();
+}
+
+/* ---------- per frame ---------- */
+const _m = new THREE.Matrix4();
+function arFrame(frame) {
+  const ref = renderer.xr.getReferenceSpace();
+  const vp = frame.getViewerPose(ref); if (!vp) return;
+  _m.fromArray(vp.transform.matrix);
+  const o = new V3().setFromMatrixPosition(_m), d = new V3(0, 0, -1).transformDirection(_m);
+  S.cam = o;
+  if (frame.detectedPlanes) updatePlanes(frame, ref);
+  if (S.step === 'floor') {
+    let hp = null, up = false;
+    if (hitSource) {
+      const r = frame.getHitTestResults(hitSource);
+      if (r.length) { const p = r[0].getPose(ref); if (p) { const hm = new THREE.Matrix4().fromArray(p.transform.matrix); hp = new V3().setFromMatrixPosition(hm); up = new V3(0, 1, 0).transformDirection(hm).y > 0.9; } }
+    }
+    if (S.step !== 'floor') return; // al gezet via vlakken
+    if (hp && up) {
+      reticle.visible = true; reticle.position.copy(hp); reticle.quaternion.identity(); setRet(0xffffff);
+      S.votes.push(hp.y); if (S.votes.length > 40) S.votes.shift();
+      const ys = [...S.votes].sort((a, b) => a - b), k = ys.length;
+      if (k >= 20) {
+        const med = ys[k >> 1], spread = ys[Math.floor(k * .85)] - ys[Math.floor(k * .15)];
+        if (spread < 0.03 && med < o.y - 0.6) { setFloor(med); return; }
+      }
+      setMsg('Vloer zoeken… ' + Math.min(99, Math.round(k / 20 * 100)) + '%');
+    } else { reticle.visible = false; setMsg('Richt op de vloer en beweeg je telefoon rustig heen en weer'); }
+    return;
+  }
+  if (S.step === 'corners') return cornerStep(o, d);
+  if (S.step === 'height') return heightStep(o, d);
+  if (S.step === 'openings') return openingStep(o, d);
+}
+
+function cornerStep(o, d) {
+  const p = rayFloor(o, d), n = S.corners.length;
+  if (!p) { S.aim = null; reticle.visible = false; hidePreview(); setMsg('Richt de stip lager, op de vloer'); return; }
+  let mode = '';
+  S.nearFirst = false;
+  if (n >= 3 && Math.hypot(p.x - S.corners[0].x, p.z - S.corners[0].z) < 0.25) { p.copy(S.corners[0]); S.nearFirst = true; mode = 'close'; }
+  else {
+    const sn = S.planesOn ? snapCorner(p) : null;
+    if (sn) { p.x = sn.x; p.z = sn.z; mode = 'snap'; }
+    else if (S.square && n >= 2) { const q = squareAssist(p); if (q) { p.copy(q); mode = 'square'; } }
+  }
+  p.y = S.floorY; S.aim = p;
+  reticle.visible = true; reticle.position.copy(p); reticle.quaternion.identity();
+  setRet(mode === 'close' ? 0xffeb3b : mode === 'snap' ? 0x66bb6a : mode === 'square' ? 0x4fc3f7 : 0xffffff);
+  hidePreview();
+  if (n >= 1) {
+    const a = S.corners[n - 1], fy = S.floorY, H = S.height;
+    setPos(pvLine.geometry, [a, p]); pvLine.visible = true;
+    setPos(pvQuadGeo, [new V3(a.x, fy, a.z), new V3(p.x, fy, p.z), new V3(p.x, fy + H, p.z), new V3(a.x, fy + H, a.z)]); pvQuad.visible = true;
+    pvLabel.setText(fmtM(Math.hypot(p.x - a.x, p.z - a.z))); pvLabel.position.set((a.x + p.x) / 2, fy + 0.07, (a.z + p.z) / 2); pvLabel.visible = true;
+  }
+  setMsg(n === 0 ? 'Richt de stip op een hoek van de kamer (waar de muren de vloer raken) en tik'
+    : mode === 'close' ? 'Tik om de kamer te sluiten'
+    : mode === 'snap' ? 'Hoek automatisch gevonden, tik om te zetten'
+    : `Hoek ${n + 1}: richt op de volgende hoek en tik`);
+}
+
+function heightStep(o, d) {
+  hidePreview();
+  const h = rayWalls(o, d, 6);
+  if (!h) { S.liveH = null; reticle.visible = false; setMsg('Richt op een muur, omhoog naar het plafond'); return; }
+  reticle.visible = true; reticle.position.copy(h.q); reticle.quaternion.setFromUnitVectors(UP, h.n);
+  if (h.y < 1.5) { S.liveH = null; setRet(0xffffff); setMsg('Richt hoger: op de lijn waar muur en plafond elkaar raken'); return; }
+  S.liveH = h.y; setRet(0xffeb3b);
+  const a = pvLoopGeo.attributes.position, n = Math.min(MAXC, S.corners.length);
+  for (let i = 0; i < n; i++) a.setXYZ(i, S.corners[i].x, S.floorY + h.y, S.corners[i].z);
+  a.needsUpdate = true; pvLoopGeo.setDrawRange(0, n); pvLoopGeo.computeBoundingSphere(); pvLoop.visible = true;
+  pvLabel.setText(fmtM(h.y)); pvLabel.position.copy(h.q).add(new V3(0, -0.12, 0)); pvLabel.visible = true;
+  setMsg('Plafondhoogte ' + fmtM(h.y) + ', tik om vast te leggen');
+}
+
+function wallPoint(wi, s, y) { const a = S.corners[wi], b = S.corners[(wi + 1) % S.corners.length]; const L = Math.hypot(b.x - a.x, b.z - a.z); return new V3(a.x + (b.x - a.x) * s / L, S.floorY + y, a.z + (b.z - a.z) * s / L); }
+function openingStep(o, d) {
+  hidePreview();
+  const h = rayWalls(o, d, S.height + 0.05); S.aimInfo = h;
+  if (!h) { reticle.visible = false; setMsg('Richt op een muur'); return; }
+  reticle.visible = true; reticle.position.copy(h.q); reticle.quaternion.setFromUnitVectors(UP, h.n);
+  const door = S.openType === 'deur';
+  setRet(door ? 0xffa726 : 0x80deea); pvRect.material.color.setHex(door ? 0xffa726 : 0x80deea);
+  const f = S.openFirst;
+  if (f && f.wi === h.wi) {
+    const s0 = Math.min(f.s, h.s), s1 = Math.max(f.s, h.s);
+    const y0 = door ? 0 : Math.min(f.y, h.y), y1 = door ? Math.max(f.y, h.y) : Math.max(f.y, h.y);
+    setPos(pvRectGeo, [wallPoint(h.wi, s0, y0), wallPoint(h.wi, s1, y0), wallPoint(h.wi, s1, y1), wallPoint(h.wi, s0, y1)]); pvRect.visible = true;
+    pvLabel.setText(fmtCm(s1 - s0) + ' × ' + fmtCm(y1 - y0)); pvLabel.position.copy(wallPoint(h.wi, (s0 + s1) / 2, (y0 + y1) / 2)); pvLabel.visible = true;
+    setMsg('Tik de tegenoverliggende hoek' + (door ? ' (bovenkant deur)' : ''));
+  } else if (f) {
+    setMsg('Het tweede punt moet op dezelfde muur');
+  } else {
+    setMsg(door ? 'Deur: richt op een hoek van de deur en tik' : 'Raam: richt op een hoek van het raam en tik');
+  }
+}
+
+function addOpening(h) {
+  const f = S.openFirst; S.openFirst = null;
+  if (h.wi !== f.wi) { toast('Beide punten moeten op dezelfde muur'); return; }
+  const door = S.openType === 'deur', L = h.L;
+  let s0 = Math.max(0.02, Math.min(f.s, h.s)), s1 = Math.min(L - 0.02, Math.max(f.s, h.s));
+  let y0 = door ? 0 : Math.max(0.02, Math.min(f.y, h.y)), y1 = Math.min(S.height - (door ? 0.02 : 0.02), Math.max(f.y, h.y));
+  if (s1 - s0 < 0.2 || y1 - y0 < 0.2) { toast('Te klein, probeer opnieuw'); return; }
+  for (const o of S.openings) if (o.wall === h.wi && s0 < o.s1 && s1 > o.s0 && y0 < o.y1 && y1 > o.y0) { toast('Overlapt met een andere opening'); return; }
+  S.openings.push({ type: S.openType, wall: h.wi, s0, s1, y0, y1 }); buzz();
+  rebuildRoom();
+}
+
+function onSelect() {
+  if (!S) return;
+  if (S.step === 'corners') {
+    if (!S.aim) return;
+    if (S.nearFirst) return closeRoom();
+    const last = S.corners[S.corners.length - 1];
+    if (last && Math.hypot(last.x - S.aim.x, last.z - S.aim.z) < 0.1) { toast('Te dicht bij de vorige hoek'); return; }
+    S.corners.push(S.aim.clone()); buzz(); rebuildRoom(); updateUI();
+  } else if (S.step === 'height') {
+    if (S.liveH) { setHeight(S.liveH); }
+  } else if (S.step === 'openings') {
+    const h = S.aimInfo; if (!h) return;
+    if (!S.openFirst) { S.openFirst = { wi: h.wi, s: h.s, y: h.y }; buzz(); }
+    else addOpening(h);
+    updateUI();
+  }
+}
+function closeRoom() {
+  if (S.corners.length < 3) return;
+  S.closed = true; S.step = 'height'; buzz(); hidePreview(); rebuildRoom(); updateUI();
+}
+function setHeight(h) {
+  S.height = Math.round(h * 100) / 100; S.step = 'openings'; buzz(); toast('Hoogte ' + fmtM(S.height)); rebuildRoom(); updateUI();
+}
+function undo() {
+  if (S.step === 'corners') {
+    if (S.corners.length) S.corners.pop();
+    else { S.step = 'floor'; S.floorY = null; S.votes = []; }
+  } else if (S.step === 'height') { S.closed = false; S.step = 'corners'; }
+  else if (S.step === 'openings') {
+    if (S.openFirst) S.openFirst = null;
+    else if (S.openings.length) S.openings.pop();
+    else S.step = 'height';
+  }
+  hidePreview(); rebuildRoom(); updateUI();
+}
+
+/* ---------- sessie ---------- */
+async function startAR() {
+  if (!navigator.xr) return toast('AR niet beschikbaar in deze browser');
+  $('ar-ui').classList.add('on');
+  try {
+    session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'plane-detection', 'local-floor', 'anchors'],
+      domOverlay: { root: $('ar-ui') }
+    });
+  } catch (e) { $('ar-ui').classList.remove('on'); toast('AR starten lukt niet: ' + (e.message || e), 4000); return; }
+  resetScan();
+  S.planesOn = !!(session.enabledFeatures ? session.enabledFeatures.includes('plane-detection') : false);
+  session.addEventListener('select', onSelect);
+  session.addEventListener('end', onEnd);
+  await renderer.xr.setSession(session);
+  const viewerSpace = await session.requestReferenceSpace('viewer');
+  hitSource = await session.requestHitTestSource({ space: viewerSpace });
+  $('home').hidden = true;
+  updateUI();
+}
+function onEnd() {
+  $('ar-ui').classList.remove('on');
+  if (hitSource) { try { hitSource.cancel(); } catch (e) {} }
+  hitSource = null; session = null;
+  const done = S && S.finished && S.corners.length >= 3;
+  let room = null; if (done) room = localize(worldRoom());
+  resetScan(); S = null;
+  if (room) {
+    const d = new Date();
+    const entry = { id: 'k' + Date.now(), name: 'Kamer ' + d.toLocaleDateString('nl-NL') + ' ' + d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }), date: d.toISOString(), thickness: 0.1, room };
+    saveEntry(entry); openViewer(entry);
+  } else showHome();
+}
+// naar kamer-coördinaten: eerste hoek = oorsprong, eerste muur langs +X
+function localize(r) {
+  const c0 = r.corners[0], c1 = r.corners[1];
+  const th = Math.atan2(c1[1] - c0[1], c1[0] - c0[0]), cs = Math.cos(th), sn = Math.sin(th);
+  const r2 = v => Math.round(v * 1000) / 1000;
+  return {
+    corners: r.corners.map(p => { const dx = p[0] - c0[0], dz = p[1] - c0[1]; return [r2(dx * cs + dz * sn), r2(-dx * sn + dz * cs)]; }),
+    height: r.height,
+    openings: r.openings.map(o => ({ ...o, s0: r2(o.s0), s1: r2(o.s1), y0: r2(o.y0), y1: r2(o.y1) }))
+  };
+}
+
+// knoppen in AR: tikken op knoppen telt niet als scan-tik
+for (const id of ['ar-top', 'ar-bottom']) $(id).addEventListener('beforexrselect', e => e.preventDefault());
+$('b-undo').onclick = undo;
+$('b-square').onclick = () => { S.square = !S.square; updateUI(); };
+$('b-close').onclick = closeRoom;
+$('b-h260').onclick = () => setHeight(2.6);
+$('b-hceil').onclick = () => setHeight(S.ceilY - S.floorY);
+$('b-door').onclick = () => { S.openType = 'deur'; S.openFirst = null; updateUI(); };
+$('b-win').onclick = () => { S.openType = 'raam'; S.openFirst = null; updateUI(); };
+$('b-done').onclick = () => { S.finished = true; session && session.end(); };
+$('ar-exit').onclick = () => {
+  if (S && S.corners.length && !exitArm) { exitArm = 1; $('ar-exit').textContent = 'Stoppen zonder opslaan?'; return; }
+  session && session.end();
+};
+
+/* ================= viewer ================= */
+const viewScene = new THREE.Scene(); viewScene.background = new THREE.Color(0x1a2330);
+viewScene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.5));
+const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(4, 8, 5); viewScene.add(dl);
+const grid = new THREE.GridHelper(30, 30, 0x3a4a5c, 0x26323f); viewScene.add(grid);
+const viewCam = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
+const controls = new OrbitControls(viewCam, renderer.domElement); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.95;
+let current = null, viewModel = null, showCeil = false, tab = '3d';
+
+function openViewer(entry) {
+  current = entry;
+  $('home').hidden = true; $('viewer').hidden = false;
+  $('v-name').value = entry.name; $('v-h').value = Math.round(entry.room.height * 100);
+  $('v-t').value = String(entry.thickness ?? 0.1);
+  showTab('3d'); refresh(true);
+}
+function refresh(fit) {
+  if (viewModel) { viewScene.remove(viewModel); disposeGroup(viewModel); }
+  viewModel = buildModel(current.room, { mode: 'view', thickness: +current.thickness || 0, ceiling: showCeil });
+  viewScene.add(viewModel);
+  if (fit) {
+    const box = new THREE.Box3().setFromObject(viewModel), c = box.getCenter(new V3()), s = box.getSize(new V3()).length();
+    controls.target.copy(c); viewCam.position.set(c.x + s * .55, c.y + s * .9, c.z + s * .75); controls.update();
+    grid.position.set(Math.round(c.x), -0.001, Math.round(c.z));
+  }
+  renderStats(); if (tab === 'plan') drawPlan();
+}
+function renderStats() {
+  const r = current.room, st = roomStats(r);
+  const nd = r.openings.filter(o => o.type === 'deur').length, nr = r.openings.length - nd;
+  $('stats').innerHTML = [
+    [st.area.toFixed(1).replace('.', ',') + ' m²', 'vloer'], [fmtM(r.height), 'hoogte'], [st.vol.toFixed(1).replace('.', ',') + ' m³', 'inhoud'],
+    [fmtM(st.per), 'omtrek'], [st.wallA.toFixed(1).replace('.', ',') + ' m²', 'muren (netto)'], [nd + ' / ' + nr, 'deuren / ramen']
+  ].map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join('');
+  const C = r.corners;
+  $('walls').innerHTML = C.map((p, i) => {
+    const q = C[(i + 1) % C.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const ops = r.openings.filter(o => o.wall === i).map(o => (o.type === 'deur' ? 'deur ' : 'raam ') + fmtCm(o.s1 - o.s0) + '×' + fmtCm(o.y1 - o.y0));
+    return `<div><b>Muur ${i + 1}</b> · ${fmtM(L)}${ops.length ? ' · ' + ops.join(', ') : ''}</div>`;
+  }).join('');
+}
+function resize() {
+  if (renderer.xr.isPresenting) return;
+  const el = $('stage'), w = el.clientWidth, h = el.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false); viewCam.aspect = w / h; viewCam.updateProjectionMatrix();
+  if (tab === 'plan') drawPlan();
+}
+addEventListener('resize', resize);
+function showTab(t) {
+  tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $('view3d').hidden = t !== '3d'; $('ceilbtn').hidden = t !== '3d'; $('planwrap').hidden = t !== 'plan';
+  requestAnimationFrame(resize);
+  if (t === 'plan') requestAnimationFrame(drawPlan);
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+$('ceilbtn').onclick = () => { showCeil = !showCeil; $('ceilbtn').textContent = 'Plafond: ' + (showCeil ? 'aan' : 'uit'); refresh(false); };
+$('b-back').onclick = () => { showHome(); };
+$('v-name').onchange = () => { current.name = $('v-name').value.trim() || 'Kamer'; saveEntry(current); };
+$('v-h').onchange = () => {
+  const h = Math.min(6, Math.max(1.5, (+$('v-h').value || 260) / 100)); $('v-h').value = Math.round(h * 100);
+  current.room.height = h; for (const o of current.room.openings) { o.y1 = Math.min(o.y1, h - 0.02); o.y0 = Math.min(o.y0, o.y1 - 0.1); }
+  saveEntry(current); refresh(false);
+};
+$('v-t').onchange = () => { current.thickness = +$('v-t').value; saveEntry(current); refresh(false); };
+
+function drawPlan() {
+  if (!current) return;
+  const cv = $('plan'), box = $('planwrap'), W = box.clientWidth, Hh = box.clientHeight; if (!W || !Hh) return;
+  const dpr = devicePixelRatio || 1; cv.width = W * dpr; cv.height = Hh * dpr; cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, Hh);
+  const r = current.room, C = r.corners, n = C.length;
+  let minx = Infinity, maxx = -Infinity, minz = Infinity, maxz = -Infinity;
+  for (const p of C) { minx = Math.min(minx, p[0]); maxx = Math.max(maxx, p[0]); minz = Math.min(minz, p[1]); maxz = Math.max(maxz, p[1]); }
+  const pad = 58, sc = Math.min((W - 2 * pad) / Math.max(0.5, maxx - minx), (Hh - 2 * pad) / Math.max(0.5, maxz - minz));
+  const ox = (W - (maxx - minx) * sc) / 2 - minx * sc, oz = (Hh - (maxz - minz) * sc) / 2 - minz * sc;
+  const P = (x, z) => [ox + x * sc, oz + z * sc];
+  const path = () => { g.beginPath(); C.forEach((p, i) => { const [x, y] = P(p[0], p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); };
+  const floorCol = '#2b3a4a';
+  path(); g.fillStyle = floorCol; g.fill();
+  const lw = Math.max(4, (+current.thickness || 0.1) * sc);
+  g.lineWidth = lw; g.strokeStyle = '#e9e4da'; g.lineJoin = 'miter'; path(); g.stroke();
+  // openingen
+  for (const o of r.openings) {
+    const w = wallInfo(C, o.wall);
+    const p0 = P(w.a[0] + w.ux * o.s0, w.a[1] + w.uz * o.s0), p1 = P(w.a[0] + w.ux * o.s1, w.a[1] + w.uz * o.s1);
+    g.lineCap = 'butt'; g.lineWidth = lw + 2; g.strokeStyle = floorCol; g.beginPath(); g.moveTo(...p0); g.lineTo(...p1); g.stroke();
+    if (o.type === 'deur') {
+      const len = (o.s1 - o.s0) * sc, ix = -w.ox, iz = -w.oz;
+      g.lineWidth = 2; g.strokeStyle = '#ffa726';
+      g.beginPath(); g.moveTo(...p0); g.lineTo(p0[0] + ix * len, p0[1] + iz * len); g.stroke();
+      const a0 = Math.atan2(iz, ix), a1 = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+      g.setLineDash([4, 4]); g.beginPath(); g.arc(p0[0], p0[1], len, a0, a1, da < 0); g.stroke(); g.setLineDash([]);
+    } else {
+      g.lineWidth = 2; g.strokeStyle = '#80deea';
+      for (const k of [-1, 1]) { const dx = w.ox * k * lw / 2.6, dz = w.oz * k * lw / 2.6; g.beginPath(); g.moveTo(p0[0] + dx, p0[1] + dz); g.lineTo(p1[0] + dx, p1[1] + dz); g.stroke(); }
+      g.beginPath(); g.moveTo(...p0); g.lineTo(...p1); g.stroke();
+    }
+  }
+  // maten
+  g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    const w = wallInfo(C, i); const [ax, ay] = P(w.a[0], w.a[1]), [bx, by] = P(w.b[0], w.b[1]);
+    const mx = (ax + bx) / 2 + w.ox * (lw / 2 + 15), my = (ay + by) / 2 + w.oz * (lw / 2 + 15);
+    let ang = Math.atan2(by - ay, bx - ax); if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
+    g.save(); g.translate(mx, my); g.rotate(ang); g.fillStyle = '#cfe9f7'; g.fillText(fmtM(w.L), 0, 0); g.restore();
+  }
+  // oppervlakte in het midden
+  let a2 = 0, cx = 0, cz = 0;
+  for (let i = 0; i < n; i++) { const p = C[i], q = C[(i + 1) % n], cr = p[0] * q[1] - q[0] * p[1]; a2 += cr; cx += (p[0] + q[0]) * cr; cz += (p[1] + q[1]) * cr; }
+  cx /= 3 * a2; cz /= 3 * a2;
+  const [tx, ty] = P(cx, cz);
+  g.fillStyle = '#fff'; g.font = '700 16px system-ui,sans-serif'; g.fillText((Math.abs(a2) / 2).toFixed(1).replace('.', ',') + ' m²', tx, ty);
+  // schaalbalk 1 m
+  g.strokeStyle = '#93a4b5'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, Hh - 16); g.lineTo(14 + sc, Hh - 16); g.moveTo(14, Hh - 21); g.lineTo(14, Hh - 11); g.moveTo(14 + sc, Hh - 21); g.lineTo(14 + sc, Hh - 11); g.stroke();
+  g.fillStyle = '#93a4b5'; g.font = '12px system-ui,sans-serif'; g.textAlign = 'left'; g.fillText('1 m', 20 + sc, Hh - 16);
+}
+
+/* ---------- export ---------- */
+function fname() { return (current.name || 'kamer').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'kamer'; }
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+}
+function exportGroup() { const g = buildModel(current.room, { mode: 'export', thickness: +current.thickness || 0, ceiling: true }); g.name = current.name; g.updateMatrixWorld(true); return g; }
+$('x-glb').onclick = () => {
+  new GLTFExporter().parse(exportGroup(), res => download(new Blob([res], { type: 'model/gltf-binary' }), fname() + '.glb'), err => toast('Export mislukt: ' + err), { binary: true });
+};
+$('x-obj').onclick = () => download(new Blob([new OBJExporter().parse(exportGroup())], { type: 'text/plain' }), fname() + '.obj');
+$('x-json').onclick = () => download(new Blob([JSON.stringify({ app: 'kamerscan', v: 1, name: current.name, thickness: current.thickness, room: current.room }, null, 1)], { type: 'application/json' }), fname() + '.json');
+
+/* ================= opslag + home ================= */
+const KEY = 'kamerscan.rooms';
+function loadAll() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+function saveAll(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) { toast('Opslaan op dit toestel lukt niet'); } }
+function saveEntry(e) { if (e.demo) return; const a = loadAll(); const i = a.findIndex(x => x.id === e.id); if (i >= 0) a[i] = e; else a.unshift(e); saveAll(a); }
+function showHome() {
+  $('viewer').hidden = true; $('home').hidden = false; current = null;
+  const a = loadAll();
+  $('saved').innerHTML = a.length ? '' : '<div style="color:var(--mut);font-size:14px">Nog geen kamers. Start een scan of bekijk de demo.</div>';
+  for (const e of a) {
+    const st = roomStats(e.room); const div = document.createElement('div'); div.className = 'saved';
+    div.innerHTML = `<div class="n"><b></b><span>${st.area.toFixed(1).replace('.', ',')} m² · ${fmtM(e.room.height)} hoog · ${e.room.corners.length} muren</span></div><button>🗑</button>`;
+    div.querySelector('b').textContent = e.name;
+    div.querySelector('.n').onclick = () => openViewer(e);
+    const del = div.querySelector('button'); let arm = false;
+    del.onclick = () => { if (!arm) { arm = true; del.textContent = 'Zeker?'; return; } saveAll(loadAll().filter(x => x.id !== e.id)); showHome(); };
+    $('saved').appendChild(div);
+  }
+}
+const DEMO = { id: 'demo', demo: true, name: 'Demo: L-vormige woonkamer', thickness: 0.1, room: {
+  corners: [[0, 0], [5, 0], [5, 3], [3, 3], [3, 4.2], [0, 4.2]], height: 2.6,
+  openings: [
+    { type: 'raam', wall: 0, s0: 1.0, s1: 2.6, y0: 0.9, y1: 2.15 },
+    { type: 'raam', wall: 1, s0: 0.8, s1: 2.2, y0: 0.9, y1: 2.15 },
+    { type: 'deur', wall: 4, s0: 0.8, s1: 1.73, y0: 0, y1: 2.1 },
+    { type: 'deur', wall: 3, s0: 0.15, s1: 1.0, y0: 0, y1: 2.1 }
+  ] } };
+$('b-demo').onclick = () => openViewer(JSON.parse(JSON.stringify(DEMO)));
+$('b-start').onclick = startAR;
+$('b-import').onclick = () => $('f-import').click();
+$('f-import').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text()); if (!j.room || !Array.isArray(j.room.corners)) throw 0;
+    const entry = { id: 'k' + Date.now(), name: j.name || f.name.replace(/\.json$/, ''), date: new Date().toISOString(), thickness: j.thickness ?? 0.1, room: { corners: j.room.corners, height: j.room.height || 2.6, openings: j.room.openings || [] } };
+    saveEntry(entry); openViewer(entry);
+  } catch (err) { toast('Geen geldig KamerScan-bestand'); }
+};
+
+async function checkSupport() {
+  const el = $('support');
+  const set = (ok, t) => { el.className = ok ? 'ok' : 'bad'; el.textContent = t; $('b-start').disabled = !ok; };
+  if (!isSecureContext) return set(false, 'Open deze pagina via https om AR te gebruiken.');
+  if (!navigator.xr) return set(false, 'AR (WebXR) is niet beschikbaar. Open deze pagina in Chrome op een Android-telefoon. De demo werkt wel.');
+  let ok = false; try { ok = await navigator.xr.isSessionSupported('immersive-ar'); } catch (e) {}
+  set(ok, ok ? '✓ AR wordt ondersteund op dit toestel.' : 'AR wordt hier niet ondersteund. Gebruik Chrome op Android met "Google Play Services voor AR". De demo werkt wel.');
+}
+
+/* ================= loop ================= */
+renderer.setAnimationLoop((t, frame) => {
+  if (renderer.xr.isPresenting) { if (frame && S) arFrame(frame); renderer.render(arScene, arCam); }
+  else if (current && tab === '3d' && !$('viewer').hidden) { controls.update(); renderer.render(viewScene, viewCam); }
+});
+showHome(); checkSupport();
+</script>
+</body>
+</html>
