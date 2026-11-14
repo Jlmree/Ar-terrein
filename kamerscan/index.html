@@ -344,8 +344,8 @@ function resetScan(mode = 'auto') {
 }
 
 /* ---------- puntenwolk (diepte + hit-test) ---------- */
-const MAXP = 60000, VS = 0.05;
-const ptsGeo = new THREE.BufferGeometry(); ptsGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXP * 3), 3)); ptsGeo.setDrawRange(0, 0);
+const MAXP = 250000, MAXSHOW = 80000, VS = 0.05;
+const ptsGeo = new THREE.BufferGeometry(); ptsGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXSHOW * 3), 3)); ptsGeo.setDrawRange(0, 0);
 const ptsCloud = new THREE.Points(ptsGeo, new THREE.PointsMaterial({ color: 0x4fc3f7, size: 0.016, transparent: true, opacity: .7, depthWrite: false }));
 ptsCloud.frustumCulled = false; arScene.add(ptsCloud);
 const propGroup = new THREE.Group(); arScene.add(propGroup);
@@ -354,10 +354,11 @@ const propLineMat = new THREE.LineBasicMaterial({ color: 0x9ccc65, depthTest: fa
 
 function addPoint(x, y, z, w, o) {
   const k = Math.round(x / VS) + ',' + Math.round(y / VS) + ',' + Math.round(z / VS);
-  const v = S.vox.get(k); if (v) { v.n += w; return; }
-  if (S.nvox >= MAXP) return;
-  S.vox.set(k, { x, y, z, n: w, cx: o.x, cy: o.y, cz: o.z }); // c = waar de camera stond
-  ptsGeo.attributes.position.setXYZ(S.nvox++, x, y, z); S.ptsDirty = true;
+  let v = S.vox.get(k);
+  if (v) v.n += w;
+  else { if (S.vox.size >= MAXP) return; v = { x, y, z, n: w, cx: o.x, cy: o.y, cz: o.z, shown: false }; S.vox.set(k, v); } // c = waar de camera stond
+  // alleen tonen (en meetellen) als het punt minstens 2x gezien is: losse ruis valt weg
+  if (!v.shown && v.n >= 2 && S.nvox < MAXSHOW) { v.shown = true; ptsGeo.attributes.position.setXYZ(S.nvox++, v.x, v.y, v.z); S.ptsDirty = true; }
 }
 const _inv = new THREE.Matrix4(), _vm = new THREE.Matrix4(), _p = new V3();
 function collect(frame, vp, o, d, hit) {
@@ -373,9 +374,9 @@ function collect(frame, vp, o, d, hit) {
       for (let j = 0; j < GY; j++) for (let i = 0; i < GX; i++) {
         const x = (i + .5) / GX, y = (j + .5) / GY; let z;
         try { z = di.getDepthInMeters(x, y); } catch (e) { continue; }
-        if (!(z > 0.25 && z < 6)) continue;
+        if (!(z > 0.5 && z < 4)) continue;
         _p.set(2 * x - 1, 1 - 2 * y, -1).applyMatrix4(_inv); _p.multiplyScalar(z / -_p.z).applyMatrix4(_vm);
-        good++; addPoint(_p.x, _p.y, _p.z, 1, o);
+        good++; addPoint(_p.x, _p.y, _p.z, z < 1.8 ? 2 : z < 2.8 ? 1 : 0.5, o); // dichtbij = nauwkeuriger
         if (_p.y < o.y - 0.4) { const b = Math.round(_p.y / 0.02); S.floorHist.set(b, (S.floorHist.get(b) || 0) + 1); }
         if (d.y > 0.3 && _p.y - S.floorY > 1.8) { const b = Math.round(_p.y / 0.02); S.ceilHist.set(b, (S.ceilHist.get(b) || 0) + 1); S.ceilN++; }
       }
@@ -411,7 +412,7 @@ function estimateCeil() {
 function analyze() {
   const fy = S.floorY, top = S.ceilY ? Math.min(2.1, S.ceilY - fy - 0.15) : 2.1;
   const P = [];
-  for (const v of S.vox.values()) { const h = v.y - fy; if (h > 0.9 && h < top) P.push(v.x, v.z, Math.min(3, v.n)); }
+  for (const v of S.vox.values()) { if (v.n < 2) continue; const h = v.y - fy; if (h > 0.9 && h < top) P.push(v.x, v.z, Math.min(4, v.n)); }
   if (P.length / 3 < 150) return { err: 'nog weinig muurpunten' };
   const BIN = 0.05;
   // voor de richting-zoektocht: hooguit ~10k punten, histogrammen als arrays (snel op telefoon)
@@ -433,30 +434,39 @@ function analyze() {
   for (let t = -1.75; t <= 1.75; t += 0.25) { const r = th0 + t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
   const c = Math.cos(th), s = Math.sin(th), R = [], Q = [];
   for (let k = 0; k < P.length; k += 3) R.push(P[k] * c + P[k + 1] * s, -P[k] * s + P[k + 1] * c, P[k + 2]);
-  // dekking van een muurlijn over de hele hoogte (onder/boven ramen en boven deuren zit ook muur)
-  const topC = S.ceilY ? S.ceilY - fy - 0.1 : 2.4;
-  for (const v of S.vox.values()) { const h = v.y - fy; if (h > 0.15 && h < topC) Q.push(v.x * c + v.z * s, -v.x * s + v.z * c, Math.min(3, v.n)); }
-  const lines = ax => {
-    const h = new Map(); let mn = Infinity, mx = -Infinity;
-    for (let k = 0; k < R.length; k += 3) { const b = Math.round(R[k + ax] / BIN); h.set(b, (h.get(b) || 0) + R[k + 2]); if (b < mn) mn = b; if (b > mx) mx = b; }
-    const sm = b => (h.get(b - 1) || 0) + 2 * (h.get(b) || 0) + (h.get(b + 1) || 0);
-    const cand = [];
-    const bg = b => { let t = 0; for (let k = 4; k <= 8; k++) t += sm(b - k) + sm(b + k); return t / 10; };
-    for (let b = mn; b <= mx; b++) { const v = sm(b); if (v >= sm(b - 1) && v > sm(b + 1) && v >= 120 && v >= 2.5 * bg(b) + 60) cand.push({ b, v }); }
-    cand.sort((p, q) => q.v - p.v);
-    const out = [];
-    for (const p of cand) { if (p.v < cand[0].v * 0.06) break; if (out.some(q => Math.abs(q.b - p.b) <= 5)) continue; out.push(p); }
-    return out.map(p => {
-      const c0 = p.b * BIN; let sw = 0, sx = 0; const cw = new Map();
-      for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.08) { sw += R[k + 2]; sx += u * R[k + 2]; } }
-      const cc = sx / sw;
-      for (let k = 0; k < Q.length; k += 3) { if (Math.abs(Q[k + ax] - cc) < 0.08) { const q = Math.floor(Q[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + Q[k + 2]); } }
-      const cells = new Set(); for (const [q, w] of cw) if (w >= 4) cells.add(q);
-      return { c: cc, cells };
-    }).filter(l => l.cells.size >= 3).sort((p, q) => p.c - q.c);
-  };
-  const X = lines(0), Z = lines(1);
-  if (X.length < 2 || Z.length < 2) return { err: 'scan nog meer muren' };
+  // dekking van een muurlijn: alleen het bovenste stuk (1,95 m tot plafond). Daar zit altijd muur,
+  // ook boven ramen en deuren, maar bijna nooit een kast of ander meubel.
+  const topC = S.ceilY ? S.ceilY - fy - 0.08 : 2.4, botC = Math.min(1.95, topC - 0.3);
+  for (const v of S.vox.values()) { if (v.n < 2) continue; const h = v.y - fy; if (h > botC && h < topC) Q.push(v.x * c + v.z * s, -v.x * s + v.z * c, Math.min(4, v.n)); }
+  // muurlijnen één voor één zoeken: sterkste eerst, die punten weghalen, opnieuw (zo komen korte muren boven)
+  const alive = new Uint8Array(R.length / 3).fill(1);
+  const found = [[], []]; let first = 0;
+  for (let it = 0; it < 14; it++) {
+    let best = null;
+    for (const ax of [0, 1]) {
+      const h = new Map(); let mn = Infinity, mx = -Infinity;
+      for (let k = 0, q = 0; k < R.length; k += 3, q++) { if (!alive[q]) continue; const b = Math.round(R[k + ax] / BIN); h.set(b, (h.get(b) || 0) + R[k + 2]); if (b < mn) mn = b; if (b > mx) mx = b; }
+      const sm = b => (h.get(b - 2) || 0) + 2 * (h.get(b - 1) || 0) + 3 * (h.get(b) || 0) + 2 * (h.get(b + 1) || 0) + (h.get(b + 2) || 0);
+      const bg = b => { let t = 0; for (let k = 5; k <= 10; k++) t += sm(b - k) + sm(b + k); return t / 12; };
+      for (let b = mn; b <= mx; b++) {
+        const v = sm(b); if (best && v <= best.v) continue;
+        if (v >= sm(b - 1) && v > sm(b + 1) && v >= 150 && v >= 2.0 * bg(b) + 60 && v >= first * 0.008 && !found[ax].some(l => Math.abs(l.c - b * BIN) < 0.25)) best = { ax, b, v };
+      }
+    }
+    if (!best) break;
+    if (!first) first = best.v;
+    const { ax } = best, c0 = best.b * BIN; let sw = 0, sx = 0;
+    for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.1) { sw += R[k + 2]; sx += u * R[k + 2]; } }
+    const cc = sx / sw, cw = new Map();
+    for (let k = 0, q = 0; k < R.length; k += 3, q++) if (Math.abs(R[k + ax] - cc) < 0.12) alive[q] = 0;
+    for (let k = 0; k < Q.length; k += 3) { if (Math.abs(Q[k + ax] - cc) < 0.1) { const q = Math.floor(Q[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + Q[k + 2]); } }
+    const cells = new Set(); for (const [q, w] of cw) if (w >= 4) cells.add(q);
+    if (cells.size >= 3) found[ax].push({ c: cc, cells });
+  }
+  const X = found[0].sort((p, q) => p.c - q.c), Z = found[1].sort((p, q) => p.c - q.c);
+  const diag = `${P.length / 3 | 0} muurpunten · lijnen ${X.length}×${Z.length}`;
+  if (window.__ksdbg) window.__ksdbg = { th: th * 180 / Math.PI, X: X.map(l => l.c.toFixed(2) + '/' + l.cells.size), Z: Z.map(l => l.c.toFixed(2) + '/' + l.cells.size) };
+  if (X.length < 2 || Z.length < 2) return { err: 'scan nog meer muren', diag };
   const xs = X.map(l => l.c), zs = Z.map(l => l.c), nx = xs.length - 1, nz = zs.length - 1;
   const cov = (line, a, b) => {
     let k0 = Math.floor(a / 0.1) + 1, k1 = Math.floor(b / 0.1) - 1;
@@ -472,7 +482,7 @@ function analyze() {
     return i < 0 || j < 0 ? null : [i, j];
   };
   for (const t of S.trail) { const ce = cellOf(t[0] * c + t[1] * s, -t[0] * s + t[1] * c); if (ce && !inside[id(...ce)]) { inside[id(...ce)] = 1; queue.push(ce); } }
-  if (!queue.length) return { err: 'ga in de kamer staan' };
+  if (!queue.length) return { err: 'ga in de kamer staan', diag };
   while (queue.length) {
     const [i, j] = queue.pop();
     const go = (a, b) => { if (a >= 0 && b >= 0 && a < nx && b < nz && !inside[id(a, b)]) { inside[id(a, b)] = 1; queue.push([a, b]); } };
@@ -510,7 +520,7 @@ function analyze() {
   });
   if (simp.length < 4) return { err: 'geen kamer gevonden' };
   const corners = simp.map(([u, w]) => [u * c - w * s, u * s + w * c]);
-  return { corners, area: bestA / 2 };
+  return { corners, area: bestA / 2, diag };
 }
 function drawProposal(C) {
   clearGroup(propGroup);
@@ -530,7 +540,8 @@ function scanStep(o, d, now) {
   reticle.visible = false; hidePreview();
   if (now - S.lastAnalyze > 1500) {
     S.lastAnalyze = now; estimateFloor(); estimateCeil();
-    const r = analyze(); S.scanErr = r.err || null;
+    let r; try { r = analyze(); } catch (e) { r = { err: 'fout: ' + e.message }; }
+    S.scanErr = r.err || null; S.diag = r.diag || '';
     if (r.corners) {
       S.proposal = r;
       const key = r.corners.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(';');
@@ -540,6 +551,7 @@ function scanStep(o, d, now) {
   }
   const pct = Math.round(S.yaw.size / 12 * 100);
   if (S.proposal) setMsg(`Voorstel: ${S.proposal.corners.length} muren · ${S.proposal.area.toFixed(1).replace('.', ',')} m² (rondje ${pct}%). Klopt het? Tik ✓. Zo niet: scan verder of kies ✋ Handmatig`);
+  else if (pct >= 100 && S.scanErr) setMsg(`Nog geen voorstel (${S.scanErr}). Loop wat dichter langs de muren (1–3 m afstand), of kies ✋ Handmatig`);
   else setMsg(`Draai langzaam een rondje en film alle muren op ooghoogte, boven de meubels (rondje ${pct}%${S.scanErr ? ', ' + S.scanErr : ''})`);
 }
 function acceptProposal() {
@@ -557,12 +569,12 @@ function detectOpenings() {
   const C = S.corners.map(c => [c.x, c.z]), n = C.length, H = S.height, fy = S.floorY;
   const W = C.map((_, i) => ({ ...wallInfo(C, i), grid: new Map() }));
   for (const v of S.vox.values()) {
-    if (v.cx == null || pointInPoly(v.x, v.z, C)) continue;
+    if (v.n < 2 || v.cx == null || pointInPoly(v.x, v.z, C)) continue;
     let best = null;
     for (let i = 0; i < n; i++) {
       const w = W[i];
       const dc = (v.cx - w.a[0]) * w.ox + (v.cz - w.a[1]) * w.oz, dp = (v.x - w.a[0]) * w.ox + (v.z - w.a[1]) * w.oz;
-      if (dc >= 0 || dp < 0.25) continue;
+      if (dc >= 0 || dp < 0.4 - 0.12 * dc) continue; // duidelijk áchter de muur (ruis groeit met afstand)
       const u = dc / (dc - dp);
       const x = v.cx + u * (v.x - v.cx), z = v.cz + u * (v.z - v.cz), y = v.cy + u * (v.y - v.cy) - fy;
       const s = (x - w.a[0]) * w.ux + (z - w.a[1]) * w.uz;
@@ -575,8 +587,8 @@ function detectOpenings() {
   let added = 0;
   W.forEach((w, i) => {
     const cols = new Map();
-    for (const [k, cnt] of w.grid) { if (cnt < 2) continue; const [cs, ys] = k.split(',').map(Number); if (!cols.has(cs)) cols.set(cs, []); cols.get(cs).push(ys); }
-    const occ = [...cols.entries()].filter(e => e[1].length >= 3).sort((a, b) => a[0] - b[0]);
+    for (const [k, cnt] of w.grid) { if (cnt < 4) continue; const [cs, ys] = k.split(',').map(Number); if (!cols.has(cs)) cols.set(cs, []); cols.get(cs).push(ys); }
+    const occ = [...cols.entries()].filter(e => e[1].length >= 4).sort((a, b) => a[0] - b[0]);
     const groups = []; for (const e of occ) { const g = groups[groups.length - 1]; if (g && e[0] - g[g.length - 1][0] <= 2) g.push(e); else groups.push([e]); }
     for (const g of groups) {
       const s0 = g[0][0] * 0.1, s1 = (g[g.length - 1][0] + 1) * 0.1;
@@ -647,9 +659,10 @@ function updatePlanes(frame, ref) {
       const vert = pl.orientation === 'vertical';
       const mesh = new THREE.Mesh(planeGeo(pl.polygon), vert ? matPlaneV : matPlaneH); mesh.matrixAutoUpdate = false; planesGroup.add(mesh);
       let r = 0; for (const p of pl.polygon) r = Math.max(r, Math.hypot(p.x, p.z));
-      e = { mesh, t: pl.lastChangedTime, vert, r }; planeMeshes.set(pl, e);
+      e = { mesh, t: pl.lastChangedTime, vert, r, sampled: false }; planeMeshes.set(pl, e);
     }
     e.mesh.matrix.fromArray(pose.transform.matrix); e.mesh.matrixWorldNeedsUpdate = true;
+    if (e.vert && !e.sampled && S.floorY != null && S.cam && S.step !== 'floor') { e.sampled = true; samplePlane(pl.polygon, e.mesh.matrix); }
     e.pos = new V3().setFromMatrixPosition(e.mesh.matrix);
     e.nrm = new V3(0, 1, 0).transformDirection(e.mesh.matrix);
     // vloer / plafond uit horizontale vlakken
@@ -659,6 +672,16 @@ function updatePlanes(frame, ref) {
     }
   }
   for (const [pl, e] of planeMeshes) if (!seen.has(pl)) { planesGroup.remove(e.mesh); e.mesh.geometry.dispose(); planeMeshes.delete(pl); }
+}
+// een door de telefoon herkend muurvlak omzetten in muurpunten (telt 2x zo zwaar als een dieptepunt)
+function samplePlane(poly, m) {
+  let minx = Infinity, maxx = -Infinity, minz = Infinity, maxz = -Infinity;
+  for (const p of poly) { minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); minz = Math.min(minz, p.z); maxz = Math.max(maxz, p.z); }
+  const C = poly.map(p => [p.x, p.z]), q = new V3();
+  for (let x = minx; x <= maxx; x += 0.05) for (let z = minz; z <= maxz; z += 0.05) {
+    if (!pointInPoly(x, z, C)) continue;
+    q.set(x, 0, z).applyMatrix4(m); addPoint(q.x, q.y, q.z, 2, S.cam);
+  }
 }
 // hoek automatisch vinden: snijlijn van twee herkende muren
 function snapCorner(p) {
@@ -736,7 +759,7 @@ function updateUI() {
   show('b-door', st === 'openings'); show('b-win', st === 'openings'); show('b-done', st === 'openings');
   $('b-door').classList.toggle('sel', S.openType === 'deur'); $('b-win').classList.toggle('sel', S.openType === 'raam');
   $('ar-hint').textContent = st === 'corners' ? 'Tik ergens op het scherm om een hoek te zetten'
-    : st === 'scan' ? (S.depthOn ? 'Blauwe puntjes = wat de camera ziet · groen = voorgestelde muren' : 'Geen dieptedata: richt rustig op elke muur zodat er puntjes verschijnen')
+    : st === 'scan' ? (S.depthOn ? 'Blauw = gemeten punten · groen = voorgestelde muren' : 'Geen dieptedata: richt rustig op elke muur') + (S.diag ? ' · ' + S.diag : '')
     : st === 'openings' ? (S.openings.length ? S.openings.length + ' opening(en) · tik twee hoeken om er een toe te voegen' : 'Geen deuren of ramen? Tik op Klaar') : '';
 }
 
@@ -1160,7 +1183,10 @@ async function checkSupport() {
 
 /* ================= loop ================= */
 renderer.setAnimationLoop((t, frame) => {
-  if (renderer.xr.isPresenting) { if (frame && S) arFrame(frame, t); renderer.render(arScene, arCam); }
+  if (renderer.xr.isPresenting) {
+    if (frame && S) { try { arFrame(frame, t); } catch (e) { if (!S.errShown) { S.errShown = true; console.error(e); $('ar-hint').textContent = 'Fout: ' + e.message; } } }
+    renderer.render(arScene, arCam);
+  }
   else if (current && tab === '3d' && !$('viewer').hidden) { controls.update(); renderer.render(viewScene, viewCam); }
 });
 showHome(); checkSupport();
