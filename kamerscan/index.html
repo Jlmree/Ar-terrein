@@ -81,7 +81,8 @@ details li{margin:6px 0}
 <div id="home" class="screen">
   <h1>KamerScan</h1>
   <p class="sub">Loop met je camera door een kamer en maak er een 3D-model van, met maten, deuren en ramen. Exporteer naar Blender.</p>
-  <button id="b-start" class="pri big">▶ Start scan</button>
+  <button id="b-start" class="pri big">▶ Start scan (automatisch)</button>
+  <button id="b-start-man" class="big" style="font-size:16px;padding:13px">Start handmatig (hoeken tikken)</button>
   <div class="row">
     <button id="b-demo">Bekijk demo-kamer</button>
     <button id="b-import">Importeer .json</button>
@@ -93,7 +94,8 @@ details li{margin:6px 0}
     <summary>Zo werkt het</summary>
     <ol>
       <li><b>Vloer</b>: richt op de vloer en beweeg rustig heen en weer. De vloer wordt vanzelf herkend.</li>
-      <li><b>Hoeken</b>: richt de stip op elke hoek waar twee muren de vloer raken en tik op het scherm. Loop zo de kamer rond. Bij de eerste hoek terug: tik om te sluiten.</li>
+      <li><b>Muren (automatisch)</b>: draai langzaam een rondje en film alle muren op ooghoogte. De app maakt zelf een voorstel (groene muren). Klopt het: <b>✓ Gebruik</b>. Klopt het niet: <b>✋ Handmatig</b>.</li>
+      <li><b>Hoeken (handmatig)</b>: richt de stip op elke hoek waar twee muren de vloer raken en tik op het scherm. Bij de eerste hoek terug: tik om te sluiten.</li>
       <li><b>Plafond</b>: richt op de lijn waar muur en plafond elkaar raken en tik.</li>
       <li><b>Deuren &amp; ramen</b>: kies Deur of Raam, tik twee tegenover elkaar liggende hoeken op de muur. Daarna <b>Klaar</b>.</li>
     </ol>
@@ -122,6 +124,9 @@ details li{margin:6px 0}
   <div id="ar-hint"></div>
   <div id="ar-bottom">
     <button id="b-undo">↶ Terug</button>
+    <button id="b-manual">✋ Handmatig</button>
+    <button id="b-accept" class="pri">✓ Gebruik deze muren</button>
+    <button id="b-auto">🤖 Automatisch</button>
     <button id="b-square" class="sel">⊾ Haaks</button>
     <button id="b-close" class="pri">Sluit kamer</button>
     <button id="b-h260">Gebruik 2,60 m</button>
@@ -328,10 +333,243 @@ function setPos(geo, pts) { const a = geo.attributes.position; pts.forEach((p, i
 let S = null, session = null, hitSource = null, exitArm = 0;
 const planeMeshes = new Map();
 
-function resetScan() {
-  S = { step: 'floor', floorY: null, votes: [], corners: [], closed: false, height: 2.6, openings: [], openType: 'deur',
-    openFirst: null, aim: null, aimInfo: null, nearFirst: false, square: true, ceilY: null, liveH: null, finished: false, planesOn: false, cam: null };
-  clearGroup(roomGroup); clearGroup(planesGroup); planeMeshes.clear(); hidePreview(); reticle.visible = false;
+function resetScan(mode = 'auto') {
+  S = { step: 'floor', mode, floorY: null, votes: [], corners: [], closed: false, height: 2.6, openings: [], openType: 'deur',
+    openFirst: null, aim: null, aimInfo: null, nearFirst: false, square: true, ceilY: null, liveH: null, finished: false, planesOn: false, cam: null,
+    depthOn: false, vox: new Map(), nvox: 0, trail: [], yaw: new Set(), ceilHist: new Map(), ceilN: 0, proposal: null, propKey: '', scanErr: null,
+    lastAnalyze: 0, lastCeil: 0, frameN: 0, ptsDirty: false };
+  clearGroup(roomGroup); clearGroup(planesGroup); clearGroup(propGroup); planeMeshes.clear(); hidePreview(); reticle.visible = false;
+  ptsGeo.setDrawRange(0, 0);
+}
+
+/* ---------- puntenwolk (diepte + hit-test) ---------- */
+const MAXP = 60000, VS = 0.05;
+const ptsGeo = new THREE.BufferGeometry(); ptsGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXP * 3), 3)); ptsGeo.setDrawRange(0, 0);
+const ptsCloud = new THREE.Points(ptsGeo, new THREE.PointsMaterial({ color: 0x4fc3f7, size: 0.016, transparent: true, opacity: .7, depthWrite: false }));
+ptsCloud.frustumCulled = false; arScene.add(ptsCloud);
+const propGroup = new THREE.Group(); arScene.add(propGroup);
+const propWallMat = new THREE.MeshBasicMaterial({ color: 0x66bb6a, transparent: true, opacity: .25, side: THREE.DoubleSide, depthWrite: false });
+const propLineMat = new THREE.LineBasicMaterial({ color: 0x9ccc65, depthTest: false });
+
+function addPoint(x, y, z, w) {
+  const k = Math.round(x / VS) + ',' + Math.round(y / VS) + ',' + Math.round(z / VS);
+  const v = S.vox.get(k); if (v) { v.n += w; return; }
+  if (S.nvox >= MAXP) return;
+  S.vox.set(k, { x, y, z, n: w });
+  ptsGeo.attributes.position.setXYZ(S.nvox++, x, y, z); S.ptsDirty = true;
+}
+const _inv = new THREE.Matrix4(), _vm = new THREE.Matrix4(), _p = new V3();
+function collect(frame, vp, o, d, hit) {
+  if (hit && Math.abs(hit.nrm.y) < 0.3) addPoint(hit.pos.x, hit.pos.y, hit.pos.z, 3);
+  const last = S.trail[S.trail.length - 1];
+  if (!last || Math.hypot(o.x - last[0], o.z - last[1]) > 0.2) S.trail.push([o.x, o.z]);
+  if (S.depthOn && (S.frameN++ & 1) === 0) {
+    const view = vp.views[0]; let di = null;
+    try { di = frame.getDepthInformation(view); } catch (e) {}
+    if (di) {
+      _inv.fromArray(view.projectionMatrix).invert(); _vm.fromArray(view.transform.matrix);
+      const GX = 32, GY = 24; let good = 0;
+      for (let j = 0; j < GY; j++) for (let i = 0; i < GX; i++) {
+        const x = (i + .5) / GX, y = (j + .5) / GY; let z;
+        try { z = di.getDepthInMeters(x, y); } catch (e) { continue; }
+        if (!(z > 0.25 && z < 6)) continue;
+        _p.set(2 * x - 1, 1 - 2 * y, -1).applyMatrix4(_inv); _p.multiplyScalar(z / -_p.z).applyMatrix4(_vm);
+        good++; addPoint(_p.x, _p.y, _p.z, 1);
+        if (d.y > 0.3 && _p.y - S.floorY > 1.8) { const b = Math.round(_p.y / 0.02); S.ceilHist.set(b, (S.ceilHist.get(b) || 0) + 1); S.ceilN++; }
+      }
+      if (good > 100 && Math.abs(d.y) < 0.75) S.yaw.add(Math.floor((Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * 12) % 12);
+    }
+  } else if (!S.depthOn && hit && Math.abs(hit.nrm.y) < 0.3 && Math.abs(d.y) < 0.75) {
+    S.yaw.add(Math.floor((Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * 12) % 12);
+  }
+  if (S.ptsDirty && (S.frameN % 6 === 0 || !S.depthOn)) { ptsGeo.attributes.position.needsUpdate = true; ptsGeo.setDrawRange(0, S.nvox); S.ptsDirty = false; }
+}
+function estimateCeil() {
+  let best = null, bc = 0;
+  for (const [b, c] of S.ceilHist) { const s = c + (S.ceilHist.get(b - 1) || 0) + (S.ceilHist.get(b + 1) || 0); if (s > bc) { bc = s; best = b; } }
+  if (best != null && bc > 120 && bc > S.ceilN * 0.25) { const y = best * 0.02; if (y - S.floorY < 4.5) S.ceilY = y; }
+}
+
+/* ---------- automatische muurherkenning ----------
+   1) punten op muurhoogte (boven meubels) → 2) beste hoofdrichting (haakse kamer)
+   3) pieken = muurlijnen → 4) raster van cellen, vullen vanaf waar je liep → 5) omtrek = kamer */
+function analyze() {
+  const fy = S.floorY, top = S.ceilY ? Math.min(2.1, S.ceilY - fy - 0.15) : 2.1;
+  const P = [];
+  for (const v of S.vox.values()) { const h = v.y - fy; if (h > 0.9 && h < top) P.push(v.x, v.z, Math.min(3, v.n)); }
+  if (P.length / 3 < 150) return { err: 'nog weinig muurpunten' };
+  const BIN = 0.05;
+  // voor de richting-zoektocht: hooguit ~10k punten, histogrammen als arrays (snel op telefoon)
+  const step = Math.max(1, Math.ceil(P.length / 3 / 10000)) * 3;
+  let cx = 0, cz = 0, cn = 0; for (let k = 0; k < P.length; k += step) { cx += P[k]; cz += P[k + 1]; cn++; } cx /= cn; cz /= cn;
+  let rad = 0; for (let k = 0; k < P.length; k += step) rad = Math.max(rad, Math.hypot(P[k] - cx, P[k + 1] - cz));
+  const OFF = Math.ceil(rad / BIN) + 2, hx = new Float32Array(2 * OFF + 1), hz = new Float32Array(2 * OFF + 1);
+  const score = th => {
+    const c = Math.cos(th), s = Math.sin(th); hx.fill(0); hz.fill(0);
+    for (let k = 0; k < P.length; k += step) {
+      const x = P[k] - cx, z = P[k + 1] - cz;
+      hx[Math.round((x * c + z * s) / BIN) + OFF] += P[k + 2]; hz[Math.round((-x * s + z * c) / BIN) + OFF] += P[k + 2];
+    }
+    let sc = 0; for (let i = 0; i < hx.length; i++) sc += hx[i] * hx[i] + hz[i] * hz[i]; return sc;
+  };
+  let th = 0, bs = -1;
+  for (let t = 0; t < 90; t += 2) { const r = t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
+  const th0 = th;
+  for (let t = -1.75; t <= 1.75; t += 0.25) { const r = th0 + t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
+  const c = Math.cos(th), s = Math.sin(th), R = [];
+  for (let k = 0; k < P.length; k += 3) R.push(P[k] * c + P[k + 1] * s, -P[k] * s + P[k + 1] * c, P[k + 2]);
+  const lines = ax => {
+    const h = new Map(); let mn = Infinity, mx = -Infinity;
+    for (let k = 0; k < R.length; k += 3) { const b = Math.round(R[k + ax] / BIN); h.set(b, (h.get(b) || 0) + R[k + 2]); if (b < mn) mn = b; if (b > mx) mx = b; }
+    const sm = b => (h.get(b - 1) || 0) + 2 * (h.get(b) || 0) + (h.get(b + 1) || 0);
+    const cand = [];
+    const bg = b => { let t = 0; for (let k = 4; k <= 8; k++) t += sm(b - k) + sm(b + k); return t / 10; };
+    for (let b = mn; b <= mx; b++) { const v = sm(b); if (v >= sm(b - 1) && v > sm(b + 1) && v >= 120 && v >= 2.5 * bg(b) + 60) cand.push({ b, v }); }
+    cand.sort((p, q) => q.v - p.v);
+    const out = [];
+    for (const p of cand) { if (p.v < cand[0].v * 0.06) break; if (out.some(q => Math.abs(q.b - p.b) <= 5)) continue; out.push(p); }
+    return out.map(p => {
+      const c0 = p.b * BIN; let sw = 0, sx = 0; const cw = new Map();
+      for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.08) { sw += R[k + 2]; sx += u * R[k + 2]; const q = Math.floor(R[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + R[k + 2]); } }
+      const cells = new Set(); for (const [q, w] of cw) if (w >= 4) cells.add(q);
+      return { c: sx / sw, cells };
+    }).filter(l => l.cells.size >= 3).sort((p, q) => p.c - q.c);
+  };
+  const X = lines(0), Z = lines(1);
+  if (X.length < 2 || Z.length < 2) return { err: 'scan nog meer muren' };
+  const xs = X.map(l => l.c), zs = Z.map(l => l.c), nx = xs.length - 1, nz = zs.length - 1;
+  const cov = (line, a, b) => {
+    let k0 = Math.floor(a / 0.1) + 1, k1 = Math.floor(b / 0.1) - 1;
+    if (k1 < k0) { k0 = k1 = Math.floor((a + b) / 0.2); }
+    let hit = 0; for (let k = k0; k <= k1; k++) if (line.cells.has(k)) hit++;
+    return hit / (k1 - k0 + 1);
+  };
+  const vBlock = (i, j) => cov(X[i], zs[j], zs[j + 1]) >= 0.35;   // lijn x=xs[i] tussen cel i-1 en i
+  const hBlock = (i, j) => cov(Z[j], xs[i], xs[i + 1]) >= 0.35;   // lijn z=zs[j] tussen cel j-1 en j
+  const inside = new Uint8Array(nx * nz), id = (i, j) => i * nz + j, queue = [];
+  const cellOf = (x, z) => {
+    let i = -1, j = -1; for (let a = 0; a < nx; a++) if (x >= xs[a] && x < xs[a + 1]) i = a; for (let b = 0; b < nz; b++) if (z >= zs[b] && z < zs[b + 1]) j = b;
+    return i < 0 || j < 0 ? null : [i, j];
+  };
+  for (const t of S.trail) { const ce = cellOf(t[0] * c + t[1] * s, -t[0] * s + t[1] * c); if (ce && !inside[id(...ce)]) { inside[id(...ce)] = 1; queue.push(ce); } }
+  if (!queue.length) return { err: 'ga in de kamer staan' };
+  while (queue.length) {
+    const [i, j] = queue.pop();
+    const go = (a, b) => { if (a >= 0 && b >= 0 && a < nx && b < nz && !inside[id(a, b)]) { inside[id(a, b)] = 1; queue.push([a, b]); } };
+    if (i + 1 < nx && !vBlock(i + 1, j)) go(i + 1, j);
+    if (i > 0 && !vBlock(i, j)) go(i - 1, j);
+    if (j + 1 < nz && !hBlock(i, j + 1)) go(i, j + 1);
+    if (j > 0 && !hBlock(i, j)) go(i, j - 1);
+  }
+  // omtrek: randen van binnen-cellen, rondgaand gekoppeld
+  const isIn = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && inside[id(i, j)];
+  const V = (i, j) => i * (nz + 1) + j, edges = new Map();
+  const add = (a, b) => { if (!edges.has(a)) edges.set(a, []); edges.get(a).push(b); };
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) if (inside[id(i, j)]) {
+    if (!isIn(i, j - 1)) add(V(i, j), V(i + 1, j));
+    if (!isIn(i + 1, j)) add(V(i + 1, j), V(i + 1, j + 1));
+    if (!isIn(i, j + 1)) add(V(i + 1, j + 1), V(i, j + 1));
+    if (!isIn(i - 1, j)) add(V(i, j + 1), V(i, j));
+  }
+  let best = null, bestA = 0;
+  while (edges.size) {
+    const start = edges.keys().next().value, loop = [start]; let cur = start, guard = 0;
+    while (guard++ < 10000) {
+      const outs = edges.get(cur); if (!outs) break;
+      const nxt = outs.pop(); if (!outs.length) edges.delete(cur);
+      if (nxt === start) break; loop.push(nxt); cur = nxt;
+    }
+    const pts = loop.map(v => [xs[Math.floor(v / (nz + 1))], zs[v % (nz + 1)]]);
+    let a2 = 0; for (let k = 0; k < pts.length; k++) { const p = pts[k], q = pts[(k + 1) % pts.length]; a2 += p[0] * q[1] - q[0] * p[1]; }
+    if (Math.abs(a2) > bestA) { bestA = Math.abs(a2); best = pts; }
+  }
+  if (!best) return { err: 'geen kamer gevonden' };
+  const simp = best.filter((p, k) => {
+    const a = best[(k - 1 + best.length) % best.length], b = best[(k + 1) % best.length];
+    return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
+  });
+  if (simp.length < 4) return { err: 'geen kamer gevonden' };
+  const corners = simp.map(([u, w]) => [u * c - w * s, u * s + w * c]);
+  return { corners, area: bestA / 2 };
+}
+function drawProposal(C) {
+  clearGroup(propGroup);
+  const fy = S.floorY, H = S.ceilY ? S.ceilY - fy : 2.6, n = C.length;
+  const pos = [], idx = [];
+  for (let i = 0; i < n; i++) {
+    const a = C[i], b = C[(i + 1) % n], k = pos.length / 3;
+    pos.push(a[0], fy, a[1], b[0], fy, b[1], b[0], fy + H, b[1], a[0], fy + H, a[1]); idx.push(k, k + 1, k + 2, k, k + 2, k + 3);
+    const lb = makeLabel(); lb.setText(fmtM(Math.hypot(b[0] - a[0], b[1] - a[1]))); lb.position.set((a[0] + b[0]) / 2, fy + 1.2, (a[1] + b[1]) / 2); propGroup.add(lb);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  propGroup.add(new THREE.Mesh(g, propWallMat));
+  for (const y of [fy, fy + H]) { const l = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(C.map(p => new V3(p[0], y, p[1]))), propLineMat); l.renderOrder = 15; propGroup.add(l); }
+  for (const p of C) { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(p[0], fy, p[1]), new V3(p[0], fy + H, p[1])]), propLineMat); l.renderOrder = 15; propGroup.add(l); }
+}
+function scanStep(o, d, now) {
+  reticle.visible = false; hidePreview();
+  if (now - S.lastAnalyze > 1500) {
+    S.lastAnalyze = now; estimateCeil();
+    const r = analyze(); S.scanErr = r.err || null;
+    if (r.corners) {
+      S.proposal = r;
+      const key = r.corners.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(';');
+      if (key !== S.propKey) { S.propKey = key; drawProposal(r.corners); }
+    }
+    updateUI();
+  }
+  const pct = Math.round(S.yaw.size / 12 * 100);
+  if (S.proposal) setMsg(`Voorstel: ${S.proposal.corners.length} muren · ${S.proposal.area.toFixed(1).replace('.', ',')} m² (rondje ${pct}%). Klopt het? Tik ✓. Zo niet: scan verder of kies ✋ Handmatig`);
+  else setMsg(`Draai langzaam een rondje en film alle muren op ooghoogte, boven de meubels (rondje ${pct}%${S.scanErr ? ', ' + S.scanErr : ''})`);
+}
+function acceptProposal() {
+  if (!S.proposal) return;
+  S.corners = S.proposal.corners.map(p => new V3(p[0], S.floorY, p[1]));
+  S.closed = true; clearGroup(propGroup); buzz();
+  if (S.ceilY) { S.height = Math.round((S.ceilY - S.floorY) * 100) / 100; toast('Plafond automatisch: ' + fmtM(S.height)); goOpenings(); }
+  else { S.step = 'height'; rebuildRoom(); updateUI(); }
+}
+
+/* ---------- deuren/ramen automatisch: punten die je dóór de muur heen ziet ---------- */
+function detectOpenings() {
+  if (S.vox.size < 500) return 0;
+  const C = S.corners.map(c => [c.x, c.z]), n = C.length, H = S.height, fy = S.floorY;
+  const W = C.map((_, i) => ({ ...wallInfo(C, i), grid: new Map() }));
+  for (const v of S.vox.values()) {
+    const h = v.y - fy; if (h < 0.05 || h > H - 0.08) continue;
+    if (pointInPoly(v.x, v.z, C)) continue;
+    let best = null, bd = 3;
+    for (let i = 0; i < n; i++) {
+      const w = W[i], dx = v.x - w.a[0], dz = v.z - w.a[1], s = dx * w.ux + dz * w.uz, dd = dx * w.ox + dz * w.oz;
+      if (s < 0.1 || s > w.L - 0.1 || dd < 0.25 || dd > bd) continue; bd = dd; best = { i, s };
+    }
+    if (!best) continue;
+    const g = W[best.i].grid, k = Math.floor(best.s / 0.1) + ',' + Math.floor(h / 0.1); g.set(k, (g.get(k) || 0) + v.n);
+  }
+  let added = 0;
+  W.forEach((w, i) => {
+    const cols = new Map();
+    for (const [k, cnt] of w.grid) { if (cnt < 2) continue; const [cs, ys] = k.split(',').map(Number); if (!cols.has(cs)) cols.set(cs, []); cols.get(cs).push(ys); }
+    const occ = [...cols.entries()].filter(e => e[1].length >= 3).sort((a, b) => a[0] - b[0]);
+    const groups = []; for (const e of occ) { const g = groups[groups.length - 1]; if (g && e[0] - g[g.length - 1][0] <= 2) g.push(e); else groups.push([e]); }
+    for (const g of groups) {
+      const s0 = g[0][0] * 0.1, s1 = (g[g.length - 1][0] + 1) * 0.1;
+      const ys = g.flatMap(e => e[1]).sort((a, b) => a - b);
+      const y0 = ys[Math.floor(ys.length * .03)] * 0.1, y1 = (ys[Math.floor(ys.length * .97)] + 1) * 0.1;
+      if (s1 - s0 < 0.5 || y1 - y0 < 0.5 || s1 - s0 > 3.5) continue;
+      const door = y0 < 0.35 && y1 > 1.6;
+      const o = { type: door ? 'deur' : 'raam', wall: i, s0: Math.max(0.02, s0), s1: Math.min(w.L - 0.02, s1), y0: door ? 0 : Math.max(0.02, y0), y1: Math.min(H - 0.02, y1), auto: true };
+      if (S.openings.some(q => q.wall === i && o.s0 < q.s1 && o.s1 > q.s0 && o.y0 < q.y1 && o.y1 > q.y0)) continue;
+      S.openings.push(o); added++;
+    }
+  });
+  return added;
+}
+function goOpenings() {
+  S.step = 'openings';
+  const k = detectOpenings();
+  if (k) toast(k + (k === 1 ? ' opening' : ' openingen') + ' automatisch gevonden. Klopt het niet? ↶ Terug haalt ze weg', 3500);
+  rebuildRoom(); updateUI();
 }
 
 function worldRoom() { return { corners: S.corners.map(c => [c.x, c.z]), height: S.height, openings: S.openings }; }
@@ -455,10 +693,15 @@ function setMsg(t) { if (t !== lastMsg) { lastMsg = t; $('ar-msg').textContent =
 function setRet(color) { retRing.material.color.setHex(color); }
 function updateUI() {
   const st = S.step;
-  $('ar-step').textContent = { floor: '1/4 Vloer', corners: '2/4 Hoeken', height: '3/4 Plafond', openings: '4/4 Deuren & ramen' }[st];
-  $('ar-plane').textContent = S.planesOn ? 'Muurherkenning aan' : 'Muurherkenning uit';
+  $('ar-step').textContent = { floor: '1/4 Vloer', scan: '2/4 Muren (auto)', corners: '2/4 Hoeken (handmatig)', height: '3/4 Plafond', openings: '4/4 Deuren & ramen' }[st];
+  $('ar-plane').textContent = 'Diepte ' + (S.depthOn ? 'aan' : 'uit') + (S.planesOn ? ' · vlakken aan' : '');
   const show = (id, v) => { $(id).hidden = !v; };
-  show('b-undo', st !== 'floor' || false);
+  ptsCloud.visible = st === 'scan' || st === 'height';
+  propGroup.visible = st === 'scan';
+  show('b-undo', st !== 'floor' && st !== 'scan');
+  show('b-manual', st === 'scan');
+  show('b-accept', st === 'scan' && !!S.proposal);
+  show('b-auto', st === 'corners');
   show('b-square', st === 'corners'); $('b-square').classList.toggle('sel', S.square);
   show('b-close', st === 'corners' && S.corners.length >= 3);
   show('b-h260', st === 'height');
@@ -466,30 +709,36 @@ function updateUI() {
   if (S.ceilY != null) $('b-hceil').textContent = 'Plafond gevonden: ' + fmtM(S.ceilY - S.floorY);
   show('b-door', st === 'openings'); show('b-win', st === 'openings'); show('b-done', st === 'openings');
   $('b-door').classList.toggle('sel', S.openType === 'deur'); $('b-win').classList.toggle('sel', S.openType === 'raam');
-  $('ar-hint').textContent = st === 'corners' ? 'Tik ergens op het scherm om een hoek te zetten' : st === 'openings' ? (S.openings.length ? S.openings.length + ' opening(en) toegevoegd' : 'Geen deuren of ramen? Tik op Klaar') : '';
-  exitArm = 0; $('ar-exit').textContent = '✕';
+  $('ar-hint').textContent = st === 'corners' ? 'Tik ergens op het scherm om een hoek te zetten'
+    : st === 'scan' ? (S.depthOn ? 'Blauwe puntjes = wat de camera ziet · groen = voorgestelde muren' : 'Geen dieptedata: richt rustig op elke muur zodat er puntjes verschijnen')
+    : st === 'openings' ? (S.openings.length ? S.openings.length + ' opening(en) · tik twee hoeken om er een toe te voegen' : 'Geen deuren of ramen? Tik op Klaar') : '';
 }
 
 function setFloor(y) {
   if (S.step !== 'floor') return;
-  S.floorY = y; S.step = 'corners'; buzz(); toast('Vloer gevonden'); updateUI();
+  S.floorY = y; S.step = S.mode === 'auto' ? 'scan' : 'corners'; buzz(); toast('Vloer gevonden'); updateUI();
 }
 
 /* ---------- per frame ---------- */
 const _m = new THREE.Matrix4();
-function arFrame(frame) {
+function arFrame(frame, now) {
   const ref = renderer.xr.getReferenceSpace();
   const vp = frame.getViewerPose(ref); if (!vp) return;
   _m.fromArray(vp.transform.matrix);
   const o = new V3().setFromMatrixPosition(_m), d = new V3(0, 0, -1).transformDirection(_m);
   S.cam = o;
   if (frame.detectedPlanes) updatePlanes(frame, ref);
+  let hit = null;
+  if (hitSource) {
+    const r = frame.getHitTestResults(hitSource);
+    if (r.length) { const p = r[0].getPose(ref); if (p) { const hm = new THREE.Matrix4().fromArray(p.transform.matrix); hit = { pos: new V3().setFromMatrixPosition(hm), nrm: new V3(0, 1, 0).transformDirection(hm) }; } }
+  }
+  if (S.step !== 'floor' && S.floorY != null) {
+    collect(frame, vp, o, d, hit);
+    if (S.step === 'height' && now - S.lastCeil > 600) { S.lastCeil = now; const had = S.ceilY; estimateCeil(); if (had !== S.ceilY) updateUI(); }
+  }
   if (S.step === 'floor') {
-    let hp = null, up = false;
-    if (hitSource) {
-      const r = frame.getHitTestResults(hitSource);
-      if (r.length) { const p = r[0].getPose(ref); if (p) { const hm = new THREE.Matrix4().fromArray(p.transform.matrix); hp = new V3().setFromMatrixPosition(hm); up = new V3(0, 1, 0).transformDirection(hm).y > 0.9; } }
-    }
+    const hp = hit && hit.pos, up = hit && hit.nrm.y > 0.9;
     if (S.step !== 'floor') return; // al gezet via vlakken
     if (hp && up) {
       reticle.visible = true; reticle.position.copy(hp); reticle.quaternion.identity(); setRet(0xffffff);
@@ -503,6 +752,7 @@ function arFrame(frame) {
     } else { reticle.visible = false; setMsg('Richt op de vloer en beweeg je telefoon rustig heen en weer'); }
     return;
   }
+  if (S.step === 'scan') return scanStep(o, d, now);
   if (S.step === 'corners') return cornerStep(o, d);
   if (S.step === 'height') return heightStep(o, d);
   if (S.step === 'openings') return openingStep(o, d);
@@ -605,13 +855,19 @@ function closeRoom() {
   S.closed = true; S.step = 'height'; buzz(); hidePreview(); rebuildRoom(); updateUI();
 }
 function setHeight(h) {
-  S.height = Math.round(h * 100) / 100; S.step = 'openings'; buzz(); toast('Hoogte ' + fmtM(S.height)); rebuildRoom(); updateUI();
+  S.height = Math.round(h * 100) / 100; buzz(); toast('Hoogte ' + fmtM(S.height)); goOpenings();
 }
+function toManual() { S.mode = 'manual'; S.step = 'corners'; S.corners = []; S.closed = false; clearGroup(propGroup); hidePreview(); rebuildRoom(); updateUI(); }
+function toAuto() { S.mode = 'auto'; S.step = 'scan'; S.corners = []; S.closed = false; S.propKey = ''; if (S.proposal) drawProposal(S.proposal.corners); hidePreview(); rebuildRoom(); updateUI(); }
 function undo() {
   if (S.step === 'corners') {
     if (S.corners.length) S.corners.pop();
     else { S.step = 'floor'; S.floorY = null; S.votes = []; }
-  } else if (S.step === 'height') { S.closed = false; S.step = 'corners'; }
+  } else if (S.step === 'height') {
+    S.closed = false;
+    if (S.mode === 'auto') return toAuto();
+    S.step = 'corners';
+  }
   else if (S.step === 'openings') {
     if (S.openFirst) S.openFirst = null;
     else if (S.openings.length) S.openings.pop();
@@ -621,18 +877,22 @@ function undo() {
 }
 
 /* ---------- sessie ---------- */
-async function startAR() {
+async function startAR(mode) {
   if (!navigator.xr) return toast('AR niet beschikbaar in deze browser');
   $('ar-ui').classList.add('on');
   try {
     session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay', 'plane-detection', 'local-floor', 'anchors'],
-      domOverlay: { root: $('ar-ui') }
+      optionalFeatures: ['dom-overlay', 'depth-sensing', 'plane-detection', 'local-floor', 'anchors'],
+      domOverlay: { root: $('ar-ui') },
+      depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'] }
     });
   } catch (e) { $('ar-ui').classList.remove('on'); toast('AR starten lukt niet: ' + (e.message || e), 4000); return; }
-  resetScan();
-  S.planesOn = !!(session.enabledFeatures ? session.enabledFeatures.includes('plane-detection') : false);
+  resetScan(mode);
+  const feats = session.enabledFeatures || [];
+  S.planesOn = feats.includes('plane-detection');
+  S.depthOn = feats.includes('depth-sensing') && session.depthUsage === 'cpu-optimized';
+  if (mode === 'auto' && !S.depthOn) setTimeout(() => toast('Dieptesensor-data niet beschikbaar: automatisch werkt beperkt. Lukt het niet, kies ✋ Handmatig', 4500), 800);
   session.addEventListener('select', onSelect);
   session.addEventListener('end', onEnd);
   await renderer.xr.setSession(session);
@@ -669,6 +929,9 @@ function localize(r) {
 // knoppen in AR: tikken op knoppen telt niet als scan-tik
 for (const id of ['ar-top', 'ar-bottom']) $(id).addEventListener('beforexrselect', e => e.preventDefault());
 $('b-undo').onclick = undo;
+$('b-manual').onclick = toManual;
+$('b-auto').onclick = toAuto;
+$('b-accept').onclick = acceptProposal;
 $('b-square').onclick = () => { S.square = !S.square; updateUI(); };
 $('b-close').onclick = closeRoom;
 $('b-h260').onclick = () => setHeight(2.6);
@@ -677,7 +940,10 @@ $('b-door').onclick = () => { S.openType = 'deur'; S.openFirst = null; updateUI(
 $('b-win').onclick = () => { S.openType = 'raam'; S.openFirst = null; updateUI(); };
 $('b-done').onclick = () => { S.finished = true; session && session.end(); };
 $('ar-exit').onclick = () => {
-  if (S && S.corners.length && !exitArm) { exitArm = 1; $('ar-exit').textContent = 'Stoppen zonder opslaan?'; return; }
+  if (S && S.floorY != null && !exitArm) {
+    exitArm = 1; $('ar-exit').textContent = 'Stoppen zonder opslaan?';
+    setTimeout(() => { exitArm = 0; $('ar-exit').textContent = '✕'; }, 3000); return;
+  }
   session && session.end();
 };
 
@@ -841,7 +1107,8 @@ const DEMO = { id: 'demo', demo: true, name: 'Demo: L-vormige woonkamer', thickn
     { type: 'deur', wall: 3, s0: 0.15, s1: 1.0, y0: 0, y1: 2.1 }
   ] } };
 $('b-demo').onclick = () => openViewer(JSON.parse(JSON.stringify(DEMO)));
-$('b-start').onclick = startAR;
+$('b-start').onclick = () => startAR('auto');
+$('b-start-man').onclick = () => startAR('manual');
 $('b-import').onclick = () => $('f-import').click();
 $('f-import').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -863,7 +1130,7 @@ async function checkSupport() {
 
 /* ================= loop ================= */
 renderer.setAnimationLoop((t, frame) => {
-  if (renderer.xr.isPresenting) { if (frame && S) arFrame(frame); renderer.render(arScene, arCam); }
+  if (renderer.xr.isPresenting) { if (frame && S) arFrame(frame, t); renderer.render(arScene, arCam); }
   else if (current && tab === '3d' && !$('viewer').hidden) { controls.update(); renderer.render(viewScene, viewCam); }
 });
 showHome(); checkSupport();
