@@ -94,7 +94,7 @@ details li{margin:6px 0}
     <summary>Zo werkt het</summary>
     <ol>
       <li><b>Vloer</b>: richt op de vloer en beweeg rustig heen en weer. De vloer wordt vanzelf herkend.</li>
-      <li><b>Muren (automatisch)</b>: draai langzaam een rondje en film alle muren op ooghoogte. De app maakt zelf een voorstel (groene muren). Klopt het: <b>✓ Gebruik</b>. Klopt het niet: <b>✋ Handmatig</b>.</li>
+      <li><b>Muren (automatisch)</b>: draai langzaam een rondje en film alle muren, <b>inclusief het bovenste stuk tot aan het plafond</b>: daar herkent de app muren, want meubels komen zelden zo hoog. De app maakt zelf een voorstel (groene muren). Klopt het: <b>✓ Gebruik</b>. Klopt het niet: <b>✋ Handmatig</b>.</li>
       <li><b>Hoeken (handmatig)</b>: richt de stip op elke hoek waar twee muren de vloer raken en tik op het scherm. Bij de eerste hoek terug: tik om te sluiten.</li>
       <li><b>Plafond</b>: richt op de lijn waar muur en plafond elkaar raken en tik.</li>
       <li><b>Deuren &amp; ramen</b>: kies Deur of Raam, tik twee tegenover elkaar liggende hoeken op de muur. Daarna <b>Klaar</b>.</li>
@@ -346,7 +346,8 @@ function resetScan(mode = 'auto') {
 /* ---------- puntenwolk (diepte + hit-test) ---------- */
 const MAXP = 250000, MAXSHOW = 80000, VS = 0.05;
 const ptsGeo = new THREE.BufferGeometry(); ptsGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(MAXSHOW * 3), 3)); ptsGeo.setDrawRange(0, 0);
-const ptsCloud = new THREE.Points(ptsGeo, new THREE.PointsMaterial({ color: 0x4fc3f7, size: 0.016, transparent: true, opacity: .7, depthWrite: false }));
+ptsGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(MAXSHOW * 3), 3));
+const ptsCloud = new THREE.Points(ptsGeo, new THREE.PointsMaterial({ vertexColors: true, size: 0.016, transparent: true, opacity: .75, depthWrite: false }));
 ptsCloud.frustumCulled = false; arScene.add(ptsCloud);
 const propGroup = new THREE.Group(); arScene.add(propGroup);
 const propWallMat = new THREE.MeshBasicMaterial({ color: 0x66bb6a, transparent: true, opacity: .25, side: THREE.DoubleSide, depthWrite: false });
@@ -358,7 +359,12 @@ function addPoint(x, y, z, w, o) {
   if (v) v.n += w;
   else { if (S.vox.size >= MAXP) return; v = { x, y, z, n: w, cx: o.x, cy: o.y, cz: o.z, shown: false }; S.vox.set(k, v); } // c = waar de camera stond
   // alleen tonen (en meetellen) als het punt minstens 2x gezien is: losse ruis valt weg
-  if (!v.shown && v.n >= 2 && S.nvox < MAXSHOW) { v.shown = true; ptsGeo.attributes.position.setXYZ(S.nvox++, v.x, v.y, v.z); S.ptsDirty = true; }
+  if (!v.shown && v.n >= 2 && S.nvox < MAXSHOW) {
+    v.shown = true; const h = v.y - S.floorY, top = S.ceilY ? S.ceilY - S.floorY : 2.6;
+    // blauw = bovenste deel muur (telt), lichtgrijs = middenzone, donkergrijs = meubelhoogte (genegeerd)
+    const col = h > top - 0.5 ? [0.31, 0.76, 0.97] : h > 0.9 ? [0.55, 0.62, 0.68] : [0.35, 0.37, 0.4];
+    ptsGeo.attributes.color.setXYZ(S.nvox, ...col); ptsGeo.attributes.position.setXYZ(S.nvox++, v.x, v.y, v.z); S.ptsDirty = true;
+  }
 }
 const _inv = new THREE.Matrix4(), _vm = new THREE.Matrix4(), _p = new V3();
 function collect(frame, vp, o, d, hit) {
@@ -385,7 +391,7 @@ function collect(frame, vp, o, d, hit) {
   } else if (!S.depthOn && hit && Math.abs(hit.nrm.y) < 0.3 && Math.abs(d.y) < 0.75) {
     S.yaw.add(Math.floor((Math.atan2(d.x, d.z) + Math.PI) / (2 * Math.PI) * 12) % 12);
   }
-  if (S.ptsDirty && (S.frameN % 6 === 0 || !S.depthOn)) { ptsGeo.attributes.position.needsUpdate = true; ptsGeo.setDrawRange(0, S.nvox); S.ptsDirty = false; }
+  if (S.ptsDirty && (S.frameN % 6 === 0 || !S.depthOn)) { ptsGeo.attributes.position.needsUpdate = true; ptsGeo.attributes.color.needsUpdate = true; ptsGeo.setDrawRange(0, S.nvox); S.ptsDirty = false; }
 }
 function estimateFloor() {
   let mx = 0; const sm = b => (S.floorHist.get(b - 1) || 0) + (S.floorHist.get(b) || 0) + (S.floorHist.get(b + 1) || 0);
@@ -410,9 +416,9 @@ function estimateCeil() {
    1) punten op muurhoogte (boven meubels) → 2) beste hoofdrichting (haakse kamer)
    3) pieken = muurlijnen → 4) raster van cellen, vullen vanaf waar je liep → 5) omtrek = kamer */
 function analyze() {
-  const fy = S.floorY, top = S.ceilY ? Math.min(2.1, S.ceilY - fy - 0.15) : 2.1;
+  const fy = S.floorY, topC = S.ceilY ? S.ceilY - fy - 0.13 : 2.35, hiC = topC - 0.25; // marge: ruis van het plafond niet als muur tellen
   const P = [];
-  for (const v of S.vox.values()) { if (v.n < 2) continue; const h = v.y - fy; if (h > 0.9 && h < top) P.push(v.x, v.z, Math.min(4, v.n)); }
+  for (const v of S.vox.values()) { if (v.n < 2) continue; const h = v.y - fy; if (h > 0.9 && h < topC) P.push(v.x, v.z, Math.min(4, v.n) * (h > hiC - 0.2 ? 2 : 1)); }
   if (P.length / 3 < 150) return { err: 'nog weinig muurpunten' };
   const BIN = 0.05;
   // voor de richting-zoektocht: hooguit ~10k punten, histogrammen als arrays (snel op telefoon)
@@ -434,10 +440,14 @@ function analyze() {
   for (let t = -1.75; t <= 1.75; t += 0.25) { const r = th0 + t * Math.PI / 180, sc = score(r); if (sc > bs) { bs = sc; th = r; } }
   const c = Math.cos(th), s = Math.sin(th), R = [], Q = [];
   for (let k = 0; k < P.length; k += 3) R.push(P[k] * c + P[k + 1] * s, -P[k] * s + P[k + 1] * c, P[k + 2]);
-  // dekking van een muurlijn: alleen het bovenste stuk (1,95 m tot plafond). Daar zit altijd muur,
-  // ook boven ramen en deuren, maar bijna nooit een kast of ander meubel.
-  const topC = S.ceilY ? S.ceilY - fy - 0.08 : 2.4, botC = Math.min(1.95, topC - 0.3);
-  for (const v of S.vox.values()) { if (v.n < 2) continue; const h = v.y - fy; if (h > botC && h < topC) Q.push(v.x * c + v.z * s, -v.x * s + v.z * c, Math.min(4, v.n)); }
+  // bewijs dat er een muur staat: alleen de bovenste 25 cm onder het plafond. Een muur loopt altijd
+  // door tot het plafond (ook boven ramen en deuren), een kast of ander meubel bijna nooit.
+  const Qa = []; // en over de volle hoogte (voor als het bovenste stuk niet gefilmd is)
+  for (const v of S.vox.values()) {
+    if (v.n < 2) continue; const h = v.y - fy; if (h < 0.25 || h > topC) continue;
+    const u = v.x * c + v.z * s, w = -v.x * s + v.z * c, n = Math.min(4, v.n);
+    Qa.push(u, w, n); if (h > hiC) Q.push(u, w, n);
+  }
   // muurlijnen één voor één zoeken: sterkste eerst, die punten weghalen, opnieuw (zo komen korte muren boven)
   const alive = new Uint8Array(R.length / 3).fill(1);
   const found = [[], []]; let first = 0;
@@ -457,25 +467,39 @@ function analyze() {
     if (!first) first = best.v;
     const { ax } = best, c0 = best.b * BIN; let sw = 0, sx = 0;
     for (let k = 0; k < R.length; k += 3) { const u = R[k + ax]; if (Math.abs(u - c0) < 0.1) { sw += R[k + 2]; sx += u * R[k + 2]; } }
-    const cc = sx / sw, cw = new Map();
+    const cc = sx / sw;
     for (let k = 0, q = 0; k < R.length; k += 3, q++) if (Math.abs(R[k + ax] - cc) < 0.12) alive[q] = 0;
-    for (let k = 0; k < Q.length; k += 3) { if (Math.abs(Q[k + ax] - cc) < 0.1) { const q = Math.floor(Q[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + Q[k + 2]); } }
-    const cells = new Set(); for (const [q, w] of cw) if (w >= 4) cells.add(q);
-    if (cells.size >= 3) found[ax].push({ c: cc, cells });
+    const cellsOf = (A, minW) => {
+      const cw = new Map(); for (let k = 0; k < A.length; k += 3) if (Math.abs(A[k + ax] - cc) < 0.15) { const q = Math.floor(A[k + 1 - ax] / 0.1); cw.set(q, (cw.get(q) || 0) + A[k + 2]); }
+      const set = new Set(); for (const [q, w] of cw) if (w >= minW) set.add(q); return set;
+    };
+    const hi = cellsOf(Q, 3), all = cellsOf(Qa, 6);
+    if (all.size >= 3) found[ax].push({ c: cc, hi, all });
   }
   const X = found[0].sort((p, q) => p.c - q.c), Z = found[1].sort((p, q) => p.c - q.c);
   const diag = `${P.length / 3 | 0} muurpunten · lijnen ${X.length}×${Z.length}`;
-  if (window.__ksdbg) window.__ksdbg = { th: th * 180 / Math.PI, X: X.map(l => l.c.toFixed(2) + '/' + l.cells.size), Z: Z.map(l => l.c.toFixed(2) + '/' + l.cells.size) };
+  if (window.__ksdbg) window.__ksdbg = { th: th * 180 / Math.PI, X: X.map(l => l.c.toFixed(2) + '/' + l.hi.size + '/' + l.all.size), Z: Z.map(l => l.c.toFixed(2) + '/' + l.hi.size + '/' + l.all.size) };
   if (X.length < 2 || Z.length < 2) return { err: 'scan nog meer muren', diag };
   const xs = X.map(l => l.c), zs = Z.map(l => l.c), nx = xs.length - 1, nz = zs.length - 1;
-  const cov = (line, a, b) => {
+  const cov = (set, a, b) => {
     let k0 = Math.floor(a / 0.1) + 1, k1 = Math.floor(b / 0.1) - 1;
     if (k1 < k0) { k0 = k1 = Math.floor((a + b) / 0.2); }
-    let hit = 0; for (let k = k0; k <= k1; k++) if (line.cells.has(k)) hit++;
+    let hit = 0; for (let k = k0; k <= k1; k++) if (set.has(k)) hit++;
     return hit / (k1 - k0 + 1);
   };
-  const vBlock = (i, j) => cov(X[i], zs[j], zs[j + 1]) >= 0.5;   // lijn x=xs[i] tussen cel i-1 en i
-  const hBlock = (i, j) => cov(Z[j], xs[i], xs[i + 1]) >= 0.5;   // lijn z=zs[j] tussen cel j-1 en j
+  // muur of meubel? Muur als er bij het plafond muur te zien is. Anders: muur als hij over de volle
+  // hoogte dicht is, tenzij er binnen 1 m een evenwijdige lijn staat die wél tot het plafond loopt
+  // (dan is dit een kast/meubel vóór die muur).
+  // 2 = muur tot plafond (hard), 1 = dicht maar niet tot plafond gezien (zacht), 0 = open
+  const blocks = (L, i, a, b) => {
+    if (cov(L[i].hi, a, b) >= 0.5) return 2;
+    if (cov(L[i].all, a, b) < 0.5) return 0;
+    return L.some((o, k) => k !== i && Math.abs(o.c - L[i].c) <= 1.0 && cov(o.hi, a - 0.4, b + 0.4) >= 0.4) ? 0 : 1;
+  };
+  const memo = new Map(), mb = (key, f) => { if (!memo.has(key)) memo.set(key, f()); return memo.get(key); };
+  const vB = (i, j) => mb('v' + i + ',' + j, () => blocks(X, i, zs[j], zs[j + 1]));   // lijn x=xs[i] tussen cel i-1 en i
+  const hB = (i, j) => mb('h' + i + ',' + j, () => blocks(Z, j, xs[i], xs[i + 1]));   // lijn z=zs[j] tussen cel j-1 en j
+  const vBlock = (i, j) => vB(i, j) > 0, hBlock = (i, j) => hB(i, j) > 0;
   const inside = new Uint8Array(nx * nz), id = (i, j) => i * nz + j, queue = [];
   const cellOf = (x, z) => {
     let i = -1, j = -1; for (let a = 0; a < nx; a++) if (x >= xs[a] && x < xs[a + 1]) i = a; for (let b = 0; b < nz; b++) if (z >= zs[b] && z < zs[b + 1]) j = b;
@@ -490,6 +514,30 @@ function analyze() {
     if (i > 0 && !vBlock(i, j)) go(i - 1, j);
     if (j + 1 < nz && !hBlock(i, j + 1)) go(i, j + 1);
     if (j > 0 && !hBlock(i, j)) go(i, j - 1);
+  }
+  // kleine inhammen achter meubels opvullen: alleen via 'zachte' randen (niet tot plafond),
+  // en alleen als het stuk klein is (< 1 m², smaller dan 80 cm). Echte nissen lopen tot het plafond.
+  {
+    const seen = new Uint8Array(nx * nz);
+    const nb = (i, j) => [
+      i + 1 < nx ? [i + 1, j, vB(i + 1, j)] : null, i > 0 ? [i - 1, j, vB(i, j)] : null,
+      j + 1 < nz ? [i, j + 1, hB(i, j + 1)] : null, j > 0 ? [i, j - 1, hB(i, j)] : null].filter(Boolean);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      if (!inside[id(i, j)]) continue;
+      for (const [a, b, bl] of nb(i, j)) {
+        if (bl !== 1 || inside[id(a, b)] || seen[id(a, b)]) continue;
+        // groep buiten-cellen die via open randen samenhangt
+        const comp = [[a, b]], st = [[a, b]]; seen[id(a, b)] = 1; let ok = true;
+        while (st.length && comp.length < 40) {
+          const [p, q] = st.pop();
+          for (const [u, w, b2] of nb(p, q)) { if (b2 !== 0 || inside[id(u, w)] || seen[id(u, w)]) continue; seen[id(u, w)] = 1; comp.push([u, w]); st.push([u, w]); }
+        }
+        if (st.length) ok = false;
+        let area = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const [p, q] of comp) { area += (xs[p + 1] - xs[p]) * (zs[q + 1] - zs[q]); x0 = Math.min(x0, xs[p]); x1 = Math.max(x1, xs[p + 1]); z0 = Math.min(z0, zs[q]); z1 = Math.max(z1, zs[q + 1]); }
+        if (ok && area < 1.0 && Math.min(x1 - x0, z1 - z0) < 0.8) for (const [p, q] of comp) inside[id(p, q)] = 1;
+      }
+    }
   }
   // omtrek: randen van binnen-cellen, rondgaand gekoppeld
   const isIn = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && inside[id(i, j)];
@@ -552,7 +600,7 @@ function scanStep(o, d, now) {
   const pct = Math.round(S.yaw.size / 12 * 100);
   if (S.proposal) setMsg(`Voorstel: ${S.proposal.corners.length} muren · ${S.proposal.area.toFixed(1).replace('.', ',')} m² (rondje ${pct}%). Klopt het? Tik ✓. Zo niet: scan verder of kies ✋ Handmatig`);
   else if (pct >= 100 && S.scanErr) setMsg(`Nog geen voorstel (${S.scanErr}). Loop wat dichter langs de muren (1–3 m afstand), of kies ✋ Handmatig`);
-  else setMsg(`Draai langzaam een rondje en film alle muren op ooghoogte, boven de meubels (rondje ${pct}%${S.scanErr ? ', ' + S.scanErr : ''})`);
+  else setMsg(`Draai langzaam een rondje en film alle muren, ook het stuk vlak onder het plafond (rondje ${pct}%${S.scanErr ? ', ' + S.scanErr : ''})`);
 }
 function acceptProposal() {
   if (!S.proposal) return;
@@ -759,7 +807,7 @@ function updateUI() {
   show('b-door', st === 'openings'); show('b-win', st === 'openings'); show('b-done', st === 'openings');
   $('b-door').classList.toggle('sel', S.openType === 'deur'); $('b-win').classList.toggle('sel', S.openType === 'raam');
   $('ar-hint').textContent = st === 'corners' ? 'Tik ergens op het scherm om een hoek te zetten'
-    : st === 'scan' ? (S.depthOn ? 'Blauw = gemeten punten · groen = voorgestelde muren' : 'Geen dieptedata: richt rustig op elke muur') + (S.diag ? ' · ' + S.diag : '')
+    : st === 'scan' ? (S.depthOn ? 'Blauw = muur bij plafond (telt) · grijs = meubelhoogte · groen = voorstel' : 'Geen dieptedata: richt rustig op elke muur') + (S.diag ? ' · ' + S.diag : '')
     : st === 'openings' ? (S.openings.length ? S.openings.length + ' opening(en) · tik twee hoeken om er een toe te voegen' : 'Geen deuren of ramen? Tik op Klaar') : '';
 }
 
