@@ -60,6 +60,12 @@ details li{margin:6px 0}
 #view3d,#planwrap{position:absolute;inset:0}
 #view3d canvas{width:100%!important;height:100%!important;display:block;touch-action:none}
 #ceilbtn{position:absolute;right:8px;top:8px;padding:7px 11px;font-size:13px;background:rgba(15,23,32,.8)}
+#planbar{position:absolute;left:8px;right:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+#planbar button{padding:8px 11px;font-size:14px;background:rgba(15,23,32,.88);font-weight:600}
+#planbar button.pri{background:var(--acc);color:#04202c}
+#planhint{position:absolute;left:8px;right:8px;bottom:8px;font-size:12px;color:#c9d5e0;text-align:center;pointer-events:none;text-shadow:0 1px 2px #000}
+#plan.edit{touch-action:none}
+.walls button.del{padding:2px 8px;margin-left:6px;font-size:12px;background:#3a2530;border-radius:8px}
 #panel{flex:0 1 auto;overflow:auto;padding:10px 10px 22px;max-height:45%}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .stat{background:var(--card);border-radius:12px;padding:8px 10px}
@@ -148,7 +154,7 @@ details li{margin:6px 0}
   <div id="stage">
     <div id="view3d"></div>
     <button id="ceilbtn">Plafond: uit</button>
-    <div id="planwrap" hidden><canvas id="plan"></canvas></div>
+    <div id="planwrap" hidden><canvas id="plan"></canvas><div id="planbar"></div><div id="planhint"></div></div>
   </div>
   <div id="panel">
     <div class="stats" id="stats"></div>
@@ -1058,7 +1064,7 @@ const controls = new OrbitControls(viewCam, renderer.domElement); controls.enabl
 let current = null, viewModel = null, showCeil = false, tab = '3d';
 
 function openViewer(entry) {
-  current = entry;
+  current = entry; ED.on = false; ED.sel = null; ED.hist = []; ED.view = null; $('plan').classList.remove('edit');
   $('home').hidden = true; $('viewer').hidden = false;
   $('v-name').value = entry.name; $('v-h').value = Math.round(entry.room.height * 100);
   $('v-t').value = String(entry.thickness ?? 0.1);
@@ -1085,9 +1091,11 @@ function renderStats() {
   const C = r.corners;
   $('walls').innerHTML = C.map((p, i) => {
     const q = C[(i + 1) % C.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    const ops = r.openings.filter(o => o.wall === i).map(o => (o.type === 'deur' ? 'deur ' : 'raam ') + fmtCm(o.s1 - o.s0) + '×' + fmtCm(o.y1 - o.y0));
-    return `<div><b>Muur ${i + 1}</b> · ${fmtM(L)}${ops.length ? ' · ' + ops.join(', ') : ''}</div>`;
+    const ops = r.openings.map((o, k) => [o, k]).filter(([o]) => o.wall === i)
+      .map(([o, k]) => (o.type === 'deur' ? 'deur ' : 'raam ') + fmtCm(o.s1 - o.s0) + '×' + fmtCm(o.y1 - o.y0) + `<button class="del" data-op="${k}" title="Verwijderen">🗑</button>`);
+    return `<div><b>Muur ${i + 1}</b> · ${fmtM(L)}${ops.length ? ' · ' + ops.join(' ') : ''}</div>`;
   }).join('');
+  $('walls').querySelectorAll('button.del').forEach(b => b.onclick = () => { edPush(); current.room.openings.splice(+b.dataset.op, 1); edCommit(); toast('Opening verwijderd'); });
 }
 function resize() {
   if (renderer.xr.isPresenting) return;
@@ -1122,8 +1130,13 @@ function drawPlan() {
   const r = current.room, C = r.corners, n = C.length;
   let minx = Infinity, maxx = -Infinity, minz = Infinity, maxz = -Infinity;
   for (const p of C) { minx = Math.min(minx, p[0]); maxx = Math.max(maxx, p[0]); minz = Math.min(minz, p[1]); maxz = Math.max(maxz, p[1]); }
-  const pad = 58, sc = Math.min((W - 2 * pad) / Math.max(0.5, maxx - minx), (Hh - 2 * pad) / Math.max(0.5, maxz - minz));
-  const ox = (W - (maxx - minx) * sc) / 2 - minx * sc, oz = (Hh - (maxz - minz) * sc) / 2 - minz * sc;
+  let sc, ox, oz;
+  if (ED.on && ED.view && ED.view.W === W && ED.view.H === Hh) ({ sc, ox, oz } = ED.view); // niet verspringen tijdens bewerken
+  else {
+    const pad = ED.on ? 70 : 58; sc = Math.min((W - 2 * pad) / Math.max(0.5, maxx - minx), (Hh - 2 * pad) / Math.max(0.5, maxz - minz));
+    ox = (W - (maxx - minx) * sc) / 2 - minx * sc; oz = (Hh - (maxz - minz) * sc) / 2 - minz * sc;
+    ED.view = { sc, ox, oz, W, H: Hh };
+  }
   const P = (x, z) => [ox + x * sc, oz + z * sc];
   const path = () => { g.beginPath(); C.forEach((p, i) => { const [x, y] = P(p[0], p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); };
   const floorCol = '#2b3a4a';
@@ -1165,7 +1178,167 @@ function drawPlan() {
   // schaalbalk 1 m
   g.strokeStyle = '#93a4b5'; g.lineWidth = 2; g.beginPath(); g.moveTo(14, Hh - 16); g.lineTo(14 + sc, Hh - 16); g.moveTo(14, Hh - 21); g.lineTo(14, Hh - 11); g.moveTo(14 + sc, Hh - 21); g.lineTo(14 + sc, Hh - 11); g.stroke();
   g.fillStyle = '#93a4b5'; g.font = '12px system-ui,sans-serif'; g.textAlign = 'left'; g.fillText('1 m', 20 + sc, Hh - 16);
+  if (ED.on) drawEdit(g, P);
+  planBar();
 }
+
+/* ================= plattegrond bewerken ================= */
+const ED = { on: false, sel: null, drag: null, view: null, hist: [] }; window.__ed = ED; // voor tests
+function edPush() { ED.hist.push(JSON.stringify(current.room)); if (ED.hist.length > 60) ED.hist.shift(); }
+function edCommit() {
+  const r = current.room; r.corners = r.corners.map(p => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]);
+  saveEntry(current); refresh(false);
+}
+function edUndo() { if (!ED.hist.length) return toast('Niets meer om terug te zetten'); current.room = JSON.parse(ED.hist.pop()); ED.sel = null; edCommit(); }
+// openingen als vaste punten, zodat ze na het weghalen van hoeken op de juiste muur terechtkomen
+function opsToAbs(room) {
+  const C = room.corners;
+  return room.openings.map(o => { const w = wallInfo(C, o.wall); return { ...o, p0: [w.a[0] + w.ux * o.s0, w.a[1] + w.uz * o.s0], p1: [w.a[0] + w.ux * o.s1, w.a[1] + w.uz * o.s1] }; });
+}
+function opsFromAbs(room, abs) {
+  const C = room.corners, out = [];
+  for (const o of abs) {
+    let best = null;
+    for (let i = 0; i < C.length; i++) {
+      const w = wallInfo(C, i), prj = p => { const dx = p[0] - w.a[0], dz = p[1] - w.a[1]; return [dx * w.ux + dz * w.uz, Math.abs(-dx * w.uz + dz * w.ux)]; };
+      const [s0, d0] = prj(o.p0), [s1, d1] = prj(o.p1), d = Math.max(d0, d1);
+      if (d < 0.08 && Math.min(s0, s1) > -0.05 && Math.max(s0, s1) < w.L + 0.05 && (!best || d < best.d)) best = { d, i, s0: Math.max(0.02, Math.min(s0, s1)), s1: Math.min(w.L - 0.02, Math.max(s0, s1)) };
+    }
+    if (best && best.s1 - best.s0 > 0.1) { const { p0, p1, ...rest } = o; out.push({ ...rest, wall: best.i, s0: best.s0, s1: best.s1 }); }
+  }
+  return out;
+}
+function clampOps(room) {
+  const C = room.corners;
+  room.openings = room.openings.filter(o => {
+    const L = wallInfo(C, o.wall).L; o.s1 = Math.min(o.s1, L - 0.02); o.s0 = Math.max(0.02, Math.min(o.s0, o.s1 - 0.1)); return o.s1 - o.s0 >= 0.1;
+  });
+}
+// inhammen / uitsparingen: A→B erin, B→C dwars, C→D eruit, met A en D op één lijn
+function findNotches(C) {
+  const n = C.length, res = []; if (n < 6) return res;
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1];
+  for (let k = 0; k < n; k++) {
+    const A = C[k], B = C[(k + 1) % n], Cc = C[(k + 2) % n], D = C[(k + 3) % n];
+    const ab = [B[0] - A[0], B[1] - A[1]], bc = [Cc[0] - B[0], Cc[1] - B[1]], cd = [D[0] - Cc[0], D[1] - Cc[1]];
+    const lab = Math.hypot(...ab), lbc = Math.hypot(...bc), lcd = Math.hypot(...cd); if (lab < .02 || lbc < .02 || lcd < .02) continue;
+    if (dot(ab, cd) / (lab * lcd) > -0.97 || Math.abs(dot(ab, bc)) / (lab * lbc) > 0.2) continue;
+    const nbc = [-bc[1] / lbc, bc[0] / lbc];
+    if (Math.abs(dot([D[0] - A[0], D[1] - A[1]], nbc)) > 0.05) continue;
+    const area = lbc * (lab + lcd) / 2; if (area > 4) continue;
+    const m = [(A[0] + B[0] + Cc[0] + D[0]) / 4, (A[1] + B[1] + Cc[1] + D[1]) / 4];
+    res.push({ k, at: [(A[0] + D[0]) / 2, (A[1] + D[1]) / 2], area, inward: !pointInPoly(m[0], m[1], C) });
+  }
+  return res;
+}
+// hoeken op een rechte lijn samenvoegen tot één muur
+function mergeStraight(r) {
+  let changed = true;
+  while (changed && r.corners.length > 3) {
+    changed = false; const C = r.corners, n = C.length;
+    for (let k = 0; k < n; k++) {
+      const a = C[(k - 1 + n) % n], b = C[k], c = C[(k + 1) % n];
+      const ux = b[0] - a[0], uz = b[1] - a[1], vx = c[0] - b[0], vz = c[1] - b[1], l1 = Math.hypot(ux, uz), l2 = Math.hypot(vx, vz);
+      if (l1 < 0.01 || l2 < 0.01 || (Math.abs(ux * vz - uz * vx) / (l1 * l2) < 0.02 && ux * vx + uz * vz > 0)) {
+        const abs = opsToAbs(r); r.corners.splice(k, 1); r.openings = opsFromAbs(r, abs); changed = true; break;
+      }
+    }
+  }
+}
+function removeNotch(nt) {
+  const r = current.room, n = r.corners.length; if (n - 2 < 3) return;
+  edPush(); const abs = opsToAbs(r);
+  const kill = new Set([(nt.k + 1) % n, (nt.k + 2) % n]);
+  r.corners = r.corners.filter((_, i) => !kill.has(i)); r.openings = opsFromAbs(r, abs); mergeStraight(r);
+  ED.sel = null; edCommit(); toast(nt.inward ? 'Inham weggehaald' : 'Uitsparing weggehaald');
+}
+function deleteCorner(k) {
+  const r = current.room; if (r.corners.length <= 3) return toast('Een kamer heeft minstens 3 hoeken');
+  edPush(); const abs = opsToAbs(r); r.corners.splice(k, 1); r.openings = opsFromAbs(r, abs); mergeStraight(r); ED.sel = null; edCommit();
+}
+function moveWall(i, delta, base) { // muur i evenwijdig verschuiven (+ = naar buiten)
+  const r = current.room, C = base ? base.corners.map(p => [...p]) : r.corners, n = C.length;
+  const w = wallInfo(C, i), j = (i + 1) % n, nextOld = wallInfo(C, j).L;
+  C[i] = [C[i][0] + w.ox * delta, C[i][1] + w.oz * delta]; C[j] = [C[j][0] + w.ox * delta, C[j][1] + w.oz * delta];
+  r.corners = C;
+  // openingen op de volgende muur blijven op hun plek: hun afstand vanaf het (verschoven) begin verandert mee
+  const ops = (base ? base.openings : r.openings).map(o => ({ ...o }));
+  const dL = wallInfo(C, j).L - nextOld; for (const o of ops) if (o.wall === j) { o.s0 += dL; o.s1 += dL; }
+  r.openings = ops; clampOps(r);
+}
+function planPos(e) { const b = $('plan').getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; }
+function edHandles() {
+  const { sc, ox, oz } = ED.view, C = current.room.corners, n = C.length, P = (x, z) => [ox + x * sc, oz + z * sc], hs = [];
+  C.forEach((p, k) => hs.push({ t: 'corner', k, pos: P(...p), r: 22 }));
+  findNotches(C).forEach(nt => hs.push({ t: 'notch', nt, pos: P(...nt.at), r: 18 }));
+  for (let i = 0; i < n; i++) { const a = C[i], b = C[(i + 1) % n]; hs.push({ t: 'wall', k: i, pos: P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), r: 20 }); }
+  return hs;
+}
+function drawEdit(g, P) {
+  const C = current.room.corners, n = C.length;
+  if (ED.sel && ED.sel.t === 'wall') { const a = C[ED.sel.k], b = C[(ED.sel.k + 1) % n]; g.lineWidth = 5; g.strokeStyle = '#4fc3f7'; g.beginPath(); g.moveTo(...P(...a)); g.lineTo(...P(...b)); g.stroke(); }
+  for (let i = 0; i < n; i++) { // muur-handvat
+    const a = C[i], b = C[(i + 1) % n], [x, y] = P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    g.save(); g.translate(x, y); g.rotate(ang); g.fillStyle = ED.sel && ED.sel.t === 'wall' && ED.sel.k === i ? '#4fc3f7' : '#cfd8e0';
+    g.beginPath(); g.roundRect(-11, -4, 22, 8, 4); g.fill(); g.restore();
+  }
+  C.forEach((p, k) => { const [x, y] = P(...p); g.beginPath(); g.arc(x, y, 9, 0, 7); g.fillStyle = ED.sel && ED.sel.t === 'corner' && ED.sel.k === k ? '#4fc3f7' : '#fff'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#4fc3f7'; g.stroke(); });
+  for (const nt of findNotches(C)) {
+    const [x, y] = P(...nt.at); g.beginPath(); g.arc(x, y, 13, 0, 7); g.fillStyle = nt.inward ? '#e53935' : '#fb8c00'; g.fill();
+    g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(x - 5, y - 5); g.lineTo(x + 5, y + 5); g.moveTo(x + 5, y - 5); g.lineTo(x - 5, y + 5); g.stroke();
+  }
+}
+function planBar() {
+  const bar = $('planbar'), hint = $('planhint'); let h = '';
+  if (!ED.on) { bar.innerHTML = '<button id="pe-on">✏️ Bewerken</button>'; hint.textContent = ''; }
+  else {
+    h += '<button id="pe-undo">↶</button>';
+    if (ED.sel && ED.sel.t === 'corner') h += '<button id="pe-delc">Hoek weg</button>';
+    if (ED.sel && ED.sel.t === 'wall') h += '<button id="pe-in">− 1 cm</button><button id="pe-out">+ 1 cm</button>';
+    h += '<button id="pe-done" class="pri">✓ Klaar</button>'; bar.innerHTML = h;
+    hint.textContent = ED.sel && ED.sel.t === 'wall' ? 'Muur geselecteerd: sleep of gebruik ±1 cm (+ = kamer groter)'
+      : ED.sel && ED.sel.t === 'corner' ? 'Hoek geselecteerd: sleep hem, of verwijder hem'
+      : 'Sleep een hoek (rondje) of muur (streepje) · tik ✕ om een inham weg te halen';
+  }
+  const on = (id, f) => { const b = $(id); if (b) b.onclick = f; };
+  on('pe-on', () => { ED.on = true; ED.sel = null; ED.view = null; $('plan').classList.add('edit'); drawPlan(); });
+  on('pe-done', () => { ED.on = false; ED.sel = null; ED.view = null; $('plan').classList.remove('edit'); drawPlan(); });
+  on('pe-undo', edUndo);
+  on('pe-delc', () => deleteCorner(ED.sel.k));
+  on('pe-in', () => { edPush(); moveWall(ED.sel.k, -0.01); edCommit(); });
+  on('pe-out', () => { edPush(); moveWall(ED.sel.k, 0.01); edCommit(); });
+}
+$('plan').addEventListener('pointerdown', e => {
+  if (!ED.on || !current) return;
+  const [x, y] = planPos(e); let best = null, bd = Infinity;
+  for (const h of edHandles()) { const d = Math.hypot(h.pos[0] - x, h.pos[1] - y); const pr = h.t === 'corner' ? 0 : h.t === 'notch' ? 1 : 2; if (d < h.r && d + pr * 4 < bd) { bd = d + pr * 4; best = h; } }
+  if (!best) { ED.sel = null; drawPlan(); return; }
+  e.preventDefault(); $('plan').setPointerCapture(e.pointerId);
+  ED.drag = { h: best, x0: x, y0: y, moved: false, base: JSON.parse(JSON.stringify(current.room)) };
+});
+$('plan').addEventListener('pointermove', e => {
+  const D = ED.drag; if (!D) return;
+  const [x, y] = planPos(e), { sc } = ED.view;
+  if (!D.moved && Math.hypot(x - D.x0, y - D.y0) < 5) return;
+  if (!D.moved) { D.moved = true; edPush(); if (D.h.t !== 'notch') ED.sel = { t: D.h.t, k: D.h.k }; }
+  const r = current.room, dx = (x - D.x0) / sc, dz = (y - D.y0) / sc;
+  if (D.h.t === 'corner') {
+    const k = D.h.k, b = D.base.corners[k]; let nx = Math.round((b[0] + dx) * 200) / 200, nz = Math.round((b[1] + dz) * 200) / 200;
+    const tol = 8 / sc; // uitlijnen op andere hoeken (rechte muren)
+    for (let j = 0; j < r.corners.length; j++) { if (j === k) continue; const q = D.base.corners[j]; if (Math.abs(nx - q[0]) < tol) nx = q[0]; if (Math.abs(nz - q[1]) < tol) nz = q[1]; }
+    r.corners = D.base.corners.map((p, j) => j === k ? [nx, nz] : [...p]); r.openings = D.base.openings.map(o => ({ ...o })); clampOps(r);
+  } else if (D.h.t === 'wall') {
+    const w = wallInfo(D.base.corners, D.h.k); moveWall(D.h.k, Math.round((dx * w.ox + dz * w.oz) * 200) / 200, D.base);
+  }
+  drawPlan();
+});
+const edEnd = () => {
+  const D = ED.drag; if (!D) return; ED.drag = null;
+  if (D.moved) { edCommit(); return; }
+  if (D.h.t === 'notch') return removeNotch(D.h.nt);
+  ED.sel = ED.sel && ED.sel.t === D.h.t && ED.sel.k === D.h.k ? null : { t: D.h.t, k: D.h.k }; drawPlan();
+};
+$('plan').addEventListener('pointerup', edEnd); $('plan').addEventListener('pointercancel', edEnd);
 
 /* ---------- export ---------- */
 function fname() { return (current.name || 'kamer').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'kamer'; }
