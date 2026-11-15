@@ -19,9 +19,38 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 #compassWrap{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 10px);
   width:min(92vw,560px);height:44px;pointer-events:none}
 #compass{width:100%;height:100%;display:block}
-#region{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 58px);
-  font-size:12px;letter-spacing:.25em;text-transform:uppercase;color:var(--bone);text-shadow:0 0 6px #000,0 0 2px #000;
-  pointer-events:none;white-space:nowrap;opacity:.9}
+#hud{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 58px);text-align:center;pointer-events:none}
+#region{font-size:12px;letter-spacing:.25em;text-transform:uppercase;color:var(--bone);text-shadow:0 0 6px #000,0 0 2px #000;white-space:nowrap;opacity:.92}
+#region b{color:var(--gold);font-weight:600}
+#xpline{display:flex;align-items:center;gap:7px;justify-content:center;margin-top:5px}
+#xplvl{font-size:11px;font-weight:700;color:#14100b;background:var(--gold);border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;box-shadow:0 0 6px #000}
+#xpbar{width:120px;height:4px;background:rgba(10,8,6,.7);border:1px solid rgba(239,230,210,.35);position:relative;box-shadow:0 0 6px rgba(0,0,0,.6)}
+#xpfill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#9a7425,#f3d68a);width:0;transition:width .6s}
+.tabs{display:flex;gap:4px;justify-content:center;margin:4px 0 14px;flex-wrap:wrap}
+.tabs button{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);background:transparent;border:0;border-bottom:1px solid transparent;padding:6px 8px;cursor:pointer}
+.tabs button.on{color:var(--bone);border-bottom-color:var(--gold)}
+.lvl{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.lvl .num{flex:none;width:58px;height:58px;border-radius:50%;border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:var(--gold);box-shadow:inset 0 0 12px rgba(216,179,94,.35)}
+.lvl .rk{font-size:16px;letter-spacing:.14em;text-transform:uppercase}
+.lvl .xp{font-family:'IM Fell English',serif;color:var(--dim);font-size:14px;margin:3px 0 6px}
+.bar{height:6px;background:rgba(239,230,210,.1);border:1px solid rgba(239,230,210,.2);position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#9a7425,#f3d68a)}
+#reglist{list-style:none;margin:0;padding:0}
+#reglist li{padding:10px 4px;border-bottom:1px solid rgba(239,230,210,.08);cursor:pointer}
+#reglist .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+#reglist .n{font-size:14px;letter-spacing:.06em}
+#reglist .k{font-family:'IM Fell English',serif;font-style:italic;color:var(--dim);font-size:13px;margin-left:6px}
+#reglist .p{color:var(--gold);font-size:13px}
+.bsum{text-align:center;font-family:'IM Fell English',serif;color:var(--dim);font-size:15px;margin-bottom:10px}
+.bcat{margin:16px 0 8px;font-size:11px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;text-align:center}
+#badgegrid .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.badge{border:1px solid rgba(239,230,210,.14);padding:8px;display:flex;gap:8px;align-items:center;background:rgba(239,230,210,.03)}
+.badge canvas{width:40px;height:40px;flex:none}
+.badge .bn{font-size:11px;letter-spacing:.06em;line-height:1.25}
+.badge .bt{font-family:'IM Fell English',serif;font-style:italic;font-size:12px;color:var(--gold)}
+.badge .bp{font-family:'IM Fell English',serif;font-size:11px;color:var(--dim);margin-top:2px}
+.badge.lock{opacity:.55}
+.badge .bar{height:3px;margin-top:4px}
 #bar{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);
   display:flex;justify-content:center;gap:10px;pointer-events:none}
 .btn{pointer-events:auto;font-family:'Cinzel',serif;font-weight:600;font-size:13px;letter-spacing:.18em;text-transform:uppercase;
@@ -96,7 +125,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 <canvas id="paperfx"></canvas>
 <div id="vignette"></div>
 <div id="compassWrap"><canvas id="compass"></canvas></div>
-<div id="region"></div>
+<div id="hud"><div id="region"></div><div id="xpline"><div id="xplvl">1</div><div id="xpbar"><div id="xpfill"></div></div></div></div>
 <div id="status"></div>
 <svg id="rose" viewBox="-62 -62 124 124" aria-hidden="true"></svg>
 <div id="banner"><div class="line"></div><div class="name"></div><div class="kind"></div><div class="line" style="margin-top:8px"></div></div>
@@ -127,15 +156,22 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
   <div class="panel">
     <h2>Dagboek</h2>
     <div class="rule"></div>
-    <div class="stats">
-      <div class="stat"><b id="sDist">0</b><span>Afgelegd</span></div>
-      <div class="stat"><b id="sArea">0</b><span>Verkend gebied</span></div>
-      <div class="stat"><b id="sDisc">0</b><span>Ontdekte locaties</span></div>
-      <div class="stat"><b id="sNL">0%</b><span>Van Nederland</span></div>
+    <div class="tabs" id="jtabs"><button data-tab="ov" class="on">Overzicht</button><button data-tab="geb">Gebieden</button><button data-tab="ont">Vondsten</button><button data-tab="bad">Badges</button></div>
+    <div id="tab-ov">
+      <div class="lvl"><div class="num" id="lvNum">1</div><div style="flex:1"><div class="rk" id="lvRank">Zwerver</div><div class="xp" id="lvXp"></div><div class="bar"><i id="lvBar"></i></div></div></div>
+      <div class="stats">
+        <div class="stat"><b id="sDist">0</b><span>Afgelegd</span></div>
+        <div class="stat"><b id="sArea">0</b><span>Verkend gebied</span></div>
+        <div class="stat"><b id="sDisc">0</b><span>Ontdekkingen</span></div>
+        <div class="stat"><b id="sNL">0</b><span>Voetbalvelden</span></div>
+        <div class="stat"><b id="sBadges">0</b><span>Badges</span></div>
+        <div class="stat"><b id="sStreak">0</b><span>Dagen op rij</span></div>
+      </div>
+      <div class="kinds" id="sKinds"></div>
     </div>
-    <div class="kinds" id="sKinds"></div>
-    <h3>Ontdekte locaties</h3>
-    <ul id="disclist"></ul>
+    <div id="tab-geb" class="hidden"><ul id="reglist"></ul></div>
+    <div id="tab-ont" class="hidden"><ul id="disclist"></ul></div>
+    <div id="tab-bad" class="hidden"><div id="badgegrid"></div></div>
     <button class="btn close" data-close>Sluiten</button>
   </div>
 </div>
@@ -175,7 +211,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 const document = { createElement: () => new OffscreenCanvas(1, 1) };
 let W = 0, H = 0, DPR = 1, view = { x: 0, y: 0, s: 1 }, S = { fog: true, route: true }, routeSegs = [];
 let cvs = null, c = null, PAT = null;
-const AREAS = {}, LINES = {}, LABELS = [], cells = new Set(), CS = 25;
+const AREAS = {}, LINES = {}, LABELS = [], REGS = [], cells = new Set(), CS = 25;
 const isRevealed = (x, y) => cells.has(Math.floor(x / CS) + ':' + Math.floor(y / CS));
 /* ---------- texturen ---------- */
 function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -337,6 +373,13 @@ function drawMap() {
   lines('stream', 'rgba(62,92,98,.8)', 1 * zf, null, .08);
   lines('river', 'rgba(62,92,98,.9)', 3 * zf, null, 0, true);
   area('bld', 'rgba(74,50,30,.55)', null, null, 0, .35);
+  // grenzen van woonplaatsen en natuurgebieden (stippellijn, zoals de grenzen van een 'hold')
+  if (s > .02) for (const R of REGS) {
+    if (!hit(R.bb, vb)) continue;
+    c.beginPath(); for (const r of R.rings) addRing(r, true, true);
+    const wp = R.k === 'woonplaats';
+    c.setLineDash(wp ? [14, 5, 2, 5] : [3, 5]); c.strokeStyle = wp ? 'rgba(120,40,18,.5)' : 'rgba(50,72,28,.55)'; c.lineWidth = wp ? 1.8 : 1.5; c.stroke(); c.setLineDash([]);
+  }
   lines('path', 'rgba(52,36,20,.75)', .9 * zf, [1.5 * zf, 3.2 * zf], .25);
   lines('track', 'rgba(52,36,20,.7)', 1 * zf, [5 * zf, 3 * zf], .12);
   lines('hw4', 'rgba(43,30,16,.6)', .8 * zf, null, .45);
@@ -404,6 +447,7 @@ function drawMap() {
 onmessage = e => {
   const m = e.data;
   if (m.t === 'feats') addFeats(m.list);
+  else if (m.t === 'regions') for (const R of m.list) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of R.rings) for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); y0 = Math.min(y0, r[i + 1]); y1 = Math.max(y1, r[i + 1]); } REGS.push({ k: R.k, rings: R.rings, bb: [x0, y0, x1, y1] }); }
   else if (m.t === 'reset') { for (const k in AREAS) delete AREAS[k]; for (const k in LINES) delete LINES[k]; LABELS.length = 0; cells.clear(); }
   else if (m.t === 'render') {
     if (m.cells) for (const k of m.cells) cells.add(k);
@@ -470,6 +514,9 @@ try {
   const s = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6, fog: true, route: true }, s.settings || {}); }
 } catch (e) {}
+const DEF = { days: {}, flags: { early: {}, night: {}, seasons: {}, wk: {}, newyear: 0, xmas: 0, king: 0 }, rm: {}, badges: null, adm: { g: {}, p: {} }, lvlSeen: 0 };
+for (const [k, v] of Object.entries(DEF)) if (state[k] == null) state[k] = JSON.parse(JSON.stringify(v));
+for (const [k, v] of Object.entries(DEF.flags)) if (state.flags[k] == null) state.flags[k] = v;
 let saveT = null;
 function scheduleSave() { if (!saveT) saveT = setTimeout(saveNow, 4000); }
 function saveNow() {
@@ -512,7 +559,7 @@ function reveal(x, y, r, anim) {
   for (let ix = Math.floor((x - r) / CS); ix <= Math.floor((x + r) / CS); ix++)
     for (let iy = Math.floor((y - r) / CS); iy <= Math.floor((y + r) / CS); iy++) {
       const dx = (ix + .5) * CS - x, dy = (iy + .5) * CS - y;
-      if (dx * dx + dy * dy <= rr) { const k = ix + ':' + iy; if (!cells.has(k)) { cells.add(k); newCells.push(k); } }
+      if (dx * dx + dy * dy <= rr) { const k = ix + ':' + iy; if (!cells.has(k)) { cells.add(k); newCells.push(k); onNewCell(ix, iy, anim); if (anim) dayStat('c', 1); } }
     }
 }
 const isRevealed = (x, y) => cells.has(Math.floor(x / CS) + ':' + Math.floor(y / CS));
@@ -568,7 +615,7 @@ function onFix(lat, lon, acc, heading) {
     const d = Math.hypot(x - lastRev.x, y - lastRev.y);
     if (d >= 10) {
       if (d <= 400) {
-        state.dist += d;
+        state.dist += d; dayStat('d', d);
         const n = Math.ceil(d / 10);
         for (let i = 1; i <= n; i++) {
           const t = i / n, [la, lo] = unproj(lastRev.x + (x - lastRev.x) * t, lastRev.y + (y - lastRev.y) * t);
@@ -579,28 +626,41 @@ function onFix(lat, lon, acc, heading) {
     }
   }
   checkDiscoveries(x, y);
+  checkRegions(lat, lon);
   ensureTiles();
+  maybeIsIn();
   scheduleSave();
 }
 
 /* ---------- plekken & ontdekkingen ---------- */
 const pois = new Map();
 const DR = { city: 1200, town: 700, village: 350, suburb: 300, hamlet: 200, locality: 150 };
+const DR2 = { meer: 200, hoogzit: 60, schuilhut: 60, kruis: 50, grenspaal: 50, boom: 50, bron: 60, sluis: 80, grafheuvel: 80, bunker: 80, vogelkijkhut: 70, watertoren: 150 };
+const NOMAP = new Set(['natuur', 'bos', 'heide', 'gemeente', 'provincie']);   // gebieden: geen icoon op de kaart
+const MINOR = new Set(['hoogzit', 'schuilhut', 'kruis', 'grenspaal', 'boom', 'bron', 'sluis']);
 const KIND = { city: 'Stad', town: 'Stad', village: 'Dorp', suburb: 'Wijk', hamlet: 'Gehucht', locality: 'Streek', peak: 'Heuvel',
   hunebed: 'Hunebed', ruin: 'Oude vindplaats', castle: 'Kasteel', mill: 'Molen', church: 'Kerk', view: 'Uitkijkpunt',
-  camp: 'Kampeerplaats', monument: 'Monument', tower: 'Toren' };
-const GENERIC = { peak: 'Naamloze heuvel', hunebed: 'Hunebed', mill: 'Molen', view: 'Uitkijkpunt', castle: 'Kasteel', ruin: 'Ruïne', tower: 'Toren' };
+  camp: 'Kampeerplaats', monument: 'Monument', tower: 'Toren', meer: 'Meer', natuur: 'Natuurgebied', bos: 'Bos', heide: 'Heide',
+  grafheuvel: 'Grafheuvel', bunker: 'Bunker', boom: 'Monumentale boom', bron: 'Bron', sluis: 'Sluis', grenspaal: 'Grenspaal', kruis: 'Wegkruis',
+  hoogzit: 'Hoogzit', vogelkijkhut: 'Vogelkijkhut', schuilhut: 'Schuilhut', watertoren: 'Watertoren', gemeente: 'Gemeente', provincie: 'Provincie', woonplaats: 'Woonplaats' };
+const GENERIC = { peak: 'Naamloze heuvel', hunebed: 'Hunebed', mill: 'Molen', view: 'Uitkijkpunt', castle: 'Kasteel', ruin: 'Ruïne', tower: 'Toren',
+  grafheuvel: 'Grafheuvel', bunker: 'Bunker', boom: 'Monumentale boom', bron: 'Bron', sluis: 'Sluis', grenspaal: 'Grenspaal', kruis: 'Wegkruis',
+  hoogzit: 'Hoogzit', vogelkijkhut: 'Vogelkijkhut', schuilhut: 'Schuilhut', watertoren: 'Watertoren' };
 function checkDiscoveries(x, y) {
   for (const p of pois.values()) {
     if (state.disc[p.id]) continue;
-    const r = DR[p.k] || 100, dx = p.x - x, dy = p.y - y;
+    const r = DR[p.k] || DR2[p.k] || 100, dx = p.x - x, dy = p.y - y;
     if (dx * dx + dy * dy <= r * r) discover(p, true);
   }
 }
 function discover(p, announce) {
   state.disc[p.id] = { n: p.n, k: p.k, lat: p.lat, lon: p.lon, t: Date.now() };
-  if (announce) banner(p);
-  dirty = true; scheduleSave();
+  if (announce) {
+    dayStat('n', 1);
+    if (MINOR.has(p.k)) { toast('Gevonden: ' + p.n + (p.n !== KIND[p.k] ? ' (' + (KIND[p.k] || '').toLowerCase() + ')' : '')); scratch(); }
+    else banner(p);
+  }
+  dirty = true; scheduleSave(); progressSoon();
 }
 const bq = []; let bBusy = false;
 function banner(p) { bq.push(p); if (!bBusy) nextBanner(); }
@@ -609,7 +669,7 @@ function nextBanner() {
   bBusy = true;
   const el = $('#banner');
   el.querySelector('.name').textContent = p.n;
-  el.querySelector('.kind').textContent = (KIND[p.k] || 'Locatie') + ' ontdekt';
+  el.querySelector('.kind').textContent = p.sub || ((KIND[p.k] || 'Locatie') + ' ontdekt');
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   chime();
   if (navigator.vibrate) try { navigator.vibrate([30, 60, 30]); } catch (e) {}
@@ -663,8 +723,8 @@ let ovi = 0;
 let dbP = null;
 function db() {
   if (!dbP) dbP = new Promise((res, rej) => {
-    const r = indexedDB.open('verkenner', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('tiles');
+    const r = indexedDB.open('verkenner', 2);
+    r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('tiles')) d.createObjectStore('tiles'); if (!d.objectStoreNames.contains('regions')) d.createObjectStore('regions'); };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('blocked'));
     setTimeout(() => rej(new Error('idb timeout')), 1500);   // nooit wachten op een hangende cache
   }).catch(() => null);
@@ -714,6 +774,7 @@ function ensureTiles() {
   tq.push(...fresh);
   tq.sort((a, b) => tdist(a, cl, co) - tdist(b, cl, co));
   pump();
+  ensureExtra();
 }
 function tdist(k, lat, lon) {
   if (k[0] === 'v') { const [x, y] = k.slice(1).split('/').map(Number); return Math.hypot(y2lat(y + .5) - lat, (x2lon(x + .5) - lon) * .6); }
@@ -723,7 +784,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let active = 0, vtOk = 0, vtFail = 0, retryT = null;
 async function loadTile(k) {
   let rec = await idbGet(k);
-  if (!rec || rec.v !== 3) { rec = { v: 3, t: Date.now(), f: k[0] === 'v' ? await fetchVT(k) : await fetchTile(k) }; idbPut(k, rec); }
+  if (!rec || rec.v !== 4) { rec = { v: 4, t: Date.now(), f: k[0] === 'v' ? await fetchVT(k) : await fetchTile(k) }; idbPut(k, rec); }
   ingest(rec.f);
 }
 function pump() {
@@ -930,7 +991,7 @@ const VT_LAYERS = {
     if (t.subclass === 'archaeological_site') return { poi: 'ruin' };
     return VT_POI[t.subclass] ? { poi: VT_POI[t.subclass] } : null;
   },
-  water_name: t => t.name ? { label: 'water' } : null,
+  water_name: t => t.name ? { label: 'water', poi: 'meer' } : null,
 };
 function parseVT(buf, tx, ty) {
   const T = decodeMVT(buf), out = []; let idx = 0;
@@ -949,7 +1010,7 @@ function parseVT(buf, tx, ty) {
         const [a, o] = ll(gx, gy), name = t.name || t['name:nl'] || t.name_int || (res.poi && GENERIC[res.poi]);
         if (!name) continue;
         if (res.poi) out.push({ i: 'q' + res.poi + a.toFixed(4) + '_' + o.toFixed(4), k: res.poi, P: 1, n: name, a, o });
-        else out.push({ i: 'l' + name + a.toFixed(3), k: res.label, Lb: 1, n: name, a, o });
+        if (res.label) out.push({ i: 'l' + name + a.toFixed(3), k: res.label, Lb: 1, n: name, a, o });
       } else if (res.area && f.type === 3) {
         const rings = [], edges = [];
         for (const r of f.rings) {
@@ -1077,6 +1138,8 @@ function ingest(list) {
     if (seen.has(f.i)) continue; seen.add(f.i);
     if (f.P) {
       const [x, y] = proj(f.a, f.o), p = { id: f.i, k: f.k, n: f.n, lat: f.a, lon: f.o, x, y };
+      let dup = false; for (const q of pois.values()) if (q.k === p.k && Math.abs(q.x - x) < 60 && Math.abs(q.y - y) < 60) { dup = true; break; }
+      if (dup) continue;
       pois.set(f.i, p);
       if (!state.disc[f.i] && isRevealed(x, y)) discover(p, false);
     } else if (f.A) {
@@ -1200,6 +1263,31 @@ function iconPath(c, k) {
     case 'camp': c.moveTo(-.95, .7); c.lineTo(0, -.85); c.lineTo(.95, .7); c.closePath(); c.moveTo(0, .7); c.lineTo(-.25, .1); c.lineTo(.25, .1); c.closePath(); break;
     case 'monument': c.moveTo(-.22, .65); c.lineTo(-.14, -.6); c.lineTo(0, -.88); c.lineTo(.14, -.6); c.lineTo(.22, .65); c.closePath(); rect(-.45, .62, .9, .22); break;
     case 'tower': rect(-.28, -.75, .56, 1.55); c.moveTo(-.45, -.75); c.lineTo(0, -1); c.lineTo(.45, -.75); c.closePath(); break;
+    case 'grafheuvel': c.moveTo(-1, .55); c.quadraticCurveTo(0, -1.05, 1, .55); c.closePath(); break;
+    case 'bunker': c.moveTo(-.95, .7); c.lineTo(-.95, -.15); c.lineTo(-.6, -.5); c.lineTo(.6, -.5); c.lineTo(.95, -.15); c.lineTo(.95, .7); c.closePath(); rect(-.55, -.05, 1.1, .16); break;
+    case 'boom': case 'bos': c.moveTo(.62, -.3); c.arc(0, -.3, .62, 0, 7); rect(-.12, .25, .24, .65); if (k === 'bos') { c.moveTo(-.35, .1); c.arc(-.75, .1, .4, 0, 7); c.moveTo(1.15, .1); c.arc(.75, .1, .4, 0, 7); } break;
+    case 'bron': c.moveTo(0, -.95); c.bezierCurveTo(.65, -.1, .65, .75, 0, .75); c.bezierCurveTo(-.65, .75, -.65, -.1, 0, -.95); break;
+    case 'meer': c.ellipse(0, .05, .95, .58, 0, 0, 7); c.moveTo(-.55, 0); c.quadraticCurveTo(-.3, -.2, -.05, 0); c.quadraticCurveTo(.2, .2, .45, 0); c.lineTo(.45, .12); c.quadraticCurveTo(.2, .32, -.05, .12); c.quadraticCurveTo(-.3, -.08, -.55, .12); c.closePath(); break;
+    case 'sluis': rect(-.9, -.65, .26, 1.45); rect(.64, -.65, .26, 1.45); rect(-.64, -.12, 1.28, .22); break;
+    case 'grenspaal': c.moveTo(-.28, .85); c.lineTo(-.28, -.45); c.arc(0, -.45, .28, Math.PI, 0); c.lineTo(.28, .85); c.closePath(); break;
+    case 'kruis': rect(-.1, -.95, .2, 1.85); rect(-.5, -.5, 1, .2); break;
+    case 'hoogzit': rect(-.5, -.85, 1, .5); c.moveTo(-.65, -.85); c.lineTo(0, -1.1); c.lineTo(.65, -.85); c.closePath(); rect(-.48, -.35, .13, 1.25); rect(.35, -.35, .13, 1.25); rect(-.4, .25, .8, .1); break;
+    case 'vogelkijkhut': house(0, .1, 1.3); c.moveTo(.22, .05); c.arc(0, .05, .22, 0, 7, true); break;
+    case 'schuilhut': c.moveTo(-1, .05); c.lineTo(0, -.85); c.lineTo(1, .05); c.lineTo(.7, .05); c.lineTo(0, -.55); c.lineTo(-.7, .05); c.closePath(); rect(-.7, .05, .16, .8); rect(.54, .05, .16, .8); break;
+    case 'watertoren': rect(-.14, -.15, .28, 1); c.moveTo(-.6, -.15); c.lineTo(-.6, -.75); c.quadraticCurveTo(0, -1.05, .6, -.75); c.lineTo(.6, -.15); c.closePath(); break;
+    case 'natuur': c.moveTo(-1, .8); c.lineTo(-.55, -.2); c.lineTo(-.1, .8); c.closePath(); c.moveTo(-.4, .8); c.lineTo(.1, -.8); c.lineTo(.6, .8); c.closePath(); c.moveTo(.25, .8); c.lineTo(.65, 0); c.lineTo(1, .8); c.closePath(); break;
+    case 'heide': for (const [x, y] of [[-.55, .35], [0, -.1], [.55, .35]]) { c.moveTo(x - .35, y + .35); c.lineTo(x, y - .45); c.lineTo(x + .35, y + .35); c.closePath(); } break;
+    case 'gemeente': case 'vlag': rect(-.62, -.95, .14, 1.9); c.moveTo(-.48, -.9); c.lineTo(.85, -.62); c.lineTo(-.48, -.25); c.closePath(); break;
+    case 'provincie': case 'kroon': c.moveTo(-.95, .6); c.lineTo(-.95, -.45); c.lineTo(-.48, 0); c.lineTo(0, -.75); c.lineTo(.48, 0); c.lineTo(.95, -.45); c.lineTo(.95, .6); c.closePath(); break;
+    case 'boot': c.ellipse(.05, .25, .38, .62, -.15, 0, 7); for (const [x, y, r] of [[-.25, -.55, .13], [.02, -.68, .14], [.28, -.62, .12], [.47, -.45, .1]]) { c.moveTo(x + r, y); c.arc(x, y, r, 0, 7); } break;
+    case 'kaart': c.moveTo(-.95, -.6); c.lineTo(-.32, -.85); c.lineTo(.32, -.6); c.lineTo(.95, -.85); c.lineTo(.95, .6); c.lineTo(.32, .85); c.lineTo(-.32, .6); c.lineTo(-.95, .85); c.closePath(); break;
+    case 'kompas': c.moveTo(0, -1); c.lineTo(.24, -.24); c.lineTo(1, 0); c.lineTo(.24, .24); c.lineTo(0, 1); c.lineTo(-.24, .24); c.lineTo(-1, 0); c.lineTo(-.24, -.24); c.closePath(); break;
+    case 'ster': for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? .4 : .95; i ? c.lineTo(Math.cos(a) * r, Math.sin(a) * r + .05) : c.moveTo(Math.cos(a) * r, Math.sin(a) * r + .05); } c.closePath(); break;
+    case 'kalender': rect(-.8, -.65, 1.6, 1.5); rect(-.6, -.2, 1.2, .85); rect(-.5, -.9, .18, .4); rect(.32, -.9, .18, .4); break;
+    case 'vlam': c.moveTo(0, -1); c.bezierCurveTo(.5, -.4, .85, 0, .6, .5); c.bezierCurveTo(.45, .9, -.45, .9, -.6, .5); c.bezierCurveTo(-.75, .1, -.4, -.1, -.2, -.45); c.bezierCurveTo(-.1, -.1, .1, -.1, 0, -1); break;
+    case 'zon': c.arc(0, 0, .42, 0, 7); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a); c.moveTo(ca * .55 - sa * .12, sa * .55 + ca * .12); c.lineTo(ca * .98, sa * .98); c.lineTo(ca * .55 + sa * .12, sa * .55 - ca * .12); c.closePath(); } break;
+    case 'maan': c.arc(0, 0, .8, 0, 7); c.moveTo(.35 + .62, -.22); c.arc(.35, -.22, .62, 0, 7); break;
+    case 'medaille': c.moveTo(-.55, -1); c.lineTo(-.15, -1); c.lineTo(.1, -.3); c.lineTo(-.3, -.3); c.closePath(); c.moveTo(.55, -1); c.lineTo(.15, -1); c.lineTo(-.1, -.3); c.lineTo(.3, -.3); c.closePath(); c.moveTo(.6, .3); c.arc(0, .3, .6, 0, 7); break;
     default: c.arc(0, 0, .5, 0, 7);
   }
 }
@@ -1242,7 +1330,7 @@ function drawLabels() {
   try { c.letterSpacing = '0px'; } catch (e) {}
   // ontdekte plekken: iconen en namen
   const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
-  const src = Object.entries(state.disc).map(([id, d]) => ({ id, ...d }));
+  const src = Object.entries(state.disc).filter(([, d]) => !NOMAP.has(d.k)).map(([id, d]) => ({ id, ...d }));
   if (!state.settings.fog) for (const p of pois.values()) if (!state.disc[p.id]) src.push({ id: p.id, n: p.n, k: p.k, lat: p.lat, lon: p.lon, u: 1 });
   const items = src.map(d => { const [x, y] = projMemo(d.id, d.lat, d.lon); const q = toScreen(x, y); return { ...d, x: q[0], y: q[1] }; })
     .filter(d => d.x > -80 && d.y > -40 && d.x < W + 80 && d.y < H + 40)
@@ -1387,13 +1475,21 @@ function drawCompass() {
 /* huidige streek onder het kompas */
 let regionT = 0;
 function updateRegion() {
-  let best = null, bd = Infinity;
-  if (me.has) for (const [id, d] of Object.entries(state.disc)) {
-    if (!(d.k in DR)) continue;
-    const [x, y] = proj(d.lat, d.lon), dist = Math.hypot(x - me.x, y - me.y);
-    if (dist < (DR[d.k] * 2.2) && dist < bd) { bd = dist; best = d; }
+  let txt = '';
+  const R = me.has ? regionAt(me.x, me.y) : null;
+  if (R) txt = R.n + ' · <b>' + Math.floor(regionPct(R)) + '%</b>';
+  else if (me.has) {
+    let best = null, bd = Infinity;
+    for (const d of Object.values(state.disc)) {
+      if (!(d.k in DR)) continue;
+      const [x, y] = proj(d.lat, d.lon), dist = Math.hypot(x - me.x, y - me.y);
+      if (dist < DR[d.k] * 2.2 && dist < bd) { bd = dist; best = d; }
+    }
+    if (best) txt = best.n;
   }
-  $('#region').textContent = best ? best.n : '';
+  const el = $('#region'); el.innerHTML = ''; if (txt) { const sp = document.createElement('span'); sp.innerHTML = txt.replace(/</g, '&lt;').replace(/&lt;b>/g, '<b>').replace(/&lt;\/b>/g, '</b>'); el.appendChild(sp); }
+  const L = levelInfo(lastXP);
+  $('#xplvl').textContent = L.level; $('#xpfill').style.width = (L.frac * 100).toFixed(1) + '%';
 }
 
 (function buildRose() {
@@ -1688,33 +1784,56 @@ $('#bFollow').onclick = () => {
 $('#rose').addEventListener('click', () => { setHeadUp(false); if (view.r) rAnim = { from: view.r, t0: performance.now() }; });
 
 function fmtKm(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toLocaleString('nl-NL', { maximumFractionDigits: m < 10000 ? 2 : 1 }) + ' km'; }
-$('#bJournal').onclick = () => {
-  const area = cells.size * CS * CS / 1e6;
-  $('#sDist').textContent = fmtKm(state.dist);
-  $('#sArea').textContent = area.toLocaleString('nl-NL', { maximumFractionDigits: area < 10 ? 2 : 1 }) + ' km²';
-  const list = Object.entries(state.disc).sort((a, b) => b[1].t - a[1].t);
-  $('#sDisc').textContent = list.length;
-  const pct = area / 41543 * 100;
-  $('#sNL').textContent = pct.toLocaleString('nl-NL', { maximumSignificantDigits: 2 }) + '%';
-  const cnt = {}; for (const [, d] of list) { const k = KIND[d.k] || 'Overig'; cnt[k] = (cnt[k] || 0) + 1; }
-  $('#sKinds').textContent = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k, n]) => n + ' × ' + k.toLowerCase()).join('  ·  ');
-  const ul = $('#disclist'); ul.innerHTML = '';
-  if (!list.length) ul.innerHTML = '<div class="empty">Nog niets ontdekt. Trek erop uit, reiziger.</div>';
-  for (const [id, d] of list) {
-    const li = document.createElement('li'), ic = document.createElement('canvas');
-    ic.width = ic.height = 44; drawIcon(ic.getContext('2d'), d.k, 22, 22, 30, '#efe6d2', null);
-    const dt = new Date(d.t);
-    li.innerHTML = `<span class="n"></span><span class="k"></span><span class="d">${dt.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</span>`;
-    li.prepend(ic); li.querySelector('.n').textContent = d.n; li.querySelector('.k').textContent = KIND[d.k] || '';
-    li.onclick = () => {
-      if (!origin) return;
-      const [x, y] = proj(d.lat, d.lon); setFollow(false); view.x = x; view.y = y; view.s = Math.max(view.s, d.k in DR ? .15 : .6);
-      dirty = true; ensureTilesSoon(); $('#journal').classList.add('hidden');
-    };
-    ul.appendChild(li);
-  }
-  open('#journal');
-};
+let jTab = 'ov';
+document.querySelectorAll('#jtabs button').forEach(b => b.onclick = () => { jTab = b.dataset.tab; renderJournal(); });
+$('#bJournal').onclick = () => { renderJournal(); open('#journal'); };
+function flyTo(lat, lon, s) {
+  if (!origin) return;
+  const [x, y] = proj(lat, lon); setFollow(false); view.x = x; view.y = y; view.s = Math.max(view.s, s);
+  dirty = true; ensureTilesSoon(); $('#journal').classList.add('hidden');
+}
+function renderJournal() {
+  document.querySelectorAll('#jtabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === jTab));
+  for (const t of ['ov', 'geb', 'ont', 'bad']) $('#tab-' + t).classList.toggle('hidden', t !== jTab);
+  const S = stats(), L = levelInfo(computeXP(S));
+  if (jTab === 'ov') {
+    $('#lvNum').textContent = L.level; $('#lvRank').textContent = L.rank;
+    $('#lvXp').textContent = L.xp.toLocaleString('nl-NL') + ' XP · nog ' + (L.next - L.xp).toLocaleString('nl-NL') + ' tot niveau ' + (L.level + 1);
+    $('#lvBar').style.width = (L.frac * 100).toFixed(1) + '%';
+    $('#sDist').textContent = fmtKm(state.dist);
+    $('#sArea').textContent = S.km2.toLocaleString('nl-NL', { maximumFractionDigits: S.km2 < 10 ? 2 : 1 }) + ' km²';
+    $('#sDisc').textContent = S.disc;
+    $('#sNL').textContent = Math.round(S.km2 * 1e6 / 7140).toLocaleString('nl-NL');
+    $('#sBadges').textContent = S.badges + ' / ' + BADGE_TOTAL;
+    $('#sStreak').textContent = S.streakNow;
+    const cnt = {}; for (const d of Object.values(state.disc)) { const k = KIND[d.k] || 'Overig'; cnt[k] = (cnt[k] || 0) + 1; }
+    $('#sKinds').textContent = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k, n]) => n + ' × ' + k.toLowerCase()).join('  ·  ');
+  } else if (jTab === 'geb') {
+    const ul = $('#reglist'); ul.innerHTML = '';
+    const list = [...regions.values()].filter(R => R.got > 0).sort((a, b) => regionPct(b) - regionPct(a));
+    if (!list.length) ul.innerHTML = '<div class="empty">Nog geen gebieden betreden. Woonplaatsen en natuurgebieden verschijnen hier zodra je erin komt.</div>';
+    for (const R of list) {
+      const li = document.createElement('li'), pct = regionPct(R);
+      li.innerHTML = '<div class="top"><span><span class="n"></span><span class="k"></span></span><span class="p">' + pct.toFixed(pct < 10 ? 1 : 0) + '%</span></div><div class="bar"><i style="width:' + Math.min(100, pct).toFixed(1) + '%"></i></div>';
+      li.querySelector('.n').textContent = R.n; li.querySelector('.k').textContent = RK[R.k] || '';
+      li.onclick = () => flyTo(...regionCenterLL(R), .08);
+      ul.appendChild(li);
+    }
+  } else if (jTab === 'ont') {
+    const list = Object.entries(state.disc).sort((a, b) => b[1].t - a[1].t);
+    const ul = $('#disclist'); ul.innerHTML = '';
+    if (!list.length) ul.innerHTML = '<div class="empty">Nog niets ontdekt. Trek erop uit, reiziger.</div>';
+    for (const [id, d] of list.slice(0, 400)) {
+      const li = document.createElement('li'), ic = document.createElement('canvas');
+      ic.width = ic.height = 44; drawIcon(ic.getContext('2d'), d.k, 22, 22, 30, '#efe6d2', null);
+      const dt = new Date(d.t);
+      li.innerHTML = `<span class="n"></span><span class="k"></span><span class="d">${dt.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</span>`;
+      li.prepend(ic); li.querySelector('.n').textContent = d.n; li.querySelector('.k').textContent = KIND[d.k] || '';
+      li.onclick = () => flyTo(d.lat, d.lon, d.k in DR ? .15 : .6);
+      ul.appendChild(li);
+    }
+  } else renderBadges(S);
+}
 
 function syncSeg(id, val) { document.querySelectorAll(id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v == String(val))); }
 function syncSettings() {
@@ -1757,6 +1876,429 @@ $('#bReset').onclick = () => {
 };
 addEventListener('beforeunload', () => { if (state) saveNow(); });
 
+
+/* =====================================================================
+   GEBIEDEN – woonplaatsen en natuurgebieden die je per procent verkent
+   ===================================================================== */
+const regions = new Map();
+const RK = { woonplaats: 'Woonplaats', natuur: 'Natuurgebied', bos: 'Bos', heide: 'Heide' };
+const MILE = [10, 25, 50, 75, 90];
+function buildRegion(id, n, k, ringsLL) {
+  const rings = ringsLL.map(r => { const o = new Float64Array(r.length); for (let i = 0; i < r.length; i += 2) { const q = proj(r[i], r[i + 1]); o[i] = q[0]; o[i + 1] = q[1]; } return o; });
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rings) for (let i = 0; i < r.length; i += 2) { x0 = Math.min(x0, r[i]); x1 = Math.max(x1, r[i]); y0 = Math.min(y0, r[i + 1]); y1 = Math.max(y1, r[i + 1]); }
+  const ix0 = Math.floor(x0 / CS), iy0 = Math.floor(y0 / CS), w = Math.floor(x1 / CS) - ix0 + 1, h = Math.floor(y1 / CS) - iy0 + 1;
+  if (!(w > 0 && h > 0) || w * h > 6e6) return null;
+  const mask = new Uint8Array(w * h), xs = []; let total = 0;
+  for (let j = 0; j < h; j++) {
+    const y = (iy0 + j + .5) * CS; xs.length = 0;
+    for (const r of rings) for (let i = 0; i + 3 < r.length; i += 2) {
+      const ya = r[i + 1], yb = r[i + 3];
+      if ((ya <= y && yb > y) || (yb <= y && ya > y)) xs.push(r[i] + (y - ya) / (yb - ya) * (r[i + 2] - r[i]));
+    }
+    xs.sort((a, b) => a - b);
+    for (let q = 0; q + 1 < xs.length; q += 2) {
+      const a = Math.max(0, Math.ceil(xs[q] / CS - .5) - ix0), b = Math.min(w - 1, Math.floor(xs[q + 1] / CS - .5) - ix0);
+      for (let i = a; i <= b; i++) if (!mask[j * w + i]) { mask[j * w + i] = 1; total++; }
+    }
+  }
+  if (total < 4) return null;
+  let got = 0;
+  for (const key of cells) { const c = key.indexOf(':'), i = +key.slice(0, c) - ix0, jj = +key.slice(c + 1) - iy0; if (i >= 0 && jj >= 0 && i < w && jj < h && mask[jj * w + i]) got++; }
+  return { id, n, k, ix0, iy0, w, h, mask, total, got, rings };
+}
+const regionHas = (R, ix, iy) => { const i = ix - R.ix0, j = iy - R.iy0; return i >= 0 && j >= 0 && i < R.w && j < R.h && R.mask[j * R.w + i] === 1; };
+const regionPct = R => R.total ? Math.min(100, R.got / R.total * 100) : 0;
+function regionAt(x, y, kind) {
+  const ix = Math.floor(x / CS), iy = Math.floor(y / CS);
+  let best = null;
+  for (const R of regions.values()) if ((!kind || R.k === kind) && regionHas(R, ix, iy)) { if (R.k === 'woonplaats') return R; if (!best || R.total < best.total) best = R; }
+  return best;
+}
+function regionCenterLL(R) {
+  let sx = 0, sy = 0, n = 0;
+  for (let j = 0; j < R.h; j += 2) for (let i = 0; i < R.w; i += 2) if (R.mask[j * R.w + i]) { sx += i; sy += j; n++; }
+  if (!n) return unproj((R.ix0 + R.w / 2) * CS, (R.iy0 + R.h / 2) * CS);
+  return unproj((R.ix0 + sx / n + .5) * CS, (R.iy0 + sy / n + .5) * CS);
+}
+function onNewCell(ix, iy, live) {
+  for (const R of regions.values()) if (regionHas(R, ix, iy)) { R.got++; if (live) checkMilestone(R); }
+}
+function checkMilestone(R) {
+  const pct = regionPct(R); let m = state.rm[R.id] || 0;
+  while (m < MILE.length && pct >= MILE[m]) { m++; banner({ n: R.n, sub: MILE[m - 1] + '% verkend' }); progressSoon(); }
+  state.rm[R.id] = m;
+}
+function addRegion(id, n, k, ringsLL, store) {
+  if (regions.has(id) || !origin) return;
+  const R = buildRegion(id, n, k, ringsLL); if (!R) return;
+  regions.set(id, R);
+  if (store) idbPutS('regions', id, { n, k, r: ringsLL });
+  // milestones stil bijwerken (geen banners voor oude voortgang)
+  let m = state.rm[id] || 0; const pct = regionPct(R); while (m < MILE.length && pct >= MILE[m]) m++; state.rm[id] = m;
+  if (worker) worker.postMessage({ t: 'regions', list: [{ k: R.k, rings: R.rings.map(r => Float32Array.from(r)) }] });
+}
+async function idbPutS(store, k, v) { const d = await db(); if (!d) return; try { d.transaction(store, 'readwrite').objectStore(store).put(v, k); } catch (e) {} }
+let regionsLoaded = false;
+async function loadRegions() {
+  if (regionsLoaded || !origin) return; regionsLoaded = true;
+  const d = await db(); if (!d) return;
+  try {
+    const tx = d.transaction('regions').objectStore('regions');
+    const keys = await new Promise(res => { const q = tx.getAllKeys(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); });
+    const vals = await new Promise(res => { const q = d.transaction('regions').objectStore('regions').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); });
+    keys.forEach((k, i) => { const v = vals[i]; if (v) addRegion(k, v.n, v.k, v.r, false); });
+  } catch (e) {}
+  progressSoon(true);
+}
+function checkRegions(lat, lon) {
+  if (!me.has) return;
+  const ix = Math.floor(me.x / CS), iy = Math.floor(me.y / CS);
+  for (const R of regions.values()) {
+    if (R.k === 'woonplaats' || state.disc['r' + R.id] || !regionHas(R, ix, iy)) continue;
+    discover({ id: 'r' + R.id, k: R.k, n: R.n, lat, lon }, true);   // natuurgebied / bos / heide betreden
+  }
+}
+/* welke gebieden omringen mij? (Overpass is_in: snel, alleen gebieden waar je in staat) */
+async function overpassJSON(q, ms) {
+  const body = 'data=' + encodeURIComponent(q), errs = [];
+  for (let i = 0; i < OVERPASS.length; i++) {
+    const url = OVERPASS[(ovi + i) % OVERPASS.length], ac = new AbortController(), to = setTimeout(() => ac.abort(), ms || 30000);
+    try {
+      const r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ac.signal });
+      clearTimeout(to); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); ovi = (ovi + i) % OVERPASS.length; return j;
+    } catch (e) { clearTimeout(to); errs.push(e.message); }
+  }
+  throw new Error(errs.join(', '));
+}
+let isinBusy = false, lastIsIn = null;
+async function maybeIsIn() {
+  if (isinBusy || !me.has || !origin) return;
+  const inWp = !!regionAt(me.x, me.y, 'woonplaats');
+  if (lastIsIn) {
+    const d = Math.hypot(me.x - lastIsIn.x, me.y - lastIsIn.y);
+    if (d < (inWp ? 800 : 300) || performance.now() - lastIsIn.t < 20000) return;
+  }
+  isinBusy = true; lastIsIn = { x: me.x, y: me.y, t: performance.now() };
+  const la = me.lat.toFixed(6), lo = me.lon.toFixed(6);
+  const q = `[out:json][timeout:25];is_in(${la},${lo})->.a;
+rel(pivot.a)["boundary"="administrative"]["admin_level"~"^(4|8)$"];out tags;
+(rel(pivot.a)["boundary"="administrative"]["admin_level"="10"];
+way(pivot.a)["leisure"="nature_reserve"]["name"];rel(pivot.a)["leisure"="nature_reserve"]["name"];
+rel(pivot.a)["boundary"~"^(national_park|protected_area)$"]["name"];
+way(pivot.a)["landuse"="forest"]["name"];rel(pivot.a)["landuse"="forest"]["name"];
+way(pivot.a)["natural"~"^(wood|heath)$"]["name"];rel(pivot.a)["natural"~"^(wood|heath)$"]["name"];);out geom;`;
+  try {
+    const j = await overpassJSON(q, 30000);
+    for (const el of j.elements || []) {
+      const t = el.tags || {}, id = el.type[0] + el.id, name = t.name;
+      if (!name) continue;
+      if (t.boundary === 'administrative' && (t.admin_level === '4' || t.admin_level === '8')) {
+        const key = t.admin_level === '4' ? 'p' : 'g';
+        if (!state.adm[key][name]) {
+          state.adm[key][name] = Date.now();
+          const kind = key === 'p' ? 'provincie' : 'gemeente';
+          state.disc['a' + id] = { n: name, k: kind, lat: me.lat, lon: me.lon, t: Date.now() };
+          dayStat('n', 1);
+          banner({ n: name, k: kind, sub: (key === 'p' ? 'Provincie' : 'Gemeente') + ' betreden' }); progressSoon();
+        }
+        continue;
+      }
+      let kind = null;
+      if (t.boundary === 'administrative' && t.admin_level === '10') kind = 'woonplaats';
+      else if (t.leisure === 'nature_reserve' || t.boundary === 'national_park' || t.boundary === 'protected_area') kind = 'natuur';
+      else if (t.landuse === 'forest' || t.natural === 'wood') kind = 'bos';
+      else if (t.natural === 'heath') kind = 'heide';
+      if (!kind || regions.has(id)) continue;
+      let ringsLL = [];
+      if (el.type === 'way' && el.geometry) ringsLL = [flat(el.geometry)];
+      else if (el.type === 'relation' && el.members) ringsLL = stitch(el.members.filter(m => m.type === 'way' && m.geometry && m.role !== 'subarea').map(m => m.geometry)).map(flat);
+      ringsLL = ringsLL.filter(r => r.length >= 8 && r[0] === r[r.length - 2] && r[1] === r[r.length - 1]);
+      if (ringsLL.length) addRegion(id, name, kind, ringsLL, true);
+    }
+    checkRegions(me.lat, me.lon); scheduleSave();
+  } catch (e) { console.warn('is_in', e); lastIsIn.t = performance.now() - 5000; }
+  isinBusy = false;
+}
+
+/* =====================================================================
+   EXTRA VONDSTEN – veldnamen, grafheuvels, bunkers, hoogzitten …
+   (één lichte Overpass-vraag per gebied van ~10 km, daarna bewaard)
+   ===================================================================== */
+const XT_LAT = 0.1, XT_LON = 0.15, xtState = new Map(); let xtBusy = false;
+function ensureExtra() {
+  if (!origin) return;
+  const pts = [];
+  if (me.has) pts.push([me.lat, me.lon, 2500]);
+  if (!state.settings.fog && view.s > .1) { const [la, lo] = unproj(view.x, view.y); pts.push([la, lo, 3000]); }
+  for (const [la, lo, d] of pts) {
+    const dl = d / M_LAT, dn = d / mLon;
+    for (let ty = Math.floor((la - dl) / XT_LAT); ty <= Math.floor((la + dl) / XT_LAT); ty++)
+      for (let tx = Math.floor((lo - dn) / XT_LON); tx <= Math.floor((lo + dn) / XT_LON); tx++) {
+        const k = ty + '_' + tx; if (!xtState.has(k)) xtState.set(k, 'q');
+      }
+  }
+  pumpX();
+}
+async function pumpX() {
+  if (xtBusy) return;
+  let k = null; for (const [kk, st] of xtState) if (st === 'q') { k = kk; break; }
+  if (!k) return;
+  xtBusy = true;
+  try {
+    let rec = await idbGet('X' + k);
+    if (!rec || rec.v !== 1) { rec = { v: 1, t: Date.now(), f: await fetchExtra(k) }; idbPut('X' + k, rec); }
+    ingest(rec.f); xtState.set(k, 'ok');
+  } catch (e) { console.warn('extra', e); xtState.set(k, 'err'); setTimeout(() => { if (xtState.get(k) === 'err') { xtState.set(k, 'q'); pumpX(); } }, 20000); }
+  xtBusy = false; pumpX();
+}
+function extraKind(t) {
+  const h = t.historic, nm = String(t.name || '').toLowerCase();
+  if (h === 'tumulus' || (h === 'archaeological_site' && /tumulus|grafheuvel|barrow/.test((t.site_type || '') + ' ' + nm))) return 'grafheuvel';
+  if (h === 'archaeological_site' && (t.site_type === 'megalith' || /hunebed|dolmen/.test(nm))) return 'hunebed';
+  if (h === 'bunker' || t.military === 'bunker' || t.building === 'bunker') return 'bunker';
+  if (h === 'boundary_stone') return 'grenspaal';
+  if (h === 'wayside_cross' || h === 'wayside_shrine') return 'kruis';
+  if (h === 'memorial' && t.memorial === 'war_memorial') return 'monument';
+  if (t.natural === 'tree') return 'boom';
+  if (t.natural === 'spring') return 'bron';
+  if (t.lock === 'yes' || t.waterway === 'lock_gate') return 'sluis';
+  if (t.amenity === 'hunting_stand') return 'hoogzit';
+  if (t.leisure === 'bird_hide') return 'vogelkijkhut';
+  if (t.amenity === 'shelter' && t.shelter_type !== 'public_transport') return 'schuilhut';
+  if (t.man_made === 'water_tower') return 'watertoren';
+  if (t.place === 'locality') return 'locality';
+  return null;
+}
+async function fetchExtra(k) {
+  const [ty, tx] = k.split('_').map(Number);
+  const b = `(${(ty * XT_LAT).toFixed(3)},${(tx * XT_LON).toFixed(3)},${((ty + 1) * XT_LAT).toFixed(3)},${((tx + 1) * XT_LON).toFixed(3)})`;
+  const q = `[out:json][timeout:40];(
+nwr["historic"~"^(tumulus|archaeological_site|bunker|boundary_stone|wayside_cross|wayside_shrine)$"]${b};
+nwr["historic"="memorial"]["memorial"="war_memorial"]${b};
+nwr["military"="bunker"]${b};
+node["natural"="tree"]["denotation"~"natural_monument|landmark"]${b};
+node["natural"="tree"]["name"]${b};
+node["natural"="spring"]${b};
+nwr["lock"="yes"]${b};
+node["waterway"="lock_gate"]${b};
+nwr["amenity"="hunting_stand"]${b};
+nwr["leisure"="bird_hide"]${b};
+nwr["amenity"="shelter"]${b};
+nwr["man_made"="water_tower"]${b};
+node["place"="locality"]${b};
+);out center tags qt;`;
+  const j = await overpassJSON(q, 60000), out = [];
+  for (const el of j.elements || []) {
+    const t = el.tags || {}, k2 = extraKind(t); if (!k2) continue;
+    const lat = el.lat != null ? el.lat : el.center && el.center.lat, lon = el.lon != null ? el.lon : el.center && el.center.lon;
+    if (lat == null) continue;
+    const n = t.name || GENERIC[k2]; if (!n) continue;
+    out.push({ i: 'x' + el.type[0] + el.id, k: k2, P: 1, n, a: +lat.toFixed(6), o: +lon.toFixed(6) });
+  }
+  return out;
+}
+
+/* =====================================================================
+   DAGEN, NIVEAUS, ERVARINGSPUNTEN EN BADGES
+   ===================================================================== */
+const dayKey = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function dayStat(f, v) {
+  if (state.settings.sim) return;                         // proefmodus telt niet mee voor dagen en tijden
+  const now = new Date(), k = dayKey(now), D = state.days[k] || (state.days[k] = { d: 0, c: 0, n: 0 });
+  D[f] += v;
+  if (f === 'c' || f === 'n') {
+    const h = now.getHours(), m = now.getMonth(), dd = now.getDate(), F = state.flags;
+    if (h < 7) F.early[k] = 1;
+    if (h >= 22) F.night[k] = 1;
+    F.seasons[['winter', 'winter', 'lente', 'lente', 'lente', 'zomer', 'zomer', 'zomer', 'herfst', 'herfst', 'herfst', 'winter'][m]] = 1;
+    if (now.getDay() === 0 || now.getDay() === 6) F.wk[k] = 1;
+    if (m === 0 && dd === 1) F.newyear = 1;
+    if (m === 11 && (dd === 25 || dd === 26)) F.xmas = 1;
+    if (m === 3 && dd === 27) F.king = 1;
+  }
+  progressSoon();
+}
+function stats() {
+  const byK = {}; let disc = 0;
+  for (const d of Object.values(state.disc)) { byK[d.k] = (byK[d.k] || 0) + 1; disc++; }
+  const dk = Object.keys(state.days).filter(k => { const D = state.days[k]; return D.c > 0 || D.n > 0 || D.d > 50; }).sort();
+  let streak = 0, run = 0, prev = null;
+  for (const k of dk) { const t = new Date(k + 'T12:00').getTime(); run = prev != null && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1; prev = t; streak = Math.max(streak, run); }
+  let streakNow = 0;
+  if (dk.length) { const last = new Date(dk[dk.length - 1] + 'T12:00').getTime(), today = new Date(dayKey() + 'T12:00').getTime(); if (Math.round((today - last) / 864e5) <= 1) streakNow = run; }
+  let dayKm = 0, dayKm2 = 0, dayDisc = 0;
+  for (const D of Object.values(state.days)) { dayKm = Math.max(dayKm, D.d / 1000); dayKm2 = Math.max(dayKm2, D.c * CS * CS / 1e6); dayDisc = Math.max(dayDisc, D.n); }
+  let wp25 = 0, wp50 = 0, wp90 = 0, wpMax = 0, nat90 = 0;
+  for (const R of regions.values()) {
+    const p = regionPct(R);
+    if (R.k === 'woonplaats') { if (p >= 25) wp25++; if (p >= 50) wp50++; if (p >= 90) wp90++; wpMax = Math.max(wpMax, p); }
+    else if (p >= 90) nat90++;
+  }
+  const F = state.flags;
+  const S = { byK, disc, km: state.dist / 1000, km2: cells.size * CS * CS / 1e6, days: dk.length, streak, streakNow, dayKm, dayKm2, dayDisc,
+    wp25, wp50, wp90, wpMax, nat90, gem: Object.keys(state.adm.g).length, prov: Object.keys(state.adm.p).length,
+    early: Object.keys(F.early).length, night: Object.keys(F.night).length, seasons: Object.keys(F.seasons).length, wkDays: Object.keys(F.wk).length,
+    newyear: F.newyear, xmas: F.xmas, king: F.king, kinds: Object.keys(byK).length, level: levelInfo(lastXP).level, badges: 0 };
+  S.badges = Object.values(state.badges || {}).reduce((a, b) => a + b, 0);
+  return S;
+}
+/* ervaringspunten */
+const DXP = { city: 500, town: 300, village: 150, suburb: 60, hamlet: 80, locality: 60, peak: 100, hunebed: 250, ruin: 120, castle: 200, mill: 120,
+  church: 80, view: 80, camp: 40, monument: 60, tower: 80, meer: 100, natuur: 200, bos: 120, heide: 120, grafheuvel: 150, bunker: 120, boom: 60,
+  bron: 100, sluis: 80, grenspaal: 80, kruis: 50, hoogzit: 30, vogelkijkhut: 60, schuilhut: 40, watertoren: 100, gemeente: 300, provincie: 1000 };
+const MXP = [0, 50, 200, 600, 1400, 3000];
+let lastXP = 0;
+function computeXP() {
+  let xp = cells.size;                                     // 1 XP per verkend vakje van 25 × 25 m
+  for (const d of Object.values(state.disc)) xp += DXP[d.k] || 60;
+  for (const m of Object.values(state.rm)) xp += MXP[m] || 0;
+  for (const n of Object.values(state.badges || {})) for (let i = 0; i < n; i++) xp += 100 * (i + 1);
+  return lastXP = xp;
+}
+const xpFor = L => Math.round(400 * Math.pow(L - 1, 1.6));
+const RANKS = [[1, 'Zwerver'], [4, 'Wandelaar'], [8, 'Padvinder'], [13, 'Verkenner'], [19, 'Woudloper'], [26, 'Kartograaf'], [34, 'Meester-kartograaf'], [43, 'Wereldreiziger'], [55, 'Legende van het Noorden']];
+function levelInfo(xp) {
+  let L = 1; while (xpFor(L + 1) <= xp) L++;
+  const a = xpFor(L), b = xpFor(L + 1);
+  let rank = RANKS[0][1]; for (const [l, r] of RANKS) if (L >= l) rank = r;
+  return { level: L, rank, xp, next: b, frac: (xp - a) / (b - a) };
+}
+/* badges: families met oplopende niveaus */
+const TIERS = ['Brons', 'Zilver', 'Goud', 'Platina', 'Diamant', 'Mythisch', 'Legendarisch', 'Goddelijk', 'Hemels', 'Eeuwig'];
+const TCOL = ['#b0763c', '#c9c9c9', '#e2b84a', '#a8dcd6', '#8fc6ff', '#c58cff', '#ff9d4a', '#fff1a8', '#f4f8ff', '#ff6a5a'];
+const kc = ks => S => ks.reduce((a, k) => a + (S.byK[k] || 0), 0);
+const BADGES = [
+  ['Reizen', [
+    { id: 'first', n: 'Eerste stap', g: 'boot', u: 'je allereerste verkenning', get: S => S.km2 > 0 ? 1 : 0, t: [1] },
+    { id: 'km', n: 'Wegvreter', g: 'boot', u: 'km afgelegd', get: S => S.km, t: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500] },
+    { id: 'km2', n: 'Landmeter', g: 'kaart', u: 'km² verkend', get: S => S.km2, t: [.1, .25, .5, 1, 2, 5, 10, 25, 50, 100] },
+    { id: 'daykm', n: 'Dagmars', g: 'boot', u: 'km op één dag', get: S => S.dayKm, t: [2, 5, 10, 15, 21.1, 30, 42.195, 60, 100] },
+    { id: 'daykm2', n: 'Landjepik', g: 'kaart', u: 'km² op één dag', get: S => S.dayKm2, t: [.1, .25, .5, 1, 2, 5] },
+    { id: 'disc', n: 'Ontdekkingsreiziger', g: 'kompas', u: 'ontdekkingen', get: S => S.disc, t: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500] },
+    { id: 'daydisc', n: 'Schatgraver', g: 'kompas', u: 'ontdekkingen op één dag', get: S => S.dayDisc, t: [3, 5, 10, 20, 35, 50] },
+    { id: 'variety', n: 'Veelzijdig', g: 'ster', u: 'verschillende soorten vondsten', get: S => S.kinds, t: [3, 5, 8, 12, 16, 20, 25, 30] },
+  ]],
+  ['Bewoonde wereld', [
+    { id: 'city', n: 'Stedeling', g: 'city', u: 'steden', get: kc(['city', 'town']), t: [1, 3, 5, 10, 25, 50] },
+    { id: 'village', n: 'Dorpeling', g: 'village', u: 'dorpen', get: kc(['village']), t: [1, 3, 5, 10, 25, 50, 100, 250] },
+    { id: 'hamlet', n: 'Gehuchtenjager', g: 'hamlet', u: 'gehuchten', get: kc(['hamlet']), t: [1, 3, 5, 10, 25, 50, 100] },
+    { id: 'suburb', n: 'Wijkagent', g: 'suburb', u: 'wijken', get: kc(['suburb']), t: [1, 5, 10, 25, 50, 100] },
+    { id: 'locality', n: 'Veldnamenkenner', g: 'locality', u: 'veldnamen', get: kc(['locality']), t: [1, 5, 10, 25, 50, 100, 250, 500] },
+    { id: 'gem', n: 'Gemeentereiziger', g: 'vlag', u: 'gemeenten betreden', get: S => S.gem, t: [1, 2, 3, 5, 10, 25, 50, 100, 200, 342] },
+    { id: 'prov', n: 'Provinciaal', g: 'kroon', u: 'provincies betreden', get: S => S.prov, t: [1, 2, 3, 6, 9, 12] },
+  ]],
+  ['Gebieden', [
+    { id: 'wpmax', n: 'Grondig', g: 'kaart', u: '% van één woonplaats', get: S => S.wpMax, t: [10, 25, 50, 75, 90, 99] },
+    { id: 'wp25', n: 'Dorpsverkenner', g: 'village', u: 'woonplaatsen ≥ 25%', get: S => S.wp25, t: [1, 3, 5, 10, 25, 50] },
+    { id: 'wp50', n: 'Dorpskenner', g: 'village', u: 'woonplaatsen ≥ 50%', get: S => S.wp50, t: [1, 3, 5, 10, 25] },
+    { id: 'wp90', n: 'Thuis in elke straat', g: 'village', u: 'woonplaatsen ≥ 90%', get: S => S.wp90, t: [1, 3, 5, 10] },
+    { id: 'nat90', n: 'Wildernisgids', g: 'natuur', u: 'natuurgebieden of bossen ≥ 90%', get: S => S.nat90, t: [1, 3, 5, 10, 25] },
+  ]],
+  ['Natuur', [
+    { id: 'natuur', n: 'Natuurmens', g: 'natuur', u: 'natuurgebieden', get: kc(['natuur']), t: [1, 3, 5, 10, 25, 50] },
+    { id: 'bos', n: 'Woudloper', g: 'bos', u: 'bossen', get: kc(['bos']), t: [1, 3, 5, 10, 25, 50, 100] },
+    { id: 'heide', n: 'Heidewandelaar', g: 'heide', u: 'heidevelden', get: kc(['heide']), t: [1, 3, 5, 10, 25] },
+    { id: 'meer', n: 'Waterrat', g: 'meer', u: 'meren en plassen', get: kc(['meer']), t: [1, 3, 5, 10, 25, 50, 100] },
+    { id: 'peak', n: 'Bergbeklimmer', g: 'peak', u: 'heuvels', get: kc(['peak']), t: [1, 3, 5, 10, 25] },
+    { id: 'boom', n: 'Boomfluisteraar', g: 'boom', u: 'monumentale bomen', get: kc(['boom']), t: [1, 3, 10, 25, 50] },
+    { id: 'bron', n: 'Bronnenzoeker', g: 'bron', u: 'bronnen', get: kc(['bron']), t: [1, 3, 10, 25] },
+    { id: 'vogel', n: 'Vogelaar', g: 'vogelkijkhut', u: 'vogelkijkhutten', get: kc(['vogelkijkhut']), t: [1, 3, 5, 10, 25] },
+    { id: 'hoogzit', n: 'Jager', g: 'hoogzit', u: 'hoogzitten', get: kc(['hoogzit']), t: [1, 5, 10, 25, 50, 100, 250] },
+    { id: 'schuil', n: 'Schuilzoeker', g: 'schuilhut', u: 'schuilhutten', get: kc(['schuilhut']), t: [1, 5, 10, 25, 50] },
+  ]],
+  ['Geschiedenis', [
+    { id: 'hunebed', n: 'Steentijdmens', g: 'hunebed', u: 'hunebedden (er zijn er 54)', get: kc(['hunebed']), t: [1, 3, 5, 10, 25, 54] },
+    { id: 'grafheuvel', n: 'Grafheuvelzoeker', g: 'grafheuvel', u: 'grafheuvels', get: kc(['grafheuvel']), t: [1, 3, 10, 25, 50] },
+    { id: 'ruin', n: 'Oudheidkundige', g: 'ruin', u: 'oude vindplaatsen', get: kc(['ruin']), t: [1, 3, 10, 25, 50] },
+    { id: 'castle', n: 'Kasteelheer', g: 'castle', u: 'kastelen en havezaten', get: kc(['castle']), t: [1, 3, 5, 10, 25] },
+    { id: 'bunker', n: 'Bunkerjager', g: 'bunker', u: 'bunkers', get: kc(['bunker']), t: [1, 3, 10, 25, 50] },
+    { id: 'monument', n: 'Gedenker', g: 'monument', u: 'monumenten', get: kc(['monument']), t: [1, 5, 10, 25, 50, 100] },
+    { id: 'grens', n: 'Grensganger', g: 'grenspaal', u: 'grenspalen', get: kc(['grenspaal']), t: [1, 5, 10, 25] },
+    { id: 'kruis', n: 'Pelgrim', g: 'kruis', u: 'wegkruisen', get: kc(['kruis']), t: [1, 5, 10, 25] },
+  ]],
+  ['Bouwwerken', [
+    { id: 'church', n: 'Kerkganger', g: 'church', u: 'kerken', get: kc(['church']), t: [1, 5, 10, 25, 50, 100, 250] },
+    { id: 'mill', n: 'Molenaar', g: 'mill', u: 'molens', get: kc(['mill']), t: [1, 3, 5, 10, 25, 50, 100] },
+    { id: 'tower', n: 'Torenwachter', g: 'watertoren', u: 'torens en watertorens', get: kc(['tower', 'watertoren']), t: [1, 3, 5, 10, 25] },
+    { id: 'view', n: 'Uitkijker', g: 'view', u: 'uitkijkpunten', get: kc(['view']), t: [1, 3, 5, 10, 25, 50] },
+    { id: 'sluis', n: 'Sluiswachter', g: 'sluis', u: 'sluizen', get: kc(['sluis']), t: [1, 3, 10, 25, 50] },
+    { id: 'camp', n: 'Kampeerder', g: 'camp', u: 'kampeerplaatsen', get: kc(['camp']), t: [1, 3, 5, 10, 25] },
+  ]],
+  ['Gewoontes', [
+    { id: 'days', n: 'Trouwe reiziger', g: 'kalender', u: 'dagen op pad', get: S => S.days, t: [1, 3, 7, 14, 30, 60, 100, 200, 365, 1000] },
+    { id: 'streak', n: 'Onvermoeibaar', g: 'vlam', u: 'dagen op rij', get: S => S.streak, t: [2, 3, 5, 7, 14, 30, 60, 100, 200, 365] },
+    { id: 'wk', n: 'Weekendkrijger', g: 'kalender', u: 'weekenddagen op pad', get: S => S.wkDays, t: [1, 5, 10, 25, 52, 104] },
+    { id: 'early', n: 'Vroege vogel', g: 'zon', u: 'ochtenden vóór 7:00 op pad', get: S => S.early, t: [1, 5, 10, 25, 50] },
+    { id: 'night', n: 'Nachtuil', g: 'maan', u: 'avonden na 22:00 op pad', get: S => S.night, t: [1, 5, 10, 25, 50] },
+    { id: 'seasons', n: 'Vier seizoenen', g: 'zon', u: 'seizoenen op pad', get: S => S.seasons, t: [1, 2, 3, 4] },
+    { id: 'newyear', n: 'Goede voornemens', g: 'ster', u: 'op pad op 1 januari', get: S => S.newyear, t: [1] },
+    { id: 'xmas', n: 'Kerstwandeling', g: 'ster', u: 'op pad met kerst', get: S => S.xmas, t: [1] },
+    { id: 'king', n: 'Oranjegevoel', g: 'kroon', u: 'op pad op Koningsdag', get: S => S.king, t: [1] },
+  ]],
+  ['Meesterschap', [
+    { id: 'lvl', n: 'Ervaren reiziger', g: 'ster', u: 'niveau', get: S => S.level, t: [2, 5, 10, 15, 20, 26, 34, 43, 55, 75] },
+    { id: 'collector', n: 'Verzamelaar', g: 'medaille', u: 'badges verdiend', get: S => S.badges, t: [5, 10, 25, 50, 75, 100, 150, 200, 250] },
+  ]],
+];
+const BADGE_TOTAL = BADGES.reduce((a, [, fams]) => a + fams.reduce((b, f) => b + f.t.length, 0), 0);
+function badgeEarned(f, v) { let n = 0; for (const x of f.t) if (v >= x - 1e-9) n++; return n; }
+let progT = null;
+function progressSoon(silent) { clearTimeout(progT); progT = setTimeout(() => checkProgress(silent), silent ? 50 : 1200); }
+function checkProgress(silent) {
+  const first = !state.badges; if (first) state.badges = {};
+  silent = silent || first;
+  for (let pass = 0; pass < 2; pass++) {                  // twee rondes: 'Verzamelaar' hangt af van de rest
+    computeXP(); const S = stats();
+    for (const [, fams] of BADGES) for (const f of fams) {
+      const had = state.badges[f.id] || 0, now = badgeEarned(f, f.get(S));
+      if (now > had) {
+        state.badges[f.id] = now;
+        if (!silent) for (let i = had; i < now; i++) banner({ n: f.n, k: f.g, sub: 'Badge verdiend · ' + (f.t.length > 1 ? TIERS[i] : 'behaald') });
+      }
+    }
+  }
+  const L = levelInfo(computeXP());
+  if (L.level > (state.lvlSeen || 0)) {
+    if (!silent && state.lvlSeen) banner({ n: 'Niveau ' + L.level, sub: L.rank });
+    state.lvlSeen = L.level;
+  }
+  scheduleSave(); updateRegion();
+}
+function medal(cv, f, n) {
+  const c = cv.getContext('2d'), s = cv.width; c.clearRect(0, 0, s, s);
+  const col = n ? TCOL[Math.min(n, TCOL.length) - 1] : '#3a332a';
+  const g = c.createRadialGradient(s * .38, s * .35, s * .05, s / 2, s / 2, s * .5);
+  g.addColorStop(0, n ? '#fff8e8' : '#5a5046'); g.addColorStop(.35, col); g.addColorStop(1, n ? '#2b1e10' : '#1a1612');
+  c.beginPath(); c.arc(s / 2, s / 2, s * .46, 0, 7); c.fillStyle = g; c.fill();
+  c.lineWidth = s * .04; c.strokeStyle = n ? 'rgba(255,240,200,.6)' : 'rgba(239,230,210,.2)'; c.stroke();
+  drawIcon(c, f.g, s / 2, s / 2, s * .5, n ? 'rgba(30,20,8,.85)' : 'rgba(239,230,210,.35)', null);
+}
+function fmtNum(v) { return v < 10 && v % 1 ? v.toLocaleString('nl-NL', { maximumFractionDigits: 2 }) : Math.floor(v).toLocaleString('nl-NL'); }
+function renderBadges(S) {
+  const box = $('#badgegrid'); box.innerHTML = '';
+  let got = 0; for (const n of Object.values(state.badges || {})) got += n;
+  const sum = document.createElement('div'); sum.className = 'bsum'; sum.textContent = got + ' van de ' + BADGE_TOTAL + ' badges verdiend'; box.appendChild(sum);
+  for (const [cat, fams] of BADGES) {
+    const h = document.createElement('div'); h.className = 'bcat'; h.textContent = cat; box.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'grid'; box.appendChild(grid);
+    for (const f of fams) {
+      const n = state.badges[f.id] || 0, v = f.get(S), next = f.t[n];
+      const el = document.createElement('div'); el.className = 'badge' + (n ? '' : ' lock');
+      const cv = document.createElement('canvas'); cv.width = cv.height = 80; medal(cv, f, n);
+      const tier = n ? (f.t.length > 1 ? TIERS[n - 1] : 'Behaald') : 'Nog niet';
+      const prog = f.t.length === 1 ? (n ? 'Voltooid: ' : 'Opdracht: ') + f.u : next != null ? fmtNum(Math.min(v, next)) + ' / ' + fmtNum(next) + ' ' + f.u : 'Voltooid! ' + fmtNum(v) + ' ' + f.u;
+      const pct = next != null ? Math.min(100, (v - (n ? f.t[n - 1] : 0)) / (next - (n ? f.t[n - 1] : 0)) * 100) : 100;
+      el.innerHTML = '<div style="flex:1;min-width:0"><div class="bn"></div><div class="bt"></div><div class="bp"></div><div class="bar"><i style="width:' + Math.max(0, pct).toFixed(0) + '%"></i></div></div>';
+      el.prepend(cv);
+      el.querySelector('.bn').textContent = f.n + (f.t.length > 1 ? ' · ' + n + '/' + f.t.length : '');
+      el.querySelector('.bt').textContent = tier; el.querySelector('.bp').textContent = prog;
+      grid.appendChild(el);
+    }
+  }
+}
+
 /* ---------- opstarten ---------- */
 function ensureOriginForDemo() {
   if (origin) return;
@@ -1789,7 +2331,7 @@ async function begin(demo) {
   } else {
     state.settings.sim = false; startGPS();
   }
-  scheduleSave(); ensureTiles();
+  scheduleSave(); ensureTiles(); loadRegions();
   try { if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) {}
 }
 $('#bStart').onclick = () => begin(false);
@@ -1797,6 +2339,7 @@ $('#bDemo').onclick = () => begin(true);
 if (state.pts.length) $('#bStart').textContent = 'Hervat de reis';
 
 resize(); makePatterns(); rebuild();
+if (origin) loadRegions(); else progressSoon(true);
 if (document.fonts) document.fonts.ready.then(() => { dirty = true; });
 requestAnimationFrame(frame);
 </script>
