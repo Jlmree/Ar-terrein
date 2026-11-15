@@ -181,6 +181,10 @@ const mapCv = document.createElement('canvas'), mctx = mapCv.getContext('2d');
 const fogCv = document.createElement('canvas'), fctx = fogCv.getContext('2d');
 const ccv = $('#compass'), cctx = ccv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
+const MG = 280;                 // marge rond het scherm in de kaartbuffer (px)
+const FD = 1;                   // resolutie van de mistlaag (zacht, dus laag is prima)
+let cache = { x: 0, y: 0, s: 1, ri: 0 }, lastDraw = -1e9, lastInteract = 0;
+function cacheDims() { return [W + 2 * MG, H + 2 * MG]; }
 
 /* ---------- projectie (lokale meters) ---------- */
 const M_LAT = 110574;
@@ -286,7 +290,6 @@ function onFix(lat, lon, acc, heading) {
   Object.assign(me, { x, y, lat, lon, acc, has: true });
   if (heading != null && !isNaN(heading)) me.gpsHead = heading;
   if (follow) { view.x = x; view.y = y; }
-  dirty = true;
   if (acc > 80) { setStatus('GPS is onnauwkeurig (' + Math.round(acc) + ' m)…'); return; }
   recordRoute(lat, lon, x, y);
   const R = state.settings.R;
@@ -942,7 +945,8 @@ function drawIcon(c, k, x, y, size, fill, stroke, lw) {
 function viewBox() { const s = view.s; return [view.x - W / 2 / s, view.y - H / 2 / s, view.x + W / 2 / s, view.y + H / 2 / s]; }
 const hit = (b, v) => !(b[0] > v[2] || b[2] < v[0] || b[1] > v[3] || b[3] < v[1]);
 function drawMap() {
-  const c = mctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s, vb = viewBox();
+  const [W, H] = cacheDims();
+  const c = mctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s, vb = [view.x - W / 2 / s, view.y - H / 2 / s, view.x + W / 2 / s, view.y + H / 2 / s];
   const T = new DOMMatrix([1, 0, 0, 1, ox, oy]);
   c.setTransform(DPR, 0, 0, DPR, 0, 0);
   PAT.mpaper.setTransform(new DOMMatrix([1, 0, 0, 1, ox * .15, oy * .15]));
@@ -1101,10 +1105,12 @@ function drawMap() {
     c.globalAlpha = 1;
   }
   try { c.letterSpacing = '0px'; } catch (e) {}
+  const R = state.route || [];
+  cache = { x: view.x, y: view.y, s: view.s, ri: R.length >= 2 && R[R.length - 1] !== null ? R.length - 2 : R.length };
 }
 function drawFog(t) {
   const c = fctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s;
-  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  c.setTransform(FD, 0, 0, FD, 0, 0);
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
   c.fillStyle = '#7f7a71'; c.fillRect(0, 0, W, H);
   PAT.cloud.setTransform(new DOMMatrix().translateSelf(ox * .7 + t * .006, oy * .7 + t * .0025).scaleSelf(2.4, 2.4));
@@ -1151,7 +1157,7 @@ function drawPlayer() {
 function drawScale() {
   const c = ctx, s = view.s, target = 90 / s;
   const p = Math.pow(10, Math.floor(Math.log10(target))), n = [1, 2, 5, 10].map(m => m * p).filter(v => v <= target).pop() || p;
-  const len = n * s, x = 16, y = H - (parseFloat(getComputedStyle(document.body).getPropertyValue('--sab')) || 0) - 100;
+  const len = n * s, x = 16, y = H - 100;
   c.save(); c.strokeStyle = INK; c.fillStyle = INK; c.lineWidth = 1.5;
   c.beginPath(); c.moveTo(x, y - 5); c.lineTo(x, y); c.lineTo(x + len, y); c.lineTo(x + len, y - 5); c.stroke();
   c.fillRect(x, y - 2, len / 2, 2);
@@ -1243,14 +1249,41 @@ function updateRegion() {
 let lastT = 0, simTarget = null;
 function frame(t) {
   requestAnimationFrame(frame);
-  if (t - lastT < 40) return;
+  const busy = ptrs.size > 0 || t - lastInteract < 250;
+  if (!busy && t - lastT < 30) return;          // in rust ~30 fps, tijdens schuiven elk frame
   const dt = Math.min(.25, (t - lastT) / 1000); lastT = t;
   simStep(dt);
-  if (dirty) { drawMap(); dirty = false; }
+  // kaart alleen opnieuw tekenen als het moet; tijdens schuiven/knijpen de buffer verschuiven
+  {
+    const k = view.s / cache.s, dx = Math.abs((cache.x - view.x) * view.s), dy = Math.abs((cache.y - view.y) * view.s);
+    const moved = Math.abs(k - 1) > .003 || dx > MG * .6 || dy > MG * .6;
+    const exposed = dx > MG * .95 || dy > MG * .95 || k < .8;
+    const tail = (state.route || []).length - cache.ri > 60;
+    if ((!busy && (dirty || moved || tail) && t - lastDraw > 250) || (busy && exposed && t - lastDraw > 400)) { drawMap(); dirty = false; lastDraw = t; }
+  }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(mapCv, 0, 0);
-  if (state.settings.fog) { drawFog(t); ctx.drawImage(fogCv, 0, 0); }
+  {
+    const k = view.s / cache.s, dw = (W + 2 * MG) * k, dh = (H + 2 * MG) * k;
+    const x0 = (cache.x - view.x) * view.s + W / 2 - dw / 2, y0 = (cache.y - view.y) * view.s + H / 2 - dh / 2;
+    if (x0 > 0 || y0 > 0 || x0 + dw < W || y0 + dh < H) { ctx.fillStyle = '#dcc8a0'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    ctx.drawImage(mapCv, x0 * DPR, y0 * DPR, dw * DPR, dh * DPR);
+  }
+  if (state.settings.fog) { drawFog(t); ctx.drawImage(fogCv, 0, 0, cv.width, cv.height); }
   else while (anims.length) { const a = anims.pop(); commitMask(a.x, a.y, a.r); }
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  // nieuwste stuk reisspoor live (de rest zit in de kaartbuffer)
+  if (state.settings.route && state.route && me.has) {
+    const R = state.route; let i = cache.ri, on = false;
+    ctx.beginPath();
+    while (i < R.length) {
+      if (R[i] === null) { on = false; i++; continue; }
+      const [x, y] = proj(R[i], R[i + 1]), sx = (x - view.x) * view.s + W / 2, sy = (y - view.y) * view.s + H / 2;
+      if (on) ctx.lineTo(sx, sy); else { ctx.moveTo(sx, sy); on = true; }
+      i += 2;
+    }
+    if (on) ctx.lineTo((me.x - view.x) * view.s + W / 2, (me.y - view.y) * view.s + H / 2);
+    ctx.setLineDash([7, 6]); ctx.strokeStyle = 'rgba(150,30,20,.8)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (simTarget && state.settings.sim) {
     const x = (simTarget.x - view.x) * view.s + W / 2, y = (simTarget.y - view.y) * view.s + H / 2;
@@ -1316,10 +1349,13 @@ function makePaperFx() {
 function resize() {
   DPR = Math.min(devicePixelRatio || 1, 2);
   W = innerWidth; H = innerHeight;
-  for (const c of [cv, mapCv, fogCv]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  mapCv.width = Math.round((W + 2 * MG) * DPR); mapCv.height = Math.round((H + 2 * MG) * DPR);
+  fogCv.width = Math.round(W * FD); fogCv.height = Math.round(H * FD);
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   makePaperFx();
   dirty = true;
+  if (PAT.mpaper) { drawMap(); dirty = false; lastDraw = performance.now(); }   // buffer is leeg na formaatwijziging
 }
 addEventListener('resize', resize);
 
@@ -1338,7 +1374,7 @@ cv.addEventListener('pointerdown', e => {
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; lastInteract = performance.now();
   if (ptrs.size === 1) {
     if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap.moved = true;
     if (!tap || tap.moved) { view.x -= dx / view.s; view.y -= dy / view.s; dirty = true; if (follow) setFollow(false); ensureTilesSoon(); }
@@ -1367,7 +1403,7 @@ function endPtr(e) {
   if (ptrs.size === 0) tap = null;
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
-cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(follow && me.has ? W / 2 : e.clientX, follow && me.has ? H / 2 : e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
+cv.addEventListener('wheel', e => { e.preventDefault(); lastInteract = performance.now(); zoomAt(follow && me.has ? W / 2 : e.clientX, follow && me.has ? H / 2 : e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
 
 /* ---------- kompasrichting van het toestel ---------- */
 let devHead = null;
