@@ -163,6 +163,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
       <button class="btn" id="bCache">Kaartgegevens opnieuw laden</button>
       <button class="btn danger" id="bReset">Wis alle voortgang</button>
     </div>
+    <p style="font-family:'IM Fell English',serif;font-size:12px;color:var(--dim);text-align:center;margin-top:16px">Kaartdata © OpenStreetMap-bijdragers · tegels: OpenFreeMap / OpenMapTiles</p>
     <button class="btn close" data-close>Sluiten</button>
   </div>
 </div>
@@ -381,7 +382,7 @@ function scratch() {
 const TLAT = 0.02, TLON = 0.03;
 const tileState = new Map(), tq = [];
 let tBusy = false;
-const AREAS = {}, LINES = {}, seen = new Set();
+const AREAS = {}, LINES = {}, LABELS = [], seen = new Set();
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 let ovi = 0;
 
@@ -391,13 +392,22 @@ function db() {
   if (!dbP) dbP = new Promise((res, rej) => {
     const r = indexedDB.open('verkenner', 1);
     r.onupgradeneeded = () => r.result.createObjectStore('tiles');
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('blocked'));
+    setTimeout(() => rej(new Error('idb timeout')), 1500);   // nooit wachten op een hangende cache
   }).catch(() => null);
   return dbP;
 }
-async function idbGet(k) { const d = await db(); if (!d) return null; return new Promise(res => { const q = d.transaction('tiles').objectStore('tiles').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); }
+async function idbGet(k) {
+  const d = await db(); if (!d) return null;
+  return new Promise(res => { try { const q = d.transaction('tiles').objectStore('tiles').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); setTimeout(() => res(null), 1500); } catch (e) { res(null); } });
+}
 async function idbPut(k, v) { const d = await db(); if (!d) return; try { d.transaction('tiles', 'readwrite').objectStore('tiles').put(v, k); } catch (e) {} }
 
+function keysIn(s, w, n, e, set) {
+  if (tmode === 'op') return tileKeysIn(s, w, n, e, set);
+  const x0 = Math.floor(lon2x(w)), x1 = Math.floor(lon2x(e)), y0 = Math.floor(lat2y(n)), y1 = Math.floor(lat2y(s));
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) set.add('v' + x + '/' + y);
+}
 function tileKeysIn(s, w, n, e, set) {
   for (let ty = Math.floor(s / TLAT); ty <= Math.floor(n / TLAT); ty++)
     for (let tx = Math.floor(w / TLON); tx <= Math.floor(e / TLON); tx++) set.add(ty + '_' + tx);
@@ -407,7 +417,7 @@ function ensureTilesSoon() { clearTimeout(ensureT); ensureT = setTimeout(ensureT
 function ensureTiles() {
   if (!origin) return;
   const want = new Set();
-  if (me.has) { const d = 1500; tileKeysIn(me.lat - d / M_LAT, me.lon - d / mLon, me.lat + d / M_LAT, me.lon + d / mLon, want); }
+  if (me.has) { const d = 1500; keysIn(me.lat - d / M_LAT, me.lon - d / mLon, me.lat + d / M_LAT, me.lon + d / mLon, want); }
   // verkende stukken die in beeld zijn
   if (view.s > 0.02) {
     const vb = viewBox();
@@ -415,13 +425,13 @@ function ensureTiles() {
       const x0 = m._x * MT, y0 = m._y * MT;
       if (x0 > vb[2] || y0 > vb[3] || x0 + MT < vb[0] || y0 + MT < vb[1]) continue;
       const [n, w] = unproj(x0, y0), [s, e] = unproj(x0 + MT, y0 + MT);
-      tileKeysIn(s, w, n, e, want);
+      keysIn(s, w, n, e, want);
     }
   }
   // zonder mist: alles laden wat in beeld is (niet te ver uitgezoomd)
-  if (!state.settings.fog && view.s > 0.06) {
+  if (!state.settings.fog && view.s > 0.1) {
     const vb = viewBox(), [n, w] = unproj(vb[0], vb[1]), [s, e] = unproj(vb[2], vb[3]);
-    tileKeysIn(s, w, n, e, want);
+    keysIn(s, w, n, e, want);
   }
   const [cl, co] = me.has ? [me.lat, me.lon] : unproj(view.x, view.y);
   // wachtrij opschonen: tegels die niet meer nodig zijn eruit
@@ -432,31 +442,34 @@ function ensureTiles() {
   tq.sort((a, b) => tdist(a, cl, co) - tdist(b, cl, co));
   pump();
 }
-function tdist(k, lat, lon) { const [ty, tx] = k.split('_').map(Number); return Math.hypot((ty + .5) * TLAT - lat, ((tx + .5) * TLON - lon) * .6); }
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function pump() {
-  if (tBusy) return;
-  const k = tq.shift();
-  if (!k) { setStatus(''); return; }
-  tBusy = true;
-  setStatus('De kartograaf tekent' + (tq.length ? ' (' + (tq.length + 1) + ')' : '') + '…');
-  try {
-    let rec = await idbGet(k);
-    if (!rec || rec.v !== 2) { rec = { v: 2, t: Date.now(), f: await fetchTile(k) }; idbPut(k, rec); }
-    ingest(rec.f);
-    tileState.set(k, 'ok');
-  } catch (e) {
-    console.warn('tegel', k, e);
-    tileState.delete(k);
-    setStatus('Kaart laden mislukt (' + (e && e.message || e) + '). Nieuwe poging over 10 s…');
-    await sleep(10000);
-    tBusy = false;
-    ensureTiles();
-    return;
-  }
-  tBusy = false;
-  pump();
+function tdist(k, lat, lon) {
+  if (k[0] === 'v') { const [x, y] = k.slice(1).split('/').map(Number); return Math.hypot(y2lat(y + .5) - lat, (x2lon(x + .5) - lon) * .6); }
+  const [ty, tx] = k.split('_').map(Number); return Math.hypot((ty + .5) * TLAT - lat, ((tx + .5) * TLON - lon) * .6);
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let active = 0, vtOk = 0, vtFail = 0, retryT = null;
+async function loadTile(k) {
+  let rec = await idbGet(k);
+  if (!rec || rec.v !== 3) { rec = { v: 3, t: Date.now(), f: k[0] === 'v' ? await fetchVT(k) : await fetchTile(k) }; idbPut(k, rec); }
+  ingest(rec.f);
+}
+function pump() {
+  const maxc = tmode === 'vt' ? 6 : 1;
+  while (active < maxc && tq.length) {
+    const k = tq.shift(); active++;
+    loadTile(k).then(() => { tileState.set(k, 'ok'); if (k[0] === 'v') vtOk++; lastErr = ''; }, e => {
+      console.warn('tegel', k, e); tileState.delete(k);
+      lastErr = 'Kaart laden mislukt (' + (e && e.message || e) + '). Nieuwe poging…';
+      if (k[0] === 'v' && ++vtFail >= 4 && !vtOk) {   // snelle tegels werken niet: terug naar Overpass
+        tmode = 'op'; tq.length = 0; for (const [kk, st] of tileState) if (st === 'q') tileState.delete(kk);
+      }
+      clearTimeout(retryT); retryT = setTimeout(ensureTiles, 6000);
+    }).finally(() => { active--; pump(); });
+  }
+  const n = tq.length + active;
+  setStatus(n ? 'De kartograaf tekent' + (n > 1 ? ' (' + n + ')' : '') + '…' : lastErr);
+}
+let lastErr = '';
 function overpassQuery(k) {
   const [ty, tx] = k.split('_').map(Number);
   const b = `(${(ty * TLAT).toFixed(4)},${(tx * TLON).toFixed(4)},${((ty + 1) * TLAT).toFixed(4)},${((tx + 1) * TLON).toFixed(4)})`;
@@ -491,6 +504,198 @@ async function fetchTile(k) {
     } catch (e) { clearTimeout(to); errs.push(new URL(url).hostname.split('.').slice(-2, -1)[0] + ': ' + (e.name === 'AbortError' ? 'te traag' : e.message)); }
   }
   throw new Error(errs.join(', '));
+}
+
+/* --- snelle vectortegels: OpenFreeMap (OpenMapTiles-schema) --- */
+let tmode = 'vt';
+const VZ = 14, VN = 1 << VZ;
+const lon2x = lon => (lon + 180) / 360 * VN;
+const lat2y = lat => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * VN; };
+const x2lon = x => x / VN * 360 - 180;
+const y2lat = y => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / VN))) * 180 / Math.PI;
+let vtP = null;
+function vtTemplate() {
+  if (!vtP) vtP = (async () => {
+    try { const o = JSON.parse(localStorage.getItem('verkenner.vturl') || 'null'); if (o && Date.now() - o.t < 2 * 864e5) return o.u; } catch (e) {}
+    const r = await fetch('https://tiles.openfreemap.org/planet');
+    if (!r.ok) throw new Error('tegelindex HTTP ' + r.status);
+    const u = (await r.json()).tiles[0];
+    try { localStorage.setItem('verkenner.vturl', JSON.stringify({ u, t: Date.now() })); } catch (e) {}
+    return u;
+  })().catch(e => { vtP = null; throw e; });
+  return vtP;
+}
+async function fetchVT(k, again) {
+  const [x, y] = k.slice(1).split('/').map(Number);
+  const url = (await vtTemplate()).replace('{z}', VZ).replace('{x}', x).replace('{y}', y);
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(), 15000);
+  try {
+    const r = await fetch(url, { signal: ac.signal });
+    if (r.status === 404 && !again) { vtP = null; try { localStorage.removeItem('verkenner.vturl'); } catch (e) {} return fetchVT(k, true); }
+    if (r.status === 204 || r.status === 404) return [];
+    if (!r.ok) throw new Error('kaarttegel HTTP ' + r.status);
+    let buf = new Uint8Array(await r.arrayBuffer());
+    if (buf[0] === 0x1f && buf[1] === 0x8b && window.DecompressionStream)
+      buf = new Uint8Array(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    return parseVT(buf, x, y);
+  } catch (e) { throw e.name === 'AbortError' ? new Error('kaarttegel te traag') : e; }
+  finally { clearTimeout(to); }
+}
+/* minimale Mapbox Vector Tile-lezer (protobuf) */
+function decodeMVT(b) {
+  const td = new TextDecoder(); let p = 0;
+  const vint = () => { let r = 0, m = 1, c; do { c = b[p++]; r += (c & 0x7f) * m; m *= 128; } while (c & 0x80); return r; };
+  const zz = n => n % 2 ? -(n + 1) / 2 : n / 2;
+  const skip = w => { if (w === 0) vint(); else if (w === 1) p += 8; else if (w === 2) { const l = vint(); p += l; } else if (w === 5) p += 4; else throw new Error('pbf'); };
+  const str = () => { const l = vint(), v = td.decode(b.subarray(p, p + l)); p += l; return v; };
+  const layers = [];
+  while (p < b.length) {
+    const tag = vint(), f = Math.floor(tag / 8), w = tag & 7;
+    if (f !== 3 || w !== 2) { skip(w); continue; }
+    const end = vint() + p, L = { name: '', keys: [], vals: [], feats: [], extent: 4096 };
+    while (p < end) {
+      const t = vint(), ff = t >> 3, ww = t & 7;
+      if (ff === 1) L.name = str();
+      else if (ff === 2) { const l = vint(); L.feats.push([p, p + l]); p += l; }
+      else if (ff === 3) L.keys.push(str());
+      else if (ff === 4) {
+        const e2 = vint() + p; let v = null;
+        while (p < e2) {
+          const t2 = vint(), f2 = t2 >> 3, w2 = t2 & 7;
+          if (f2 === 1) v = str();
+          else if (f2 === 2) { v = new DataView(b.buffer, b.byteOffset + p, 4).getFloat32(0, true); p += 4; }
+          else if (f2 === 3) { v = new DataView(b.buffer, b.byteOffset + p, 8).getFloat64(0, true); p += 8; }
+          else if (f2 === 4 || f2 === 5) v = vint(); else if (f2 === 6) v = zz(vint()); else if (f2 === 7) v = !!vint(); else skip(w2);
+        }
+        L.vals.push(v); p = e2;
+      } else if (ff === 5) L.extent = vint();
+      else skip(ww);
+    }
+    p = end; layers.push(L);
+  }
+  function feat(L, se) {
+    p = se[0]; const o = { tags: {}, type: 0, rings: [] }; let geo = null;
+    while (p < se[1]) {
+      const t = vint(), f = t >> 3, w = t & 7;
+      if (f === 2) { const e2 = vint() + p; while (p < e2) { const k = vint(), v = vint(); o.tags[L.keys[k]] = L.vals[v]; } }
+      else if (f === 3) o.type = vint();
+      else if (f === 4) { const l = vint(); geo = [p, p + l]; p += l; }
+      else skip(w);
+    }
+    if (geo) {
+      p = geo[0]; let x = 0, y = 0, cur = null;
+      while (p < geo[1]) {
+        const ci = vint(), cmd = ci & 7, cnt = ci >> 3;
+        if (cmd === 1 || cmd === 2) for (let i = 0; i < cnt; i++) {
+          x += zz(vint()); y += zz(vint());
+          if (cmd === 1) { cur = []; o.rings.push(cur); }
+          cur.push(x, y);
+        } else if (cmd === 7 && cur && cur.length >= 2) cur.push(cur[0], cur[1]);
+      }
+    }
+    return o;
+  }
+  return { layers, feat };
+}
+function clipPoly(pts, E) {
+  let poly = []; for (let i = 0; i + 3 < pts.length; i += 2) poly.push([pts[i], pts[i + 1]]);
+  const cut = (a, b2, ax, v) => { const t = (v - a[ax]) / (b2[ax] - a[ax]); return ax === 0 ? [v, a[1] + t * (b2[1] - a[1])] : [a[0] + t * (b2[0] - a[0]), v]; };
+  for (const [ax, v, ge] of [[0, 0, true], [0, E, false], [1, 0, true], [1, E, false]]) {
+    const ins = q => ge ? q[ax] >= v : q[ax] <= v, out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const cu = poly[i], pr = poly[(i + poly.length - 1) % poly.length], ci = ins(cu), pi = ins(pr);
+      if (ci) { if (!pi) out.push(cut(pr, cu, ax, v)); out.push(cu); } else if (pi) out.push(cut(pr, cu, ax, v));
+    }
+    poly = out; if (poly.length < 3) return null;
+  }
+  const r = []; for (const q of poly) r.push(q[0], q[1]); r.push(poly[0][0], poly[0][1]); return r;
+}
+function clipLine(pts, E) {
+  const runs = []; let cur = null;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const x0 = pts[i], y0 = pts[i + 1], dx = pts[i + 2] - x0, dy = pts[i + 3] - y0; let t0 = 0, t1 = 1, ok = true;
+    for (const [pp, q] of [[-dx, x0], [dx, E - x0], [-dy, y0], [dy, E - y0]]) {
+      if (pp === 0) { if (q < 0) { ok = false; break; } }
+      else { const r = q / pp; if (pp < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; } else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; } }
+    }
+    if (!ok) { cur = null; continue; }
+    if (!cur || t0 > 0) { cur = [x0 + t0 * dx, y0 + t0 * dy]; runs.push(cur); }
+    cur.push(x0 + t1 * dx, y0 + t1 * dy);
+    if (t1 < 1) cur = null;
+  }
+  return runs.filter(r => r.length >= 4);
+}
+const VT_POI = { place_of_worship: 'church', windmill: 'mill', watermill: 'mill', viewpoint: 'view', camp_site: 'camp', castle: 'castle', manor: 'castle', ruins: 'ruin', monument: 'monument', lighthouse: 'tower' };
+const VT_PLACE = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet', suburb: 'suburb', quarter: 'suburb', neighbourhood: 'suburb', locality: 'locality' };
+const VT_LAYERS = {
+  water: (t, ty) => ty === 3 && t.class !== 'swimming_pool' ? { area: 'water' } : null,
+  waterway: (t, ty) => ty === 2 && t.brunnel !== 'tunnel' ? { line: (t.class === 'river' || t.class === 'canal') ? 'river' : 'stream' } : null,
+  landcover: (t, ty) => {
+    if (ty !== 3) return null;
+    const c = t.class, sc = t.subclass;
+    if (c === 'wood' || sc === 'forest' || sc === 'wood') return { area: 'forest' };
+    if (sc === 'heath') return { area: 'heath' };
+    if (c === 'wetland') return { area: 'wetland' };
+    if (c === 'sand' || sc === 'beach' || sc === 'sand') return { area: 'sand' };
+    return null;
+  },
+  landuse: (t, ty) => ty === 3 && t.class === 'residential' ? { area: 'resid' } : null,
+  park: (t, ty) => ty === 3 && t.name ? { area: 'park' } : null,
+  building: (t, ty) => ty === 3 ? { area: 'bld' } : null,
+  transportation: (t, ty) => {
+    if (ty !== 2 || t.brunnel === 'tunnel') return null;
+    const c = t.class;
+    const k = /^(motorway|trunk|primary)$/.test(c) ? 'hw1' : /^(secondary|tertiary)$/.test(c) ? 'hw2' : c === 'minor' ? 'hw3' : c === 'service' ? 'hw4'
+      : c === 'track' ? 'track' : c === 'path' ? 'path' : (c === 'rail' || c === 'transit') ? 'rail' : null;
+    return k ? { line: k } : null;
+  },
+  place: t => VT_PLACE[t.class] ? { poi: VT_PLACE[t.class] } : null,
+  mountain_peak: t => ({ poi: 'peak' }),
+  poi: t => {
+    const nm = String(t.name || '').toLowerCase();
+    if (/hunebed|dolmen|megalith/.test(nm)) return { poi: 'hunebed' };
+    if (t.subclass === 'archaeological_site') return { poi: 'ruin' };
+    return VT_POI[t.subclass] ? { poi: VT_POI[t.subclass] } : null;
+  },
+  water_name: t => t.name ? { label: 'water' } : null,
+};
+function parseVT(buf, tx, ty) {
+  const T = decodeMVT(buf), out = []; let idx = 0;
+  for (const L of T.layers) {
+    const want = VT_LAYERS[L.name]; if (!want) continue;
+    const E = L.extent;
+    const ll = (gx, gy) => { const la = y2lat(ty + gy / E), lo = x2lon(tx + gx / E); return [+la.toFixed(6), +lo.toFixed(6)]; };
+    const conv = r => { const o = []; for (let i = 0; i < r.length; i += 2) { const q = ll(r[i], r[i + 1]); o.push(q[0], q[1]); } return o; };
+    for (const se of L.feats) {
+      const f = T.feat(L, se), t = f.tags, res = want(t, f.type); idx++;
+      if (!res || !f.rings.length) continue;
+      const id = 'v' + tx + '/' + ty + '#' + idx;
+      if (res.poi || res.label) {
+        const gx = f.rings[0][0], gy = f.rings[0][1];
+        if (gx < 0 || gy < 0 || gx > E || gy > E) continue;           // punt in de buffer: hoort bij de buurtegel
+        const [a, o] = ll(gx, gy), name = t.name || t['name:nl'] || t.name_int || (res.poi && GENERIC[res.poi]);
+        if (!name) continue;
+        if (res.poi) out.push({ i: 'q' + res.poi + a.toFixed(4) + '_' + o.toFixed(4), k: res.poi, P: 1, n: name, a, o });
+        else out.push({ i: 'l' + name + a.toFixed(3), k: res.label, Lb: 1, n: name, a, o });
+      } else if (res.area && f.type === 3) {
+        const rings = [], edges = [];
+        for (const r of f.rings) {
+          const cr = clipPoly(r, E); if (!cr) continue;
+          const ed = [];
+          for (let i = 0; i + 3 < cr.length; i += 2) {
+            const x0 = cr[i], y0 = cr[i + 1], x1 = cr[i + 2], y1 = cr[i + 3];
+            if ((x0 <= 0 && x1 <= 0) || (x0 >= E && x1 >= E) || (y0 <= 0 && y1 <= 0) || (y0 >= E && y1 >= E)) ed.push(i / 2);
+          }
+          rings.push(conv(cr)); edges.push(ed);
+        }
+        if (rings.length) out.push({ i: id, k: res.area, A: 1, r: rings, n: res.area === 'park' ? t.name : undefined, e: edges.some(x => x.length) ? edges : undefined });
+      } else if (res.line && f.type === 2) {
+        let j = 0;
+        for (const r of f.rings) for (const run of clipLine(r, E)) out.push({ i: id + '.' + (j++), k: res.line, g: conv(run) });
+      }
+    }
+  }
+  return out;
 }
 
 /* --- OSM omzetten naar compacte features --- */
@@ -601,7 +806,10 @@ function ingest(list) {
       pois.set(f.i, p);
       if (!state.disc[f.i] && isRevealed(x, y)) discover(p, false);
     } else if (f.A) {
-      const r = f.r.map(projFlat); (AREAS[f.k] = AREAS[f.k] || []).push({ r, bb: bbOf(r), n: f.n });
+      const r = f.r.map(projFlat);
+      (AREAS[f.k] = AREAS[f.k] || []).push({ r, bb: bbOf(r), n: f.n, e: f.e ? f.e.map(a => a && a.length ? new Set(a) : null) : null });
+    } else if (f.Lb) {
+      const [x, y] = proj(f.a, f.o); LABELS.push({ x, y, n: f.n, k: f.k });
     } else {
       const c = projFlat(f.g); (LINES[f.k] = LINES[f.k] || []).push({ c, bb: bbOf([c]) });
     }
@@ -646,7 +854,7 @@ function axisAngle(r) {
   if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
   return clamp(a, -1.05, 1.05);
 }
-const AREA_INK = { water: 'rgba(28,56,64,.85)', forest: 'rgba(40,50,18,.8)', heath: 'rgba(92,40,62,.78)', wetland: 'rgba(30,70,64,.75)', sand: 'rgba(100,70,30,.75)' };
+const AREA_INK = { park: 'rgba(58,66,30,.7)', water: 'rgba(28,56,64,.85)', forest: 'rgba(40,50,18,.8)', heath: 'rgba(92,40,62,.78)', wetland: 'rgba(30,70,64,.75)', sand: 'rgba(100,70,30,.75)' };
 const paperCv = fbmCanvas(512, [[4, .5], [8, .25], [32, .15], [128, .1]], 7, (v, R) => {
   const k = clamp((v - .25) * 1.6, 0, 1), n = (R() - .5) * 10;
   return [204 + 34 * k + n, 180 + 32 * k + n, 132 + 30 * k + n, 255];
@@ -743,12 +951,14 @@ function drawMap() {
   const minD = 1.2;
   const jx = (px, py) => noise2((px - ox) / 22, (py - oy) / 22) * 2.6;
   const jy = (px, py) => noise2((px - ox) / 22 + 41.3, (py - oy) / 22 + 17.9) * 2.6;
-  function addRing(r, close, wob) {
+  function addRing(r, close, wob, ed) {
     let lx = r[0] * s + ox, ly = r[1] * s + oy;
-    if (wob) c.moveTo(lx + jx(lx, ly), ly + jy(lx, ly)); else c.moveTo(lx, ly);
+    const mv = (x, y) => wob ? c.moveTo(x + jx(x, y), y + jy(x, y)) : c.moveTo(x, y);
+    mv(lx, ly);
     const n = r.length;
     for (let i = 2; i < n; i += 2) {
       const x = r[i] * s + ox, y = r[i + 1] * s + oy;
+      if (ed && ed.has(i / 2 - 1)) { mv(x, y); lx = x; ly = y; continue; }   // tegelrand: niet omlijnen
       if (i < n - 2 && Math.abs(x - lx) < minD && Math.abs(y - ly) < minD) continue;
       if (wob) {
         const k = Math.min(40, Math.floor(Math.hypot(x - lx, y - ly) / 12));
@@ -757,25 +967,27 @@ function drawMap() {
       } else c.lineTo(x, y);
       lx = x; ly = y;
     }
-    if (close) c.closePath();
+    if (close && !ed) c.closePath();
   }
   function area(kind, fill, pat, stroke, lw, minS, wob) {
     const L = AREAS[kind]; if (!L || s < (minS || 0)) return;
-    c.beginPath(); const multi = [];
-    let any = false;
+    c.beginPath(); const multi = [], batch = [];
     for (const f of L) {
       if (!hit(f.bb, vb)) continue;
       if ((f.bb[2] - f.bb[0]) * s < 1.5 && (f.bb[3] - f.bb[1]) * s < 1.5) continue;
       if (f.r.length > 1) { multi.push(f); continue; }
-      addRing(f.r[0], true, wob); any = true;
+      addRing(f.r[0], true, wob); batch.push(f);
     }
-    const paint = rule => {
+    const paint = (rule, list) => {
       if (fill) { c.fillStyle = fill; c.fill(rule); }
       if (pat) { pat.setTransform(T); c.fillStyle = pat; c.fill(rule); }
-      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+      if (stroke) {
+        if (list.some(f => f.e)) { c.beginPath(); for (const f of list) f.r.forEach((r, j) => addRing(r, true, wob, f.e && f.e[j])); }
+        c.strokeStyle = stroke; c.lineWidth = lw; c.stroke();
+      }
     };
-    if (any) paint('nonzero');
-    for (const f of multi) { c.beginPath(); for (const r of f.r) addRing(r, true, wob); paint('evenodd'); }
+    if (batch.length) paint('nonzero', batch);
+    for (const f of multi) { c.beginPath(); for (const r of f.r) addRing(r, true, wob); paint('evenodd', [f]); }
   }
   function lines(kind, style, w, dash, minS, sketch) {
     const L = LINES[kind]; if (!L || s < (minS || 0)) return;
@@ -817,31 +1029,47 @@ function drawMap() {
     c.setLineDash([7, 6]); c.strokeStyle = 'rgba(150,30,20,.8)'; c.lineWidth = 2.2; c.stroke(); c.setLineDash([]);
   }
 
-  // gebiedsnamen: bossen, heides, meren
-  const named = new Set(), aplaced = [];
-  for (const kind of ['water', 'forest', 'heath', 'wetland', 'sand']) {
+  // gebiedsnamen: bossen, heides, meren, natuurgebieden (stukken met dezelfde naam samen)
+  const groups = new Map(), aplaced = [];
+  for (const kind of ['park', 'water', 'forest', 'heath', 'wetland', 'sand']) {
     const L = AREAS[kind]; if (!L) continue;
     for (const f of L) {
-      if (!f.n || named.has(f.n) || !hit(f.bb, vb)) continue;
-      const bw = (f.bb[2] - f.bb[0]) * s, bh = (f.bb[3] - f.bb[1]) * s;
-      if (Math.max(bw, bh) < 110 || Math.min(bw, bh) < 26) continue;
-      const cx = (f.bb[0] + f.bb[2]) / 2, cy = (f.bb[1] + f.bb[3]) / 2;
-      if (state.settings.fog && !isRevealed(cx, cy)) continue;
-      if (f.ang == null) f.ang = axisAngle(f.r[0]);
-      const label = kind === 'water' ? f.n : f.n.toUpperCase();
-      const fs = clamp(Math.sqrt(bw * bh) / 10, 12, 30);
-      c.font = 'italic ' + fs + 'px "IM Fell English",serif';
-      try { c.letterSpacing = (kind === 'water' ? fs * .12 : fs * .32).toFixed(1) + 'px'; } catch (e) {}
-      const tw = c.measureText(label).width;
-      if (tw > Math.max(bw, bh) * 1.15) continue;
-      const sx = cx * s + ox, sy = cy * s + oy, ca = Math.abs(Math.cos(f.ang)), sa = Math.abs(Math.sin(f.ang));
-      const hw = ca * tw / 2 + sa * fs / 2, hh = sa * tw / 2 + ca * fs / 2, box = [sx - hw, sy - hh, sx + hw, sy + hh];
-      if (aplaced.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) continue;
-      aplaced.push(box); named.add(f.n);
-      c.save(); c.translate(sx, sy); c.rotate(f.ang); c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(label, 0, 0);
-      c.fillStyle = AREA_INK[kind]; c.fillText(label, 0, 0); c.restore();
+      if (!f.n || !hit(f.bb, vb)) continue;
+      const key = kind + '|' + f.n, bb = [Math.max(f.bb[0], vb[0]), Math.max(f.bb[1], vb[1]), Math.min(f.bb[2], vb[2]), Math.min(f.bb[3], vb[3])];
+      const ar = (f.bb[2] - f.bb[0]) * (f.bb[3] - f.bb[1]);
+      let g = groups.get(key);
+      if (!g) groups.set(key, { kind, n: f.n, bb, big: f, ar });
+      else { g.bb = [Math.min(g.bb[0], bb[0]), Math.min(g.bb[1], bb[1]), Math.max(g.bb[2], bb[2]), Math.max(g.bb[3], bb[3])]; if (ar > g.ar) { g.ar = ar; g.big = f; } }
     }
+  }
+  const drawAreaLabel = (kind, label, cx, cy, ang, fs, spacing) => {
+    c.font = 'italic ' + fs + 'px "IM Fell English",serif';
+    try { c.letterSpacing = spacing.toFixed(1) + 'px'; } catch (e) {}
+    const tw = c.measureText(label).width, sx = cx * s + ox, sy = cy * s + oy, ca = Math.abs(Math.cos(ang)), sa = Math.abs(Math.sin(ang));
+    const hw = ca * tw / 2 + sa * fs / 2, hh = sa * tw / 2 + ca * fs / 2, box = [sx - hw, sy - hh, sx + hw, sy + hh];
+    if (aplaced.some(q => !(box[0] > q[2] || box[2] < q[0] || box[1] > q[3] || box[3] < q[1]))) return false;
+    aplaced.push(box);
+    c.save(); c.translate(sx, sy); c.rotate(ang); c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(label, 0, 0);
+    c.fillStyle = AREA_INK[kind]; c.fillText(label, 0, 0); c.restore();
+    return tw;
+  };
+  for (const g of groups.values()) {
+    const bw = (g.bb[2] - g.bb[0]) * s, bh = (g.bb[3] - g.bb[1]) * s;
+    if (Math.max(bw, bh) < 110 || Math.min(bw, bh) < 26) continue;
+    const cx = (g.bb[0] + g.bb[2]) / 2, cy = (g.bb[1] + g.bb[3]) / 2;
+    if (state.settings.fog && !isRevealed(cx, cy)) continue;
+    if (g.big.ang == null) g.big.ang = g.big.e ? 0 : axisAngle(g.big.r[0]);
+    const label = g.kind === 'water' ? g.n : g.n.toUpperCase(), fs = clamp(Math.sqrt(bw * bh) / 10, 12, g.kind === 'park' ? 26 : 30);
+    c.font = 'italic ' + fs + 'px "IM Fell English",serif';
+    if (c.measureText(label).width * 1.4 > Math.max(bw, bh) * 1.15) continue;
+    drawAreaLabel(g.kind, label, cx, cy, g.big.ang, fs, g.kind === 'water' ? fs * .12 : fs * .32);
+  }
+  if (s > .08) for (const lb of LABELS) {
+    const sx = lb.x * s + ox, sy = lb.y * s + oy;
+    if (sx < -100 || sy < -30 || sx > W + 100 || sy > H + 30) continue;
+    if (state.settings.fog && !isRevealed(lb.x, lb.y)) continue;
+    drawAreaLabel('water', lb.n, lb.x, lb.y, 0, 15, 1.5);
   }
   try { c.letterSpacing = '0px'; } catch (e) {}
 
@@ -1163,7 +1391,7 @@ function startGPS() {
   watchId = navigator.geolocation.watchPosition(p => {
     if (state.settings.sim) return;
     const c = p.coords; onFix(c.latitude, c.longitude, c.accuracy, (c.speed || 0) > .6 ? c.heading : null);
-    if (!tBusy && !tq.length) setStatus('');
+    if (!active && !tq.length) setStatus(lastErr);
   }, err => {
     setStatus(err.code === 1 ? 'Geen toestemming voor locatie. Sta locatie toe in je browser.' : 'Positie zoeken… (' + err.message + ')');
   }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
