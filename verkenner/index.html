@@ -22,6 +22,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 #hud{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 58px);text-align:center;pointer-events:none}
 #region{font-size:12px;letter-spacing:.25em;text-transform:uppercase;color:var(--bone);text-shadow:0 0 6px #000,0 0 2px #000;white-space:nowrap;opacity:.92}
 #region b{color:var(--gold);font-weight:600}
+#aim{font-family:'IM Fell English',serif;font-style:italic;font-size:14px;color:var(--bone);text-shadow:0 0 6px #000,0 0 2px #000;margin-top:2px;min-height:0;white-space:nowrap}
+#aim:empty{display:none}
 #xpline{display:flex;align-items:center;gap:7px;justify-content:center;margin-top:5px}
 #xplvl{font-size:11px;font-weight:700;color:#14100b;background:var(--gold);border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;box-shadow:0 0 6px #000}
 #xpbar{width:120px;height:4px;background:rgba(10,8,6,.7);border:1px solid rgba(239,230,210,.35);position:relative;box-shadow:0 0 6px rgba(0,0,0,.6)}
@@ -125,7 +127,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 <canvas id="paperfx"></canvas>
 <div id="vignette"></div>
 <div id="compassWrap"><canvas id="compass"></canvas></div>
-<div id="hud"><div id="region"></div><div id="xpline"><div id="xplvl">1</div><div id="xpbar"><div id="xpfill"></div></div></div></div>
+<div id="hud"><div id="region"></div><div id="aim"></div><div id="xpline"><div id="xplvl">1</div><div id="xpbar"><div id="xpfill"></div></div></div></div>
 <div id="status"></div>
 <svg id="rose" viewBox="-62 -62 124 124" aria-hidden="true"></svg>
 <div id="banner"><div class="line"></div><div class="name"></div><div class="kind"></div><div class="line" style="margin-top:8px"></div></div>
@@ -1136,6 +1138,7 @@ function ingest(list) {
   const out = [], tr = [];
   for (const f of list) {
     if (seen.has(f.i)) continue; seen.add(f.i);
+    if (f.Hn) { const [x, y] = proj(f.a, f.o); hints.set(f.rid, { rid: f.rid, k: f.k, n: f.n, x, y }); continue; }
     if (f.P) {
       const [x, y] = proj(f.a, f.o), p = { id: f.i, k: f.k, n: f.n, lat: f.a, lon: f.o, x, y };
       let dup = false; for (const q of pois.values()) if (q.k === p.k && Math.abs(q.x - x) < 60 && Math.abs(q.y - y) < 60) { dup = true; break; }
@@ -1429,6 +1432,7 @@ function drawScale() {
 }
 
 /* kompasbalk (zoals in Skyrim) */
+let aimTxt = '';
 const CARD = { 0: 'N', 45: 'NO', 90: 'O', 135: 'ZO', 180: 'Z', 225: 'ZW', 270: 'W', 315: 'NW' };
 function drawCompass() {
   const r = ccv.getBoundingClientRect(), cw = r.width, ch = r.height, d = Math.min(devicePixelRatio || 1, 2);
@@ -1460,13 +1464,25 @@ function drawCompass() {
       if (dist > lim || dist < 15) continue;
       list.push({ p, dist, b: (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, found });
     }
+    // nog niet betreden natuurgebieden, bossen en heides in de buurt
+    for (const hn of hints.values()) {
+      if (state.disc['r' + hn.rid]) continue;
+      const dx = hn.x - me.x, dy = hn.y - me.y, dist = Math.hypot(dx, dy);
+      if (dist > 3000 || dist < 40) continue;
+      list.push({ p: hn, dist, b: (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, found: false, area: true });
+    }
     list.sort((a, b) => b.dist - a.dist);
-    for (const it of list.slice(-16)) {
+    let aim = null;
+    for (const it of list.slice(-18)) {
       const dlt = ((it.b - h + 540) % 360) - 180; if (Math.abs(dlt) > 88) continue;
       const x = cw / 2 + dlt * ppd; c.globalAlpha = fade(x);
       if (it.found) drawIcon(c, it.p.k, x, mid, 13, '#efe6d2', 'rgba(0,0,0,.8)', 2.5);
+      else if (it.area) { drawIcon(c, it.p.k, x, mid, 15, 'rgba(70,95,45,.9)', 'rgba(239,230,210,.8)', 1.6); }
       else drawIcon(c, it.p.k, x, mid, 13, '#0b0907', 'rgba(239,230,210,.75)', 1.6);
+      if (!it.found && Math.abs(dlt) < 12 && (!aim || Math.abs(dlt) < aim.d)) aim = { d: Math.abs(dlt), it };
     }
+    const txt = aim ? (aim.it.area ? (KIND[aim.it.p.k] || '') + ' ' + aim.it.p.n : (aim.it.p.n === KIND[aim.it.p.k] ? aim.it.p.n : aim.it.p.n + ' (' + (KIND[aim.it.p.k] || '').toLowerCase() + ')')) + ' · ' + (aim.it.dist < 1000 ? Math.round(aim.it.dist / 10) * 10 + ' m' : (aim.it.dist / 1000).toFixed(1).replace('.', ',') + ' km') : '';
+    if (txt !== aimTxt) { aimTxt = txt; $('#aim').textContent = txt ? '▲ ' + txt : ''; }
   }
   c.globalAlpha = 1;
   c.fillStyle = '#efe6d2'; c.beginPath(); c.moveTo(cw / 2 - 5, mid - bandH / 2 - 6); c.lineTo(cw / 2 + 5, mid - bandH / 2 - 6); c.lineTo(cw / 2, mid - bandH / 2 - 1); c.closePath(); c.fill();
@@ -1880,7 +1896,7 @@ addEventListener('beforeunload', () => { if (state) saveNow(); });
 /* =====================================================================
    GEBIEDEN – woonplaatsen en natuurgebieden die je per procent verkent
    ===================================================================== */
-const regions = new Map();
+const regions = new Map(), hints = new Map();
 const RK = { woonplaats: 'Woonplaats', natuur: 'Natuurgebied', bos: 'Bos', heide: 'Heide' };
 const MILE = [10, 25, 50, 75, 90];
 function buildRegion(id, n, k, ringsLL) {
@@ -1978,7 +1994,9 @@ async function maybeIsIn() {
   const inWp = !!regionAt(me.x, me.y, 'woonplaats');
   if (lastIsIn) {
     const d = Math.hypot(me.x - lastIsIn.x, me.y - lastIsIn.y);
-    if (d < (inWp ? 800 : 300) || performance.now() - lastIsIn.t < 20000) return;
+    let near = false;
+    for (const hn of hints.values()) if (!state.disc['r' + hn.rid] && Math.hypot(hn.x - me.x, hn.y - me.y) < 2500) { near = true; break; }
+    if (d < (near ? 200 : inWp ? 800 : 300) || performance.now() - lastIsIn.t < (near ? 12000 : 20000)) return;
   }
   isinBusy = true; lastIsIn = { x: me.x, y: me.y, t: performance.now() };
   const la = me.lat.toFixed(6), lo = me.lon.toFixed(6);
@@ -2048,7 +2066,7 @@ async function pumpX() {
   xtBusy = true;
   try {
     let rec = await idbGet('X' + k);
-    if (!rec || rec.v !== 1) { rec = { v: 1, t: Date.now(), f: await fetchExtra(k) }; idbPut('X' + k, rec); }
+    if (!rec || rec.v !== 2) { rec = { v: 2, t: Date.now(), f: await fetchExtra(k) }; idbPut('X' + k, rec); }
     ingest(rec.f); xtState.set(k, 'ok');
   } catch (e) { console.warn('extra', e); xtState.set(k, 'err'); setTimeout(() => { if (xtState.get(k) === 'err') { xtState.set(k, 'q'); pumpX(); } }, 20000); }
   xtBusy = false; pumpX();
@@ -2088,12 +2106,22 @@ nwr["leisure"="bird_hide"]${b};
 nwr["amenity"="shelter"]${b};
 nwr["man_made"="water_tower"]${b};
 node["place"="locality"]${b};
+nwr["leisure"="nature_reserve"]["name"]${b};
+rel["boundary"~"^(national_park|protected_area)$"]["name"]${b};
+nwr["landuse"="forest"]["name"]${b};
+nwr["natural"~"^(wood|heath)$"]["name"]${b};
 );out center tags qt;`;
   const j = await overpassJSON(q, 60000), out = [];
   for (const el of j.elements || []) {
-    const t = el.tags || {}, k2 = extraKind(t); if (!k2) continue;
+    const t = el.tags || {};
     const lat = el.lat != null ? el.lat : el.center && el.center.lat, lon = el.lon != null ? el.lon : el.center && el.center.lon;
     if (lat == null) continue;
+    if (el.type !== 'node' && t.name) {                    // benoemd natuurgebied/bos/heide: hint op het kompas
+      const hk = (t.leisure === 'nature_reserve' || t.boundary === 'national_park' || t.boundary === 'protected_area') ? 'natuur'
+        : (t.landuse === 'forest' || t.natural === 'wood') ? 'bos' : t.natural === 'heath' ? 'heide' : null;
+      if (hk) { out.push({ i: 'h' + el.type[0] + el.id, Hn: 1, rid: el.type[0] + el.id, k: hk, n: t.name, a: +lat.toFixed(6), o: +lon.toFixed(6) }); continue; }
+    }
+    const k2 = extraKind(t); if (!k2) continue;
     const n = t.name || GENERIC[k2]; if (!n) continue;
     out.push({ i: 'x' + el.type[0] + el.id, k: k2, P: 1, n, a: +lat.toFixed(6), o: +lon.toFixed(6) });
   }
