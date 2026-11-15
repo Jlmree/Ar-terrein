@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#14100b">
+<title>Verkenner — kaart van het onbekende</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#2b1e10;--gold:#d8b35e;--bone:#efe6d2;--dim:#a99c84;--panel:rgba(12,10,8,.82)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bone);font-family:'Cinzel',serif;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#map{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#vignette{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 58%,rgba(30,18,6,.5) 100%)}
+#compassWrap{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 10px);
+  width:min(92vw,560px);height:44px;pointer-events:none}
+#compass{width:100%;height:100%;display:block}
+#region{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 58px);
+  font-size:12px;letter-spacing:.25em;text-transform:uppercase;color:var(--bone);text-shadow:0 0 6px #000,0 0 2px #000;
+  pointer-events:none;white-space:nowrap;opacity:.9}
+#bar{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);
+  display:flex;justify-content:center;gap:10px;pointer-events:none}
+.btn{pointer-events:auto;font-family:'Cinzel',serif;font-weight:600;font-size:13px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--bone);background:var(--panel);border:1px solid rgba(239,230,210,.35);padding:11px 16px;border-radius:2px;
+  position:relative;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.btn::before,.btn::after{content:'';position:absolute;top:50%;width:6px;height:6px;background:var(--bone);
+  transform:translateY(-50%) rotate(45deg);opacity:.7}
+.btn::before{left:-4px}.btn::after{right:-4px}
+.btn:active{background:rgba(60,48,30,.9)}
+.btn.on{color:var(--gold);border-color:rgba(216,179,94,.7)}
+.btn.icon{padding:11px 14px;font-size:16px;letter-spacing:0}
+#status{position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom) + 70px);font-family:'IM Fell English',serif;font-style:italic;
+  font-size:14px;color:var(--ink);text-shadow:0 0 4px #e9dcc0,0 0 8px #e9dcc0;pointer-events:none}
+#rose{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 70px);width:78px;height:78px;opacity:.85;pointer-events:none}
+/* ontdekking-banner */
+#banner{position:fixed;left:0;right:0;top:24%;text-align:center;pointer-events:none;opacity:0}
+#banner.show{animation:bn 4.2s ease forwards}
+@keyframes bn{0%{opacity:0;transform:scale(.96)}12%{opacity:1;transform:scale(1)}78%{opacity:1}100%{opacity:0}}
+#banner .kind{font-size:13px;letter-spacing:.45em;text-transform:uppercase;color:var(--bone);text-shadow:0 0 8px #000,0 0 3px #000}
+#banner .name{font-family:'Cinzel',serif;font-weight:400;font-size:clamp(28px,8vw,46px);letter-spacing:.12em;text-transform:uppercase;
+  color:#fff;text-shadow:0 0 14px #000,0 0 4px #000,0 0 2px #000;margin:6px 16px}
+#banner .line{height:1px;width:min(70vw,420px);margin:0 auto;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);
+  position:relative;box-shadow:0 0 6px #000}
+#banner .line::after{content:'';position:absolute;left:50%;top:50%;width:7px;height:7px;background:#fff;transform:translate(-50%,-50%) rotate(45deg);box-shadow:0 0 6px #000}
+/* panelen */
+.overlay{position:fixed;inset:0;background:rgba(8,6,4,.72);display:flex;align-items:center;justify-content:center;z-index:20;
+  backdrop-filter:blur(2px)}
+.hidden{display:none!important}
+.panel{width:min(94vw,520px);max-height:86vh;overflow:auto;background:linear-gradient(#17130e,#0f0c09);border:1px solid rgba(239,230,210,.28);
+  padding:22px 20px 18px;box-shadow:0 10px 40px rgba(0,0,0,.6);-webkit-overflow-scrolling:touch}
+.panel h2{margin:0 0 4px;text-align:center;font-weight:400;letter-spacing:.3em;font-size:22px;text-transform:uppercase}
+.panel h3{margin:18px 0 8px;font-weight:400;font-size:13px;letter-spacing:.3em;color:var(--dim);text-transform:uppercase;text-align:center}
+.rule{height:1px;background:linear-gradient(90deg,transparent,rgba(239,230,210,.6),transparent);margin:10px auto 14px;width:80%}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{border:1px solid rgba(239,230,210,.15);padding:10px;text-align:center}
+.stat b{display:block;font-size:22px;font-weight:600;color:var(--gold);letter-spacing:.04em}
+.stat span{font-size:10px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+.kinds{font-family:'IM Fell English',serif;font-size:15px;color:var(--dim);text-align:center;margin-top:10px;line-height:1.5}
+#disclist{list-style:none;margin:0;padding:0}
+#disclist li{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid rgba(239,230,210,.08);cursor:pointer}
+#disclist li:active{background:rgba(239,230,210,.07)}
+#disclist .n{flex:1;font-size:15px;letter-spacing:.06em}
+#disclist .k{font-family:'IM Fell English',serif;font-style:italic;color:var(--dim);font-size:14px}
+#disclist .d{font-size:10px;color:var(--dim);letter-spacing:.1em}
+#disclist canvas{width:22px;height:22px;flex:none}
+.empty{text-align:center;font-family:'IM Fell English',serif;font-style:italic;color:var(--dim);padding:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(239,230,210,.08)}
+.row label{font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.row small{display:block;font-family:'IM Fell English',serif;font-size:13px;color:var(--dim);letter-spacing:0;text-transform:none;margin-top:2px}
+.seg{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.seg button{font-family:'Cinzel',serif;font-size:12px;color:var(--bone);background:transparent;border:1px solid rgba(239,230,210,.25);padding:6px 9px;cursor:pointer}
+.seg button.on{color:#14100b;background:var(--gold);border-color:var(--gold)}
+.actions{display:flex;flex-direction:column;gap:12px;margin-top:18px;align-items:center}
+.actions .btn{width:100%;max-width:340px}
+.danger{color:#e7a08a!important}
+.close{margin:18px auto 0;display:block}
+/* start */
+#start .panel{text-align:center;padding:34px 22px 26px}
+#start h1{font-weight:400;font-size:clamp(30px,9vw,44px);letter-spacing:.3em;margin:0;text-transform:uppercase}
+#start p{font-family:'IM Fell English',serif;font-size:17px;color:var(--dim);line-height:1.45;margin:6px 0 0}
+#start .note{font-size:13px;margin-top:18px;font-style:italic}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 120px);transform:translateX(-50%);background:var(--panel);
+  border:1px solid rgba(239,230,210,.3);padding:9px 14px;font-size:12px;letter-spacing:.12em;opacity:0;transition:opacity .4s;pointer-events:none;
+  max-width:88vw;text-align:center;z-index:30}
+#toast.show{opacity:1}
+#file{display:none}
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="vignette"></div>
+<div id="compassWrap"><canvas id="compass"></canvas></div>
+<div id="region"></div>
+<div id="status"></div>
+<svg id="rose" viewBox="-50 -50 100 100" aria-hidden="true">
+  <g fill="none" stroke="#2b1e10" stroke-width="1">
+    <circle r="30" opacity=".7"/><circle r="34" stroke-dasharray="1 3" opacity=".7"/>
+  </g>
+  <g stroke="#2b1e10" stroke-width=".8">
+    <path d="M0,-44 L6,-6 L0,0Z" fill="#2b1e10"/><path d="M0,-44 L-6,-6 L0,0Z" fill="#e9dcc0"/>
+    <path d="M0,44 L-6,6 L0,0Z" fill="#2b1e10"/><path d="M0,44 L6,6 L0,0Z" fill="#e9dcc0"/>
+    <path d="M44,0 L6,6 L0,0Z" fill="#2b1e10"/><path d="M44,0 L6,-6 L0,0Z" fill="#e9dcc0"/>
+    <path d="M-44,0 L-6,-6 L0,0Z" fill="#2b1e10"/><path d="M-44,0 L-6,6 L0,0Z" fill="#e9dcc0"/>
+    <path d="M22,-22 L4,-1 L0,0Z M-22,22 L-4,1 L0,0Z M22,22 L1,4 L0,0Z M-22,-22 L-1,-4 L0,0Z" fill="#2b1e10" opacity=".7"/>
+  </g>
+  <text y="-46" text-anchor="middle" font-family="Cinzel,serif" font-size="11" fill="#2b1e10" font-weight="700">N</text>
+</svg>
+<div id="banner"><div class="line"></div><div class="name"></div><div class="kind"></div><div class="line" style="margin-top:8px"></div></div>
+<div id="toast"></div>
+
+<div id="bar">
+  <button class="btn" id="bJournal">Dagboek</button>
+  <button class="btn icon on" id="bFollow" title="Volg mij">◎</button>
+  <button class="btn" id="bSettings">Opties</button>
+</div>
+
+<!-- start -->
+<div id="start" class="overlay">
+  <div class="panel">
+    <h1>Verkenner</h1>
+    <div class="rule"></div>
+    <p>De wereld ligt verborgen in de mist.<br>Alleen waar jij gaat, tekent de kartograaf de kaart.</p>
+    <div class="actions">
+      <button class="btn" id="bStart">Begin de reis</button>
+      <button class="btn" id="bDemo">Proefmodus</button>
+    </div>
+    <p class="note">Proefmodus: tik op de kaart en je reiziger loopt erheen. Handig om thuis te kijken hoe het werkt.</p>
+  </div>
+</div>
+
+<!-- dagboek -->
+<div id="journal" class="overlay hidden">
+  <div class="panel">
+    <h2>Dagboek</h2>
+    <div class="rule"></div>
+    <div class="stats">
+      <div class="stat"><b id="sDist">0</b><span>Afgelegd</span></div>
+      <div class="stat"><b id="sArea">0</b><span>Verkend gebied</span></div>
+      <div class="stat"><b id="sDisc">0</b><span>Ontdekte locaties</span></div>
+      <div class="stat"><b id="sNL">0%</b><span>Van Nederland</span></div>
+    </div>
+    <div class="kinds" id="sKinds"></div>
+    <h3>Ontdekte locaties</h3>
+    <ul id="disclist"></ul>
+    <button class="btn close" data-close>Sluiten</button>
+  </div>
+</div>
+
+<!-- opties -->
+<div id="settings" class="overlay hidden">
+  <div class="panel">
+    <h2>Opties</h2>
+    <div class="rule"></div>
+    <div class="row"><label>Zichtveld<small>Hoe ver de mist om je heen optrekt</small></label>
+      <div class="seg" id="optR"><button data-v="50">50 m</button><button data-v="100">100 m</button><button data-v="150">150 m</button><button data-v="250">250 m</button></div></div>
+    <div class="row"><label>Proefmodus<small>Tik op de kaart om te lopen, GPS staat uit</small></label>
+      <div class="seg" id="optSim"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
+    <div class="row"><label>Tempo proef<small>Snelheid van je reiziger in proefmodus</small></label>
+      <div class="seg" id="optSpd"><button data-v="1.5">Lopen</button><button data-v="6">Fiets</button><button data-v="30">Paard</button></div></div>
+    <div class="row"><label>Geluid<small>Klank bij een ontdekking</small></label>
+      <div class="seg" id="optSnd"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
+    <div class="actions">
+      <button class="btn" id="bExport">Voortgang bewaren (bestand)</button>
+      <button class="btn" id="bImport">Voortgang laden (bestand)</button>
+      <button class="btn" id="bCache">Kaartgegevens opnieuw laden</button>
+      <button class="btn danger" id="bReset">Wis alle voortgang</button>
+    </div>
+    <button class="btn close" data-close>Sluiten</button>
+  </div>
+</div>
+<input type="file" id="file" accept="application/json,.json">
+
+<script>
+'use strict';
+/* ====================================================================
+   VERKENNER — realtime kaart in perkamentstijl met fog of war
+   Kaartdata: © OpenStreetMap-bijdragers (via Overpass API)
+   ==================================================================== */
+const $ = s => document.querySelector(s);
+const cv = $('#map'), ctx = cv.getContext('2d');
+const mapCv = document.createElement('canvas'), mctx = mapCv.getContext('2d');
+const fogCv = document.createElement('canvas'), fctx = fogCv.getContext('2d');
+const ccv = $('#compass'), cctx = ccv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+/* ---------- projectie (lokale meters) ---------- */
+const M_LAT = 110574;
+let origin = null, mLon = 67000;
+function setOrigin(lat, lon) { origin = { lat, lon }; mLon = 111320 * Math.cos(lat * Math.PI / 180); }
+function proj(lat, lon) { return [(lon - origin.lon) * mLon, -(lat - origin.lat) * M_LAT]; }
+function unproj(x, y) { return [origin.lat - y / M_LAT, origin.lon + x / mLon]; }
+
+/* ---------- opslag ---------- */
+const KEY = 'verkenner.v1';
+let state = { origin: null, pts: [], disc: {}, dist: 0, settings: { R: 100, sound: true, sim: false, spd: 6 } };
+try {
+  const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6 }, s.settings || {}); }
+} catch (e) {}
+let saveT = null;
+function scheduleSave() { if (!saveT) saveT = setTimeout(saveNow, 4000); }
+function saveNow() {
+  clearTimeout(saveT); saveT = null;
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { toast('Opslaan mislukt: geheugen vol. Bewaar je voortgang als bestand.'); }
+}
+
+/* ---------- view & speler ---------- */
+const view = { x: 0, y: 0, s: 0.9 };            // s = pixels per meter
+const me = { has: false, x: 0, y: 0, lat: 0, lon: 0, acc: 0, gpsHead: null, moveHead: null, shownHead: 0 };
+let follow = true, dirty = true, started = false;
+
+/* ---------- mist: maskertegels + cellen ---------- */
+const MT = 1024, MP = 256, MK = MP / MT;   // 1024 m per tegel, 4 m per pixel
+const masks = new Map();
+function maskTile(tx, ty) {
+  const k = tx + ',' + ty; let c = masks.get(k);
+  if (!c) { c = document.createElement('canvas'); c.width = c.height = MP; c._x = tx; c._y = ty; masks.set(k, c); }
+  return c;
+}
+const CS = 25; const cells = new Set();
+function reveal(x, y, r) {
+  const tx0 = Math.floor((x - r) / MT), tx1 = Math.floor((x + r) / MT), ty0 = Math.floor((y - r) / MT), ty1 = Math.floor((y + r) / MT);
+  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+    const g = maskTile(tx, ty).getContext('2d');
+    const px = (x - tx * MT) * MK, py = (y - ty * MT) * MK, rp = r * MK;
+    const gr = g.createRadialGradient(px, py, 0, px, py, rp);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.55, 'rgba(255,255,255,.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(px, py, rp, 0, 7); g.fill();
+  }
+  const rr = (r * .82) ** 2;
+  for (let ix = Math.floor((x - r) / CS); ix <= Math.floor((x + r) / CS); ix++)
+    for (let iy = Math.floor((y - r) / CS); iy <= Math.floor((y + r) / CS); iy++) {
+      const dx = (ix + .5) * CS - x, dy = (iy + .5) * CS - y;
+      if (dx * dx + dy * dy <= rr) cells.add(ix + ':' + iy);
+    }
+}
+const isRevealed = (x, y) => cells.has(Math.floor(x / CS) + ':' + Math.floor(y / CS));
+function isCore(x, y, r) {
+  const h = r * .45;
+  return isRevealed(x, y) && isRevealed(x + h, y) && isRevealed(x - h, y) && isRevealed(x, y + h) && isRevealed(x, y - h);
+}
+
+/* ---------- positie verwerken ---------- */
+let lastRev = null;
+function addPoint(lat, lon, r) {
+  const [x, y] = proj(lat, lon);
+  if (isCore(x, y, r)) return;              // al verkend: niet opnieuw opslaan
+  state.pts.push(+lat.toFixed(6), +lon.toFixed(6), r);
+  reveal(x, y, r);
+}
+function onFix(lat, lon, acc, heading) {
+  if (!origin) { setOrigin(lat, lon); state.origin = { lat, lon }; }
+  const [x, y] = proj(lat, lon);
+  if (me.has) {
+    const dx = x - me.x, dy = y - me.y;
+    if (Math.hypot(dx, dy) > 2) me.moveHead = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+  }
+  Object.assign(me, { x, y, lat, lon, acc, has: true });
+  if (heading != null && !isNaN(heading)) me.gpsHead = heading;
+  if (follow) { view.x = x; view.y = y; }
+  dirty = true;
+  if (acc > 80) { setStatus('GPS is onnauwkeurig (' + Math.round(acc) + ' m)…'); return; }
+  const R = state.settings.R;
+  if (!lastRev) { addPoint(lat, lon, R); lastRev = { x, y }; }
+  else {
+    const d = Math.hypot(x - lastRev.x, y - lastRev.y);
+    if (d >= 10) {
+      if (d <= 400) {
+        state.dist += d;
+        const n = Math.ceil(d / 10);
+        for (let i = 1; i <= n; i++) {
+          const t = i / n, [la, lo] = unproj(lastRev.x + (x - lastRev.x) * t, lastRev.y + (y - lastRev.y) * t);
+          addPoint(la, lo, R);
+        }
+      } else addPoint(lat, lon, R);
+      lastRev = { x, y };
+    }
+  }
+  checkDiscoveries(x, y);
+  ensureTiles();
+  scheduleSave();
+}
+
+/* ---------- plekken & ontdekkingen ---------- */
+const pois = new Map();
+const DR = { city: 1200, town: 700, village: 350, suburb: 300, hamlet: 200, locality: 150 };
+const KIND = { city: 'Stad', town: 'Stad', village: 'Dorp', suburb: 'Wijk', hamlet: 'Gehucht', locality: 'Streek', peak: 'Heuvel',
+  hunebed: 'Hunebed', ruin: 'Oude vindplaats', castle: 'Kasteel', mill: 'Molen', church: 'Kerk', view: 'Uitkijkpunt',
+  camp: 'Kampeerplaats', monument: 'Monument', tower: 'Toren' };
+const GENERIC = { peak: 'Naamloze heuvel', hunebed: 'Hunebed', mill: 'Molen', view: 'Uitkijkpunt', castle: 'Kasteel', ruin: 'Ruïne', tower: 'Toren' };
+function checkDiscoveries(x, y) {
+  for (const p of pois.values()) {
+    if (state.disc[p.id]) continue;
+    const r = DR[p.k] || 100, dx = p.x - x, dy = p.y - y;
+    if (dx * dx + dy * dy <= r * r) discover(p, true);
+  }
+}
+function discover(p, announce) {
+  state.disc[p.id] = { n: p.n, k: p.k, lat: p.lat, lon: p.lon, t: Date.now() };
+  if (announce) banner(p);
+  dirty = true; scheduleSave();
+}
+const bq = []; let bBusy = false;
+function banner(p) { bq.push(p); if (!bBusy) nextBanner(); }
+function nextBanner() {
+  const p = bq.shift(); if (!p) { bBusy = false; return; }
+  bBusy = true;
+  const el = $('#banner');
+  el.querySelector('.name').textContent = p.n;
+  el.querySelector('.kind').textContent = (KIND[p.k] || 'Locatie') + ' ontdekt';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  chime();
+  if (navigator.vibrate) try { navigator.vibrate([30, 60, 30]); } catch (e) {}
+  setTimeout(nextBanner, 4300);
+}
+
+/* ---------- geluid ---------- */
+let AC = null;
+function initAudio() { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); AC.resume(); } catch (e) {} }
+function chime() {
+  if (!state.settings.sound || !AC) return;
+  const t = AC.currentTime, lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400; lp.connect(AC.destination);
+  [[73.4, 0, 3.2, .16, 'sawtooth'], [110, 0, 3.2, .10, 'sawtooth'], [146.8, .02, 3, .08, 'triangle'],
+   [293.7, .3, 2.4, .06, 'sine'], [440, .55, 2.2, .045, 'sine'], [587.3, .8, 2, .03, 'sine']].forEach(([f, d, len, g, type]) => {
+    const o = AC.createOscillator(), ga = AC.createGain();
+    o.type = type; o.frequency.value = f;
+    ga.gain.setValueAtTime(0, t + d); ga.gain.linearRampToValueAtTime(g, t + d + .25);
+    ga.gain.exponentialRampToValueAtTime(.0001, t + d + len);
+    o.connect(ga); ga.connect(lp); o.start(t + d); o.stop(t + d + len + .1);
+  });
+}
+
+/* ---------- kaartdata (OpenStreetMap via Overpass) ---------- */
+const TLAT = 0.02, TLON = 0.03;
+const tileState = new Map(), tq = [];
+let tBusy = false;
+const AREAS = {}, LINES = {}, seen = new Set();
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+let ovi = 0;
+
+/* IndexedDB cache */
+let dbP = null;
+function db() {
+  if (!dbP) dbP = new Promise((res, rej) => {
+    const r = indexedDB.open('verkenner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('tiles');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }).catch(() => null);
+  return dbP;
+}
+async function idbGet(k) { const d = await db(); if (!d) return null; return new Promise(res => { const q = d.transaction('tiles').objectStore('tiles').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); }
+async function idbPut(k, v) { const d = await db(); if (!d) return; try { d.transaction('tiles', 'readwrite').objectStore('tiles').put(v, k); } catch (e) {} }
+
+function tileKeysIn(s, w, n, e, set) {
+  for (let ty = Math.floor(s / TLAT); ty <= Math.floor(n / TLAT); ty++)
+    for (let tx = Math.floor(w / TLON); tx <= Math.floor(e / TLON); tx++) set.add(ty + '_' + tx);
+}
+let ensureT = null;
+function ensureTilesSoon() { clearTimeout(ensureT); ensureT = setTimeout(ensureTiles, 500); }
+function ensureTiles() {
+  if (!origin) return;
+  const want = new Set();
+  if (me.has) { const d = 1500; tileKeysIn(me.lat - d / M_LAT, me.lon - d / mLon, me.lat + d / M_LAT, me.lon + d / mLon, want); }
+  // verkende stukken die in beeld zijn
+  if (view.s > 0.02) {
+    const vb = viewBox();
+    for (const m of masks.values()) {
+      const x0 = m._x * MT, y0 = m._y * MT;
+      if (x0 > vb[2] || y0 > vb[3] || x0 + MT < vb[0] || y0 + MT < vb[1]) continue;
+      const [n, w] = unproj(x0, y0), [s, e] = unproj(x0 + MT, y0 + MT);
+      tileKeysIn(s, w, n, e, want);
+    }
+  }
+  const [cl, co] = me.has ? [me.lat, me.lon] : unproj(view.x, view.y);
+  const fresh = [...want].filter(k => !tileState.has(k));
+  fresh.forEach(k => tileState.set(k, 'q'));
+  tq.push(...fresh);
+  tq.sort((a, b) => tdist(a, cl, co) - tdist(b, cl, co));
+  pump();
+}
+function tdist(k, lat, lon) { const [ty, tx] = k.split('_').map(Number); return Math.hypot((ty + .5) * TLAT - lat, ((tx + .5) * TLON - lon) * .6); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function pump() {
+  if (tBusy) return;
+  const k = tq.shift();
+  if (!k) { setStatus(''); return; }
+  tBusy = true;
+  setStatus('De kartograaf tekent' + (tq.length ? ' (' + (tq.length + 1) + ')' : '') + '…');
+  try {
+    let rec = await idbGet(k);
+    if (!rec) { rec = { t: Date.now(), f: await fetchTile(k) }; idbPut(k, rec); }
+    ingest(rec.f);
+    tileState.set(k, 'ok');
+  } catch (e) {
+    console.warn('tegel', k, e);
+    tileState.delete(k);
+    setStatus('De kartograaf rust even uit… (geen verbinding?)');
+    await sleep(10000);
+  }
+  tBusy = false;
+  pump();
+}
+function overpassQuery(k) {
+  const [ty, tx] = k.split('_').map(Number);
+  const b = `(${(ty * TLAT).toFixed(4)},${(tx * TLON).toFixed(4)},${((ty + 1) * TLAT).toFixed(4)},${((tx + 1) * TLON).toFixed(4)})`;
+  return `[out:json][timeout:90];(
+way[highway]${b};
+way[railway~"^(rail|light_rail|narrow_gauge|tram)$"]${b};
+way[waterway~"^(river|canal|stream|ditch|drain)$"]${b};
+nwr[natural~"^(water|wood|heath|wetland|sand|beach|peak|hill)$"]${b};
+nwr[landuse~"^(forest|residential|reservoir|basin)$"]${b};
+way[building]${b};
+node[place~"^(city|town|village|hamlet|suburb|locality)$"]${b};
+nwr[historic~"^(archaeological_site|castle|manor|ruins|windmill|monument)$"]${b};
+nwr[man_made~"^(windmill|watermill|lighthouse)$"]${b};
+nwr[man_made=tower]["tower:type"=observation]${b};
+nwr[amenity=place_of_worship]${b};
+nwr[tourism~"^(viewpoint|camp_site)$"]${b};
+);out geom qt;`;
+}
+async function fetchTile(k) {
+  const body = 'data=' + encodeURIComponent(overpassQuery(k));
+  let lastErr;
+  for (let i = 0; i < OVERPASS.length; i++) {
+    const url = OVERPASS[(ovi + i) % OVERPASS.length];
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 95000);
+    try {
+      const r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ac.signal });
+      clearTimeout(to);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      ovi = (ovi + i) % OVERPASS.length;
+      return parseOSM(j);
+    } catch (e) { clearTimeout(to); lastErr = e; }
+  }
+  throw lastErr;
+}
+
+/* --- OSM omzetten naar compacte features --- */
+function poiKind(t) {
+  if (t.place && /^(city|town|village|hamlet|suburb|locality)$/.test(t.place)) return t.place;
+  if (t.natural === 'peak' || t.natural === 'hill') return 'peak';
+  if (t.historic === 'archaeological_site') return (t.site_type === 'megalith' || /hunebed/i.test(t.name || '')) ? 'hunebed' : 'ruin';
+  if (t.historic === 'castle' || t.historic === 'manor') return 'castle';
+  if (t.historic === 'ruins') return 'ruin';
+  if (t.man_made === 'windmill' || t.man_made === 'watermill' || t.historic === 'windmill') return 'mill';
+  if (t.man_made === 'lighthouse') return 'tower';
+  if (t.man_made === 'tower') return 'view';
+  if (t.amenity === 'place_of_worship') return 'church';
+  if (t.tourism === 'viewpoint') return 'view';
+  if (t.tourism === 'camp_site') return 'camp';
+  if (t.historic === 'monument') return 'monument';
+  return null;
+}
+function areaKind(t) {
+  if (t.natural === 'water' || t.landuse === 'reservoir' || t.landuse === 'basin') return 'water';
+  if (t.landuse === 'forest' || t.natural === 'wood') return 'forest';
+  if (t.natural === 'heath') return 'heath';
+  if (t.natural === 'wetland') return 'wetland';
+  if (t.natural === 'sand' || t.natural === 'beach') return 'sand';
+  if (t.landuse === 'residential') return 'resid';
+  return null;
+}
+function lineKind(t) {
+  const h = t.highway;
+  if (h) {
+    if (/^(motorway|trunk|primary)(_link)?$/.test(h)) return 'hw1';
+    if (/^(secondary|tertiary)(_link)?$/.test(h)) return 'hw2';
+    if (/^(residential|unclassified|living_street|road)$/.test(h)) return 'hw3';
+    if (h === 'service') return 'hw4';
+    if (h === 'track') return 'track';
+    if (/^(path|footway|cycleway|bridleway|steps|pedestrian)$/.test(h)) return 'path';
+    return null;
+  }
+  if (t.railway) return 'rail';
+  if (t.waterway === 'river' || t.waterway === 'canal') return 'river';
+  if (t.waterway) return 'stream';
+  return null;
+}
+function flat(geom) { const a = []; for (const p of geom) if (p) a.push(+p.lat.toFixed(6), +p.lon.toFixed(6)); return a; }
+function stitch(ways) {
+  const segs = ways.map(w => w.filter(Boolean).map(p => [p.lat, p.lon])).filter(s => s.length > 1);
+  const eq = (a, b) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+  const rings = [];
+  while (segs.length) {
+    let ring = segs.shift(), guard = 0;
+    while (!eq(ring[0], ring[ring.length - 1]) && guard++ < 2000) {
+      const end = ring[ring.length - 1]; let f = -1, rev = false;
+      for (let i = 0; i < segs.length; i++) {
+        if (eq(segs[i][0], end)) { f = i; break; }
+        if (eq(segs[i][segs[i].length - 1], end)) { f = i; rev = true; break; }
+      }
+      if (f < 0) break;
+      let s = segs.splice(f, 1)[0]; if (rev) s = s.slice().reverse();
+      ring = ring.concat(s.slice(1));
+    }
+    if (ring.length > 3) rings.push(ring.map(p => ({ lat: p[0], lon: p[1] })));
+  }
+  return rings;
+}
+function parseOSM(j) {
+  const out = [];
+  for (const el of j.elements || []) {
+    const t = el.tags || {}, id = el.type[0] + el.id;
+    const pk = poiKind(t);
+    if (pk) {
+      let lat = null, lon = null;
+      if (el.type === 'node') { lat = el.lat; lon = el.lon; }
+      else if (el.bounds) { lat = (el.bounds.minlat + el.bounds.maxlat) / 2; lon = (el.bounds.minlon + el.bounds.maxlon) / 2; }
+      const n = t.name || GENERIC[pk];
+      if (lat != null && n) out.push({ i: 'p' + id, k: pk, P: 1, n, a: +lat.toFixed(6), o: +lon.toFixed(6) });
+    }
+    const ak = areaKind(t), lk = lineKind(t);
+    if (el.type === 'way' && el.geometry) {
+      const g = el.geometry, closed = g.length > 3 && g[0] && g[g.length - 1] && g[0].lat === g[g.length - 1].lat && g[0].lon === g[g.length - 1].lon;
+      if (ak && closed) out.push({ i: id, k: ak, A: 1, r: [flat(g)] });
+      else if (lk && t.area !== 'yes') out.push({ i: id, k: lk, g: flat(g) });
+      else if (t.building && closed) out.push({ i: id, k: 'bld', A: 1, r: [flat(g)] });
+    } else if (el.type === 'relation' && ak && el.members) {
+      const rings = stitch(el.members.filter(m => m.type === 'way' && m.geometry).map(m => m.geometry));
+      if (rings.length) out.push({ i: id, k: ak, A: 1, r: rings.map(flat) });
+    }
+  }
+  return out;
+}
+function projFlat(a) {
+  const o = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i += 2) { const p = proj(a[i], a[i + 1]); o[i] = p[0]; o[i + 1] = p[1]; }
+  return o;
+}
+function bbOf(rings) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rings) for (let i = 0; i < r.length; i += 2) {
+    if (r[i] < x0) x0 = r[i]; if (r[i] > x1) x1 = r[i]; if (r[i + 1] < y0) y0 = r[i + 1]; if (r[i + 1] > y1) y1 = r[i + 1];
+  }
+  return [x0, y0, x1, y1];
+}
+function ingest(list) {
+  if (!origin) return;
+  for (const f of list) {
+    if (seen.has(f.i)) continue; seen.add(f.i);
+    if (f.P) {
+      const [x, y] = proj(f.a, f.o), p = { id: f.i, k: f.k, n: f.n, lat: f.a, lon: f.o, x, y };
+      pois.set(f.i, p);
+      if (!state.disc[f.i] && isRevealed(x, y)) discover(p, false);
+    } else if (f.A) {
+      const r = f.r.map(projFlat); (AREAS[f.k] = AREAS[f.k] || []).push({ r, bb: bbOf(r) });
+    } else {
+      const c = projFlat(f.g); (LINES[f.k] = LINES[f.k] || []).push({ c, bb: bbOf([c]) });
+    }
+  }
+  if (me.has) checkDiscoveries(me.x, me.y);
+  dirty = true;
+}
+
+/* ---------- texturen ---------- */
+function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+function fbmCanvas(size, octs, seed, colorFn) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), img = g.createImageData(size, size), R = rng(seed);
+  const layers = octs.map(([p, w]) => { const a = new Float32Array(p * p); for (let i = 0; i < a.length; i++) a[i] = R(); return { p, w, a }; });
+  const sm = t => t * t * (3 - 2 * t), wsum = octs.reduce((s, o) => s + o[1], 0);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let v = 0;
+    for (const L of layers) {
+      const fx = x / size * L.p, fy = y / size * L.p, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = sm(fx - x0), ty = sm(fy - y0);
+      const at = (i, j) => L.a[(j % L.p) * L.p + (i % L.p)];
+      const a = at(x0, y0), b = at(x0 + 1, y0), c2 = at(x0, y0 + 1), d = at(x0 + 1, y0 + 1);
+      v += L.w * ((a + (b - a) * tx) * (1 - ty) + (c2 + (d - c2) * tx) * ty);
+    }
+    const o = (y * size + x) * 4, col = colorFn(v / wsum, R);
+    img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = col[3];
+  }
+  g.putImageData(img, 0, 0); return c;
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const paperCv = fbmCanvas(512, [[4, .5], [8, .25], [32, .15], [128, .1]], 7, (v, R) => {
+  const k = clamp((v - .25) * 1.6, 0, 1), n = (R() - .5) * 10;
+  return [204 + 34 * k + n, 180 + 32 * k + n, 132 + 30 * k + n, 255];
+});
+const cloudCv = fbmCanvas(256, [[3, .45], [6, .3], [12, .15], [24, .1]], 42, v => {
+  const k = clamp((v - .28) * 2.1, 0, 1);
+  return [118 + 110 * k, 114 + 108 * k, 108 + 104 * k, 255 * (.3 + .7 * k)];
+});
+function patCanvas(sz, draw) { const c = document.createElement('canvas'); c.width = c.height = sz; draw(c.getContext('2d'), sz); return c; }
+const INK = '#2b1e10';
+const treeCv = patCanvas(44, (g, s) => {
+  const R = rng(3); g.lineWidth = 1; g.strokeStyle = 'rgba(48,44,20,.8)';
+  const pts = [[8, 10], [27, 7], [17, 25], [36, 26], [7, 36], [28, 40]];
+  for (const [x, y] of pts) {
+    if (R() < .4) { // naaldboom
+      g.fillStyle = 'rgba(78,86,44,.55)'; g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 3.5, y + 2); g.lineTo(x - 3.5, y + 2); g.closePath(); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(x, y + 2); g.lineTo(x, y + 4); g.stroke();
+    } else { // loofboom
+      g.fillStyle = 'rgba(92,98,50,.5)'; g.beginPath(); g.arc(x, y - 1.5, 3.6, 0, 7); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(x, y + 2); g.lineTo(x, y + 4.5); g.stroke();
+    }
+  }
+});
+const heathCv = patCanvas(28, (g) => {
+  g.strokeStyle = 'rgba(96,52,70,.55)'; g.lineWidth = .9;
+  for (const [x, y] of [[6, 8], [19, 5], [13, 18], [24, 22], [4, 24]]) {
+    g.beginPath(); g.moveTo(x - 2.5, y - 2.5); g.lineTo(x, y); g.lineTo(x + 2.5, y - 2.5); g.moveTo(x, y); g.lineTo(x, y - 3.5); g.stroke();
+  }
+});
+const wetCv = patCanvas(26, (g) => {
+  g.strokeStyle = 'rgba(50,80,80,.55)'; g.lineWidth = .9;
+  for (const [x, y] of [[5, 7], [17, 15], [6, 21]]) {
+    g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x + 5, y); g.moveTo(x + 1, y); g.lineTo(x + 1, y - 4); g.moveTo(x - 1, y); g.lineTo(x - 2, y - 3); g.moveTo(x + 3, y); g.lineTo(x + 4, y - 3); g.stroke();
+  }
+});
+const sandCv = patCanvas(16, (g) => { g.fillStyle = 'rgba(110,80,40,.45)'; for (const [x, y] of [[3, 3], [11, 6], [6, 12], [14, 14]]) g.fillRect(x, y, 1.1, 1.1); });
+const hatchCv = patCanvas(10, (g, s) => { g.strokeStyle = 'rgba(80,50,25,.16)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, s); g.lineTo(s, 0); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(s - 1, s + 1); g.lineTo(s + 1, s - 1); g.stroke(); });
+let PAT = {};
+function makePatterns() {
+  PAT = {
+    paper: ctx.createPattern(paperCv, 'repeat'), cloud: fctx.createPattern(cloudCv, 'repeat'),
+    tree: mctx.createPattern(treeCv, 'repeat'), heath: mctx.createPattern(heathCv, 'repeat'), wet: mctx.createPattern(wetCv, 'repeat'),
+    sand: mctx.createPattern(sandCv, 'repeat'), hatch: mctx.createPattern(hatchCv, 'repeat'), mpaper: mctx.createPattern(paperCv, 'repeat')
+  };
+}
+
+/* ---------- iconen ---------- */
+function iconPath(c, k) {
+  const house = (cx, cy, s) => { c.moveTo(cx - s * .6, cy + s * .6); c.lineTo(cx - s * .6, cy - s * .05); c.lineTo(cx, cy - s * .65); c.lineTo(cx + s * .6, cy - s * .05); c.lineTo(cx + s * .6, cy + s * .6); c.closePath(); };
+  const rect = (x, y, w, h) => c.rect(x, y, w, h);
+  c.beginPath();
+  switch (k) {
+    case 'city': case 'town': house(-.5, .25, .55); house(.5, .25, .55); house(0, -.15, .7); break;
+    case 'village': case 'suburb': case 'hamlet': house(0, .05, 1.2); break;
+    case 'locality': c.moveTo(0, -.7); c.lineTo(.5, 0); c.lineTo(0, .7); c.lineTo(-.5, 0); c.closePath(); break;
+    case 'peak': c.moveTo(-1, .7); c.lineTo(-.2, -.75); c.lineTo(.15, -.15); c.lineTo(.45, -.45); c.lineTo(1, .7); c.closePath(); break;
+    case 'hunebed': rect(-.8, -.05, .38, .75); rect(.42, -.05, .38, .75); c.moveTo(-1, -.1); c.quadraticCurveTo(0, -.8, 1, -.1); c.lineTo(1, .05); c.lineTo(-1, .05); c.closePath(); break;
+    case 'ruin': rect(-.75, .5, 1.5, .3); rect(-.55, -.65, .36, 1.15); rect(.2, -.1, .36, .6); break;
+    case 'castle': c.moveTo(-.7, .8); c.lineTo(-.7, -.45); c.lineTo(-.45, -.45); c.lineTo(-.45, -.8); c.lineTo(-.15, -.8); c.lineTo(-.15, -.45); c.lineTo(.15, -.45); c.lineTo(.15, -.8); c.lineTo(.45, -.8); c.lineTo(.45, -.45); c.lineTo(.7, -.45); c.lineTo(.7, .8); c.closePath(); break;
+    case 'mill': {
+      rect(-.22, -.05, .44, .85);
+      for (const a of [45, 135, 225, 315]) {
+        const r = a * Math.PI / 180, ca = Math.cos(r), sa = Math.sin(r), px = -sa * .1, py = ca * .1, ex = ca * .95, ey = sa * .95 - .2;
+        c.moveTo(px, -.2 + py); c.lineTo(ex + px, ey + py); c.lineTo(ex - px, ey - py); c.lineTo(-px, -.2 - py); c.closePath();
+      }
+      break;
+    }
+    case 'church': rect(-.13, -.9, .26, 1.75); rect(-.52, -.55, 1.04, .24); break;
+    case 'view': c.moveTo(-.9, 0); c.quadraticCurveTo(0, -.75, .9, 0); c.quadraticCurveTo(0, .75, -.9, 0); c.closePath(); c.moveTo(.3, 0); c.arc(0, 0, .3, 0, 7, true); break;
+    case 'camp': c.moveTo(-.95, .7); c.lineTo(0, -.85); c.lineTo(.95, .7); c.closePath(); c.moveTo(0, .7); c.lineTo(-.25, .1); c.lineTo(.25, .1); c.closePath(); break;
+    case 'monument': c.moveTo(-.22, .65); c.lineTo(-.14, -.6); c.lineTo(0, -.88); c.lineTo(.14, -.6); c.lineTo(.22, .65); c.closePath(); rect(-.45, .62, .9, .22); break;
+    case 'tower': rect(-.28, -.75, .56, 1.55); c.moveTo(-.45, -.75); c.lineTo(0, -1); c.lineTo(.45, -.75); c.closePath(); break;
+    default: c.arc(0, 0, .5, 0, 7);
+  }
+}
+function drawIcon(c, k, x, y, size, fill, stroke, lw) {
+  c.save(); c.translate(x, y); c.scale(size / 2, size / 2);
+  iconPath(c, k);
+  if (stroke) { c.lineWidth = (lw || 3) / (size / 2); c.strokeStyle = stroke; c.lineJoin = 'round'; c.stroke(); }
+  if (fill) { c.fillStyle = fill; c.fill('evenodd'); }
+  c.restore();
+}
+
+/* ---------- tekenen ---------- */
+function viewBox() { const s = view.s; return [view.x - W / 2 / s, view.y - H / 2 / s, view.x + W / 2 / s, view.y + H / 2 / s]; }
+const hit = (b, v) => !(b[0] > v[2] || b[2] < v[0] || b[1] > v[3] || b[3] < v[1]);
+function drawMap() {
+  const c = mctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s, vb = viewBox();
+  const T = new DOMMatrix([1, 0, 0, 1, ox, oy]);
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  PAT.mpaper.setTransform(new DOMMatrix([1, 0, 0, 1, ox * .15, oy * .15]));
+  c.fillStyle = PAT.mpaper; c.fillRect(0, 0, W, H);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const minD = 1.2;
+  function addRing(r, close) {
+    let lx = r[0] * s + ox, ly = r[1] * s + oy; c.moveTo(lx, ly);
+    const n = r.length;
+    for (let i = 2; i < n; i += 2) {
+      const x = r[i] * s + ox, y = r[i + 1] * s + oy;
+      if (i < n - 2 && Math.abs(x - lx) < minD && Math.abs(y - ly) < minD) continue;
+      c.lineTo(x, y); lx = x; ly = y;
+    }
+    if (close) c.closePath();
+  }
+  function area(kind, fill, pat, stroke, lw, minS) {
+    const L = AREAS[kind]; if (!L || s < (minS || 0)) return;
+    c.beginPath(); const multi = [];
+    let any = false;
+    for (const f of L) {
+      if (!hit(f.bb, vb)) continue;
+      if ((f.bb[2] - f.bb[0]) * s < 1.5 && (f.bb[3] - f.bb[1]) * s < 1.5) continue;
+      if (f.r.length > 1) { multi.push(f); continue; }
+      addRing(f.r[0], true); any = true;
+    }
+    const paint = rule => {
+      if (fill) { c.fillStyle = fill; c.fill(rule); }
+      if (pat) { pat.setTransform(T); c.fillStyle = pat; c.fill(rule); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+    };
+    if (any) paint('nonzero');
+    for (const f of multi) { c.beginPath(); for (const r of f.r) addRing(r, true); paint('evenodd'); }
+  }
+  function lines(kind, style, w, dash, minS) {
+    const L = LINES[kind]; if (!L || s < (minS || 0)) return;
+    c.beginPath(); let any = false;
+    for (const f of L) { if (!hit(f.bb, vb)) continue; addRing(f.c, false); any = true; }
+    if (!any) return;
+    c.setLineDash(dash || []); c.strokeStyle = style; c.lineWidth = w; c.stroke(); c.setLineDash([]);
+  }
+  const zf = clamp(Math.sqrt(s / .3), .55, 2.4);
+
+  area('resid', null, PAT.hatch, null, 0, .02);
+  area('sand', 'rgba(222,190,128,.35)', PAT.sand, 'rgba(120,90,50,.35)', .8);
+  area('heath', 'rgba(150,104,112,.16)', PAT.heath, 'rgba(96,52,70,.3)', .8, .03);
+  area('wetland', 'rgba(90,124,112,.14)', PAT.wet, null, 0, .03);
+  area('forest', 'rgba(96,106,58,.26)', s > .03 ? PAT.tree : null, 'rgba(58,60,28,.55)', 1);
+  // water met inktrand en echolijn
+  area('water', 'rgba(118,146,148,.62)', null, 'rgba(60,84,88,.18)', 6 * zf);
+  area('water', null, null, 'rgba(42,62,66,.85)', 1.2);
+  lines('stream', 'rgba(62,92,98,.8)', 1 * zf, null, .08);
+  lines('river', 'rgba(62,92,98,.9)', 3 * zf);
+  area('bld', 'rgba(74,50,30,.55)', null, null, 0, .35);
+  lines('path', 'rgba(52,36,20,.75)', .9 * zf, [1.5 * zf, 3.2 * zf], .25);
+  lines('track', 'rgba(52,36,20,.7)', 1 * zf, [5 * zf, 3 * zf], .12);
+  lines('hw4', 'rgba(43,30,16,.6)', .8 * zf, null, .45);
+  lines('hw3', 'rgba(43,30,16,.82)', 1.3 * zf, null, .07);
+  lines('hw2', INK, 2.3 * zf, null, .015);
+  lines('hw1', INK, 4.6 * zf);
+  lines('hw1', '#eadcbc', 2.2 * zf);
+  lines('rail', INK, 1.6 * zf, null, .02);
+  lines('rail', INK, 5 * zf, [1, 6 * zf], .1);
+
+  // ontdekte plekken: iconen en namen
+  const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
+  const items = Object.entries(state.disc).map(([id, d]) => { const [x, y] = proj(d.lat, d.lon); return { id, ...d, x: x * s + ox, y: y * s + oy }; })
+    .filter(d => d.x > -80 && d.y > -40 && d.x < W + 80 && d.y < H + 40)
+    .sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k));
+  const placed = [];
+  for (const d of items) {
+    const isPlace = d.k in DR;
+    const minS = { city: 0, town: 0, village: .03, suburb: .08, hamlet: .1, locality: .16 }[d.k] ?? .18;
+    if (s < minS) continue;
+    const isz = { city: 26, town: 22, village: 18, suburb: 15, hamlet: 14, locality: 9 }[d.k] || 16;
+    drawIcon(c, d.k, d.x, d.y, isz, INK, '#eadcbc', 3);
+    if (!isPlace && s < .5) continue;
+    const fs = { city: 24, town: 20, village: 17, suburb: 14, hamlet: 14, locality: 13 }[d.k] || 13;
+    c.font = (d.k === 'locality' || !isPlace ? 'italic ' : '') + fs + 'px ' + (isPlace && d.k !== 'locality' ? '"IM Fell English SC"' : '"IM Fell English"') + ',serif';
+    try { c.letterSpacing = isPlace ? '1.5px' : '0px'; } catch (e) {}
+    const label = d.n, tw = c.measureText(label).width, ly = d.y + isz / 2 + fs * .9;
+    const box = [d.x - tw / 2, ly - fs, d.x + tw / 2, ly + 3];
+    if (placed.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) continue;
+    placed.push(box);
+    c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(234,220,188,.9)'; c.strokeText(label, d.x, ly);
+    c.fillStyle = INK; c.fillText(label, d.x, ly);
+  }
+  try { c.letterSpacing = '0px'; } catch (e) {}
+}
+function drawFog(t) {
+  const c = fctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s;
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+  c.fillStyle = '#7f7a71'; c.fillRect(0, 0, W, H);
+  PAT.cloud.setTransform(new DOMMatrix().translateSelf(ox * .7 + t * .006, oy * .7 + t * .0025).scaleSelf(2.4, 2.4));
+  c.fillStyle = PAT.cloud; c.fillRect(0, 0, W, H);
+  PAT.cloud.setTransform(new DOMMatrix().translateSelf(ox - t * .004, oy + t * .003).scaleSelf(1.3, 1.3));
+  c.globalAlpha = .55; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+  c.globalCompositeOperation = 'destination-out'; c.imageSmoothingEnabled = true;
+  const sz = MT * s;
+  for (const m of masks.values()) {
+    const x = m._x * MT * s + ox, y = m._y * MT * s + oy;
+    if (x > W || y > H || x + sz < 0 || y + sz < 0) continue;
+    c.drawImage(m, x, y, sz, sz);
+  }
+  c.globalCompositeOperation = 'source-over';
+}
+function headingNow() {
+  if (devHead != null) return devHead;
+  if (me.gpsHead != null) return me.gpsHead;
+  return me.moveHead;
+}
+function drawPlayer() {
+  if (!me.has) return;
+  const c = ctx, s = view.s, x = (me.x - view.x) * s + W / 2, y = (me.y - view.y) * s + H / 2;
+  if (me.acc > 12) { c.beginPath(); c.arc(x, y, me.acc * s, 0, 7); c.fillStyle = 'rgba(200,150,40,.12)'; c.fill(); c.strokeStyle = 'rgba(120,80,20,.3)'; c.lineWidth = 1; c.stroke(); }
+  const h = headingNow();
+  if (h != null) { let d = ((h - me.shownHead + 540) % 360) - 180; me.shownHead = (me.shownHead + d * .25 + 360) % 360; }
+  c.save(); c.translate(x, y); c.rotate(me.shownHead * Math.PI / 180);
+  c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 8;
+  const g = c.createLinearGradient(0, -15, 0, 11); g.addColorStop(0, '#f6dc8e'); g.addColorStop(1, '#94701f');
+  c.beginPath(); c.moveTo(0, -15); c.lineTo(10, 11); c.lineTo(0, 5); c.lineTo(-10, 11); c.closePath();
+  c.fillStyle = g; c.fill(); c.shadowBlur = 0; c.strokeStyle = '#2a1d0e'; c.lineWidth = 1.6; c.stroke();
+  c.restore();
+}
+function drawScale() {
+  const c = ctx, s = view.s, target = 90 / s;
+  const p = Math.pow(10, Math.floor(Math.log10(target))), n = [1, 2, 5, 10].map(m => m * p).filter(v => v <= target).pop() || p;
+  const len = n * s, x = 16, y = H - (parseFloat(getComputedStyle(document.body).getPropertyValue('--sab')) || 0) - 100;
+  c.save(); c.strokeStyle = INK; c.fillStyle = INK; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(x, y - 5); c.lineTo(x, y); c.lineTo(x + len, y); c.lineTo(x + len, y - 5); c.stroke();
+  c.fillRect(x, y - 2, len / 2, 2);
+  c.font = 'italic 13px "IM Fell English",serif'; c.textAlign = 'left';
+  c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.8)';
+  const lab = n >= 1000 ? (n / 1000) + ' km' : n + ' m';
+  c.strokeText(lab, x, y - 9); c.fillText(lab, x, y - 9);
+  c.restore();
+}
+
+/* kompasbalk (zoals in Skyrim) */
+const CARD = { 0: 'N', 45: 'NO', 90: 'O', 135: 'ZO', 180: 'Z', 225: 'ZW', 270: 'W', 315: 'NW' };
+function drawCompass() {
+  const r = ccv.getBoundingClientRect(), cw = r.width, ch = r.height, d = Math.min(devicePixelRatio || 1, 2);
+  if (ccv.width !== Math.round(cw * d)) { ccv.width = Math.round(cw * d); ccv.height = Math.round(ch * d); }
+  const c = cctx; c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, cw, ch);
+  const mid = ch / 2 + 2, bandH = 22;
+  const g = c.createLinearGradient(0, 0, cw, 0);
+  g.addColorStop(0, 'rgba(10,8,6,0)'); g.addColorStop(.12, 'rgba(10,8,6,.72)'); g.addColorStop(.88, 'rgba(10,8,6,.72)'); g.addColorStop(1, 'rgba(10,8,6,0)');
+  c.fillStyle = g; c.fillRect(0, mid - bandH / 2, cw, bandH);
+  const lg = c.createLinearGradient(0, 0, cw, 0);
+  lg.addColorStop(0, 'rgba(239,230,210,0)'); lg.addColorStop(.15, 'rgba(239,230,210,.55)'); lg.addColorStop(.85, 'rgba(239,230,210,.55)'); lg.addColorStop(1, 'rgba(239,230,210,0)');
+  c.fillStyle = lg; c.fillRect(0, mid - bandH / 2, cw, 1); c.fillRect(0, mid + bandH / 2, cw, 1);
+  const h = me.has || devHead != null ? me.shownHead : 0, ppd = cw / 180;
+  const fade = x => clamp(Math.min(x, cw - x) / (cw * .14), 0, 1);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (let a = 0; a < 360; a += 15) {
+    let dlt = ((a - h + 540) % 360) - 180; if (Math.abs(dlt) > 90) continue;
+    const x = cw / 2 + dlt * ppd; c.globalAlpha = fade(x);
+    if (CARD[a] != null) {
+      c.font = (a % 90 === 0 ? '600 15px' : '400 11px') + ' Cinzel,serif'; c.fillStyle = a === 0 ? '#f3d68a' : '#efe6d2'; c.fillText(CARD[a], x, mid + 1);
+    } else { c.fillStyle = 'rgba(239,230,210,.5)'; c.fillRect(x - .5, mid - 3, 1, 6); }
+  }
+  // plekken op het kompas
+  if (me.has) {
+    const list = [];
+    for (const p of pois.values()) {
+      const dx = p.x - me.x, dy = p.y - me.y, dist = Math.hypot(dx, dy), found = !!state.disc[p.id];
+      const lim = found ? 3000 : (p.k in DR ? 1800 : 1000);
+      if (dist > lim || dist < 15) continue;
+      list.push({ p, dist, b: (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, found });
+    }
+    list.sort((a, b) => b.dist - a.dist);
+    for (const it of list.slice(-16)) {
+      const dlt = ((it.b - h + 540) % 360) - 180; if (Math.abs(dlt) > 88) continue;
+      const x = cw / 2 + dlt * ppd; c.globalAlpha = fade(x);
+      if (it.found) drawIcon(c, it.p.k, x, mid, 13, '#efe6d2', 'rgba(0,0,0,.8)', 2.5);
+      else drawIcon(c, it.p.k, x, mid, 13, '#0b0907', 'rgba(239,230,210,.75)', 1.6);
+    }
+  }
+  c.globalAlpha = 1;
+  c.fillStyle = '#efe6d2'; c.beginPath(); c.moveTo(cw / 2 - 5, mid - bandH / 2 - 6); c.lineTo(cw / 2 + 5, mid - bandH / 2 - 6); c.lineTo(cw / 2, mid - bandH / 2 - 1); c.closePath(); c.fill();
+}
+
+/* huidige streek onder het kompas */
+let regionT = 0;
+function updateRegion() {
+  let best = null, bd = Infinity;
+  if (me.has) for (const [id, d] of Object.entries(state.disc)) {
+    if (!(d.k in DR)) continue;
+    const [x, y] = proj(d.lat, d.lon), dist = Math.hypot(x - me.x, y - me.y);
+    if (dist < (DR[d.k] * 2.2) && dist < bd) { bd = dist; best = d; }
+  }
+  $('#region').textContent = best ? best.n : '';
+}
+
+/* ---------- hoofdlus ---------- */
+let lastT = 0, simTarget = null;
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (t - lastT < 40) return;
+  const dt = Math.min(.25, (t - lastT) / 1000); lastT = t;
+  simStep(dt);
+  if (dirty) { drawMap(); dirty = false; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(mapCv, 0, 0);
+  drawFog(t); ctx.drawImage(fogCv, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (simTarget && state.settings.sim) {
+    const x = (simTarget.x - view.x) * view.s + W / 2, y = (simTarget.y - view.y) * view.s + H / 2;
+    ctx.strokeStyle = 'rgba(43,30,16,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke();
+  }
+  drawPlayer(); drawScale(); drawCompass();
+  if (t - regionT > 1500) { regionT = t; updateRegion(); }
+}
+function simStep(dt) {
+  if (!state.settings.sim || !simTarget || !origin) return;
+  if (!me.has) { const [la, lo] = unproj(view.x, view.y); onFix(la, lo, 5, null); return; }
+  const dx = simTarget.x - me.x, dy = simTarget.y - me.y, d = Math.hypot(dx, dy), step = state.settings.spd * dt;
+  if (d < 1) { simTarget = null; return; }
+  const k = Math.min(1, step / d), [la, lo] = unproj(me.x + dx * k, me.y + dy * k);
+  onFix(la, lo, 5, (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360);
+}
+
+/* ---------- formaat ---------- */
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  for (const c of [cv, mapCv, fogCv]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  dirty = true;
+}
+addEventListener('resize', resize);
+
+/* ---------- aanraken: schuiven, knijpen, tikken ---------- */
+const ptrs = new Map(); let tap = null, lastTap = 0, prevPinch = null;
+function zoomAt(sx, sy, f) {
+  const ns = clamp(view.s * f, .004, 6);
+  const wx = view.x + (sx - W / 2) / view.s, wy = view.y + (sy - H / 2) / view.s;
+  view.s = ns; view.x = wx - (sx - W / 2) / ns; view.y = wy - (sy - H / 2) / ns;
+  dirty = true; ensureTilesSoon();
+}
+function setFollow(v) { follow = v; $('#bFollow').classList.toggle('on', v); if (v && me.has) { view.x = me.x; view.y = me.y; dirty = true; } }
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false }; else { tap = null; prevPinch = null; }
+});
+cv.addEventListener('pointermove', e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1) {
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap.moved = true;
+    if (!tap || tap.moved) { view.x -= dx / view.s; view.y -= dy / view.s; dirty = true; if (follow) setFollow(false); ensureTilesSoon(); }
+  } else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (prevPinch) {
+      view.x -= (cx - prevPinch.cx) / view.s; view.y -= (cy - prevPinch.cy) / view.s;
+      zoomAt(follow && me.has ? W / 2 : cx, follow && me.has ? H / 2 : cy, d / prevPinch.d);
+    }
+    if (follow && me.has) { view.x = me.x; view.y = me.y; }
+    prevPinch = { cx, cy, d };
+  }
+});
+function endPtr(e) {
+  ptrs.delete(e.pointerId); prevPinch = null;
+  if (tap && !tap.moved && performance.now() - tap.t < 350 && ptrs.size === 0) {
+    const now = performance.now();
+    if (now - lastTap < 300) { zoomAt(e.clientX, e.clientY, 2); lastTap = 0; }
+    else {
+      lastTap = now;
+      if (state.settings.sim && origin) {
+        simTarget = { x: view.x + (e.clientX - W / 2) / view.s, y: view.y + (e.clientY - H / 2) / view.s };
+      }
+    }
+  }
+  if (ptrs.size === 0) tap = null;
+}
+cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(follow && me.has ? W / 2 : e.clientX, follow && me.has ? H / 2 : e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
+
+/* ---------- kompasrichting van het toestel ---------- */
+let devHead = null;
+function onOri(e) {
+  let hd = null;
+  if (e.webkitCompassHeading != null) hd = e.webkitCompassHeading;
+  else if (e.absolute && e.alpha != null) hd = 360 - e.alpha;
+  if (hd == null) return;
+  const so = (screen.orientation && screen.orientation.angle) || 0;
+  devHead = (hd + so + 360) % 360;
+}
+addEventListener('deviceorientationabsolute', onOri, true);
+addEventListener('deviceorientation', onOri, true);
+
+/* ---------- GPS & scherm aan ---------- */
+let watchId = null, wake = null;
+function startGPS() {
+  if (!navigator.geolocation) { toast('Dit toestel geeft geen locatie door. Gebruik de proefmodus.'); return; }
+  if (watchId != null) return;
+  setStatus('Wachten op je positie…');
+  watchId = navigator.geolocation.watchPosition(p => {
+    if (state.settings.sim) return;
+    const c = p.coords; onFix(c.latitude, c.longitude, c.accuracy, (c.speed || 0) > .6 ? c.heading : null);
+    if (!tBusy && !tq.length) setStatus('');
+  }, err => {
+    setStatus(err.code === 1 ? 'Geen toestemming voor locatie. Sta locatie toe in je browser.' : 'Positie zoeken… (' + err.message + ')');
+  }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
+}
+async function keepAwake() { try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { if (started) keepAwake(); } else saveNow();
+});
+addEventListener('pagehide', saveNow);
+
+/* ---------- interface ---------- */
+let statusTxt = '';
+function setStatus(t) { if (t !== statusTxt) { statusTxt = t; $('#status').textContent = t; } }
+let toastT;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 3200); }
+function open(id) { document.querySelectorAll('.overlay').forEach(o => o.id !== 'start' && o.classList.add('hidden')); $(id).classList.remove('hidden'); }
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('.overlay').classList.add('hidden'));
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o && o.id !== 'start') o.classList.add('hidden'); }));
+$('#bFollow').onclick = () => setFollow(true);
+
+function fmtKm(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toLocaleString('nl-NL', { maximumFractionDigits: m < 10000 ? 2 : 1 }) + ' km'; }
+$('#bJournal').onclick = () => {
+  const area = cells.size * CS * CS / 1e6;
+  $('#sDist').textContent = fmtKm(state.dist);
+  $('#sArea').textContent = area.toLocaleString('nl-NL', { maximumFractionDigits: area < 10 ? 2 : 1 }) + ' km²';
+  const list = Object.entries(state.disc).sort((a, b) => b[1].t - a[1].t);
+  $('#sDisc').textContent = list.length;
+  const pct = area / 41543 * 100;
+  $('#sNL').textContent = pct.toLocaleString('nl-NL', { maximumSignificantDigits: 2 }) + '%';
+  const cnt = {}; for (const [, d] of list) { const k = KIND[d.k] || 'Overig'; cnt[k] = (cnt[k] || 0) + 1; }
+  $('#sKinds').textContent = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k, n]) => n + ' × ' + k.toLowerCase()).join('  ·  ');
+  const ul = $('#disclist'); ul.innerHTML = '';
+  if (!list.length) ul.innerHTML = '<div class="empty">Nog niets ontdekt. Trek erop uit, reiziger.</div>';
+  for (const [id, d] of list) {
+    const li = document.createElement('li'), ic = document.createElement('canvas');
+    ic.width = ic.height = 44; drawIcon(ic.getContext('2d'), d.k, 22, 22, 30, '#efe6d2', null);
+    const dt = new Date(d.t);
+    li.innerHTML = `<span class="n"></span><span class="k"></span><span class="d">${dt.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</span>`;
+    li.prepend(ic); li.querySelector('.n').textContent = d.n; li.querySelector('.k').textContent = KIND[d.k] || '';
+    li.onclick = () => {
+      if (!origin) return;
+      const [x, y] = proj(d.lat, d.lon); setFollow(false); view.x = x; view.y = y; view.s = Math.max(view.s, d.k in DR ? .15 : .6);
+      dirty = true; ensureTilesSoon(); $('#journal').classList.add('hidden');
+    };
+    ul.appendChild(li);
+  }
+  open('#journal');
+};
+
+function syncSeg(id, val) { document.querySelectorAll(id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v == String(val))); }
+function syncSettings() {
+  syncSeg('#optR', state.settings.R); syncSeg('#optSim', state.settings.sim ? 1 : 0);
+  syncSeg('#optSpd', state.settings.spd); syncSeg('#optSnd', state.settings.sound ? 1 : 0);
+}
+$('#bSettings').onclick = () => { syncSettings(); open('#settings'); };
+$('#optR').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.R = +v; syncSettings(); scheduleSave(); } };
+$('#optSpd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.spd = +v; syncSettings(); scheduleSave(); } };
+$('#optSnd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.sound = v === '1'; syncSettings(); scheduleSave(); if (state.settings.sound) { initAudio(); chime(); } } };
+$('#optSim').onclick = e => {
+  const v = e.target.dataset.v; if (!v) return;
+  state.settings.sim = v === '1'; syncSettings(); scheduleSave(); simTarget = null;
+  if (state.settings.sim) { ensureOriginForDemo(); toast('Proefmodus: tik op de kaart om erheen te lopen'); }
+  else startGPS();
+};
+$('#bExport').onclick = () => {
+  saveNow();
+  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'verkenner-voortgang-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+$('#bImport').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const s = JSON.parse(await f.text());
+    if (!s || !Array.isArray(s.pts) || typeof s.disc !== 'object') throw 0;
+    localStorage.setItem(KEY, JSON.stringify(s)); location.reload();
+  } catch (err) { toast('Dit bestand kan ik niet lezen.'); }
+};
+$('#bCache').onclick = () => { try { indexedDB.deleteDatabase('verkenner'); } catch (e) {} saveNow(); setTimeout(() => location.reload(), 300); };
+let resetArm = 0;
+$('#bReset').onclick = () => {
+  const b = $('#bReset');
+  if (Date.now() - resetArm < 4000) { try { localStorage.removeItem(KEY); } catch (e) {} saveT = null; state = null; location.reload(); return; }
+  resetArm = Date.now(); b.textContent = 'Zeker weten? Tik nogmaals'; setTimeout(() => b.textContent = 'Wis alle voortgang', 4000);
+};
+addEventListener('beforeunload', () => { if (state) saveNow(); });
+
+/* ---------- opstarten ---------- */
+function ensureOriginForDemo() {
+  if (origin) return;
+  // standaard startpunt proefmodus: Havelte
+  setOrigin(52.7716, 6.2386); state.origin = { ...origin };
+  view.x = 0; view.y = 0; dirty = true;
+}
+function rebuild() {
+  if (!state.origin) return;
+  setOrigin(state.origin.lat, state.origin.lon);
+  const p = state.pts;
+  for (let i = 0; i < p.length; i += 3) { const [x, y] = proj(p[i], p[i + 1]); reveal(x, y, p[i + 2]); }
+  if (p.length) { const [x, y] = proj(p[p.length - 3], p[p.length - 2]); view.x = x; view.y = y; lastRev = { x, y }; }
+}
+async function begin(demo) {
+  $('#start').classList.add('hidden'); started = true;
+  initAudio(); keepAwake();
+  if (demo) {
+    state.settings.sim = true; ensureOriginForDemo();
+    if (!me.has) { const [la, lo] = unproj(view.x, view.y); onFix(la, lo, 5, null); }
+    toast('Proefmodus: tik op de kaart om erheen te lopen');
+  } else {
+    state.settings.sim = false; startGPS();
+  }
+  scheduleSave(); ensureTiles();
+  try { if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+}
+$('#bStart').onclick = () => begin(false);
+$('#bDemo').onclick = () => begin(true);
+if (state.pts.length) $('#bStart').textContent = 'Hervat de reis';
+
+resize(); makePatterns(); rebuild();
+if (document.fonts) document.fonts.ready.then(() => { dirty = true; });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

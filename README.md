@@ -7,3 +7,7 @@ Open `index.html` via GitHub Pages (https) zodat AR, camera en GPS werken.
 ## KamerScan
 
 `kamerscan/` – scan een kamer met de camera (WebXR/ARCore): vloer, hoeken, plafondhoogte, deuren en ramen → 3D-model + plattegrond, export naar GLB/OBJ voor Blender. Open via GitHub Pages: `/kamerscan/`.
+
+## Verkenner
+
+`verkenner/` – realtime kaart in Skyrim-stijl (perkament, inkt, kompasbalk) met fog of war: alleen waar je met GPS bent geweest trekt de mist op. Plekken (dorpen, hunebedden, molens, heuvels…) worden "ontdekt", met dagboek en statistieken. Kaartdata: © OpenStreetMap-bijdragers via Overpass. Open via GitHub Pages: `/verkenner/`.
