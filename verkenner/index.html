@@ -1410,6 +1410,11 @@ function frame(t) {
   if (!busy && t - lastT < 30) return;          // in rust ~30 fps, tijdens schuiven elk frame
   const dt = Math.min(.25, (t - lastT) / 1000); lastT = t;
   simStep(dt);
+  if (zAnim) {   // vloeiende zoom na dubbeltik
+    const p = Math.min(1, (performance.now() - zAnim.t0) / 260), e = 1 - Math.pow(1 - p, 3);
+    zoomAt(zAnim.ax, zAnim.ay, zAnim.from * Math.pow(zAnim.to / zAnim.from, e) / view.s);
+    lastInteract = performance.now(); if (p >= 1) zAnim = null;
+  }
   // kaart alleen opnieuw tekenen als het moet; tijdens schuiven/knijpen de buffer verschuiven
   {
     const k = view.s / cache.s, dx = Math.abs((cache.x - view.x) * view.s), dy = Math.abs((cache.y - view.y) * view.s);
@@ -1517,7 +1522,10 @@ function resize() {
 addEventListener('resize', resize);
 
 /* ---------- aanraken: schuiven, knijpen, tikken ---------- */
-const ptrs = new Map(); let tap = null, lastTap = 0, prevPinch = null;
+const ptrs = new Map(); let tap = null, prevSim = null, lastTap = 0, lastTapPos = null, prevPinch = null, qz = null, zAnim = null;
+// ankerpunt voor zoomen: je eigen positie als de kaart je volgt, anders het punt onder je vinger
+const zAnchor = (x, y) => follow && me.has ? [W / 2, H / 2] : [x, y];
+function animZoom(sx, sy, f) { const [ax, ay] = zAnchor(sx, sy); zAnim = { ax, ay, from: view.s, to: clamp(view.s * f, .004, 6), t0: performance.now() }; }
 function zoomAt(sx, sy, f) {
   const ns = clamp(view.s * f, .004, 6);
   const wx = view.x + (sx - W / 2) / view.s, wy = view.y + (sy - H / 2) / view.s;
@@ -1526,12 +1534,28 @@ function zoomAt(sx, sy, f) {
 }
 function setFollow(v) { follow = v; $('#bFollow').classList.toggle('on', v); if (v && me.has) { view.x = me.x; view.y = me.y; dirty = true; } }
 cv.addEventListener('pointerdown', e => {
-  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (ptrs.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false }; else { tap = null; prevPinch = null; }
+  try { cv.setPointerCapture(e.pointerId); } catch (er) {} ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const now = performance.now();
+  zAnim = null;
+  if (ptrs.size === 1 && now - lastTap < 320 && lastTapPos && Math.hypot(e.clientX - lastTapPos[0], e.clientY - lastTapPos[1]) < 50) {
+    // tweede tik: vasthouden en vegen = zoomen, loslaten zonder vegen = inzoomen
+    const [ax, ay] = zAnchor(e.clientX, e.clientY);
+    qz = { y0: e.clientY, s0: view.s, ax, ay, moved: false, x: e.clientX, y: e.clientY }; tap = null; lastTap = 0;
+    if (state.settings.sim) simTarget = prevSim;   // eerste tik was geen loopopdracht
+    return;
+  }
+  qz = null;
+  if (ptrs.size === 1) tap = { x: e.clientX, y: e.clientY, t: now, moved: false }; else { tap = null; prevPinch = null; }
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; lastInteract = performance.now();
+  if (qz && ptrs.size === 1) {
+    const d = e.clientY - qz.y0;
+    if (Math.abs(d) > 6) qz.moved = true;
+    if (qz.moved) zoomAt(qz.ax, qz.ay, clamp(qz.s0 * Math.exp(d * .011), .004, 6) / view.s, true);   // omlaag = inzoomen, omhoog = uitzoomen
+    return;
+  }
   if (ptrs.size === 1) {
     if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap.moved = true;
     if (!tap || tap.moved) { view.x -= dx / view.s; view.y -= dy / view.s; dirty = true; if (follow) setFollow(false); ensureTilesSoon(); }
@@ -1547,11 +1571,12 @@ cv.addEventListener('pointermove', e => {
 });
 function endPtr(e) {
   ptrs.delete(e.pointerId); prevPinch = null;
+  if (qz) { if (!qz.moved && e.type === 'pointerup') animZoom(qz.x, qz.y, 2); qz = null; tap = null; return; }
   if (tap && !tap.moved && performance.now() - tap.t < 350 && ptrs.size === 0) {
     const now = performance.now();
-    if (now - lastTap < 300) { zoomAt(e.clientX, e.clientY, 2); lastTap = 0; }
-    else {
-      lastTap = now;
+    {
+      lastTap = now; lastTapPos = [e.clientX, e.clientY];
+      prevSim = simTarget;
       if (state.settings.sim && origin) {
         simTarget = { x: view.x + (e.clientX - W / 2) / view.s, y: view.y + (e.clientY - H / 2) / view.s };
       }
