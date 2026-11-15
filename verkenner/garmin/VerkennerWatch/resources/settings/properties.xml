@@ -1,0 +1,7 @@
+<properties>
+    <!-- Vul hier je eigen gegevens in vóór het bouwen (zie README):
+         ServerUrl = hetzelfde adres als in Verkenner > Opties > Horloge
+         SyncKey   = de koppelsleutel die Verkenner toont -->
+    <property id="ServerUrl" type="string">https://VERVANG-MIJ.sslip.io</property>
+    <property id="SyncKey" type="string">VERVANG-MIJ</property>
+</properties>

@@ -1,0 +1,6 @@
+# Zet hier je eigen domein neer, bijvoorbeeld verkenner.jouwdomein.nl
+# Geen domein? Gebruik je server-IP met sslip.io, bijvoorbeeld:
+#   verkenner.203-0-113-7.sslip.io
+VERVANG-MIJ.sslip.io {
+	reverse_proxy sync:8787
+}

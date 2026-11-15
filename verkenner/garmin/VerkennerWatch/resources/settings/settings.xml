@@ -1,0 +1,8 @@
+<settings>
+    <setting propertyKey="@Properties.ServerUrl" title="@Strings.UrlTitle">
+        <settingConfig type="alphaNumeric" />
+    </setting>
+    <setting propertyKey="@Properties.SyncKey" title="@Strings.KeyTitle">
+        <settingConfig type="alphaNumeric" />
+    </setting>
+</settings>

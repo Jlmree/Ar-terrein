@@ -102,6 +102,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 .empty{text-align:center;font-family:'IM Fell English',serif;font-style:italic;color:var(--dim);padding:12px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(239,230,210,.08)}
 .row label{font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.inp{font-family:'IM Fell English',serif;font-size:15px;color:var(--bone);background:rgba(239,230,210,.06);border:1px solid rgba(239,230,210,.25);padding:9px 10px;border-radius:2px;outline:none;width:100%;-webkit-user-select:text;user-select:text}
+.inp:focus{border-color:var(--gold)}
 .row small{display:block;font-family:'IM Fell English',serif;font-size:13px;color:var(--dim);letter-spacing:0;text-transform:none;margin-top:2px}
 .seg{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 .seg button{font-family:'Cinzel',serif;font-size:12px;color:var(--bone);background:transparent;border:1px solid rgba(239,230,210,.25);padding:6px 9px;cursor:pointer}
@@ -196,16 +198,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
     <div class="row"><label>Geluid<small>Klank bij een ontdekking, krassende veer bij verkennen</small></label>
       <div class="seg" id="optSnd"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
     <div class="actions">
+      <button class="btn" id="bGpx">Wandeling inladen (GPX)</button>
       <button class="btn" id="bExport">Voortgang bewaren (bestand)</button>
       <button class="btn" id="bImport">Voortgang laden (bestand)</button>
       <button class="btn" id="bCache">Kaartgegevens opnieuw laden</button>
       <button class="btn danger" id="bReset">Wis alle voortgang</button>
     </div>
+    <h3>Horloge (Garmin)</h3>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px"><label>Server<small>Adres van je opslagpunt, bijv. https://verkenner.jouwdomein.nl</small></label>
+      <input id="syncUrl" class="inp" type="url" placeholder="https://…" autocomplete="off"></div>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px"><label>Koppelsleutel<small>Vul dezelfde sleutel in bij de watchface-instellingen in Garmin Connect</small></label>
+      <div style="display:flex;gap:6px"><input id="syncKey" class="inp" type="text" readonly style="flex:1"><button class="btn icon" id="bKeyCopy" title="Kopieer">⧉</button></div></div>
+    <div class="row"><label>Status<small id="syncStat">Nog niet gekoppeld</small></label><button class="btn" id="bSyncNow">Nu versturen</button></div>
     <p style="font-family:'IM Fell English',serif;font-size:12px;color:var(--dim);text-align:center;margin-top:16px">Kaartdata © OpenStreetMap-bijdragers · tegels: OpenFreeMap / OpenMapTiles</p>
     <button class="btn close" data-close>Sluiten</button>
   </div>
 </div>
 <input type="file" id="file" accept="application/json,.json">
+<input type="file" id="gpxfile" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple style="display:none">
 
 <script type="text/plain" id="wsrc">
 'use strict';
@@ -1999,7 +2009,12 @@ async function maybeIsIn() {
     if (d < (near ? 200 : inWp ? 800 : 300) || performance.now() - lastIsIn.t < (near ? 12000 : 20000)) return;
   }
   isinBusy = true; lastIsIn = { x: me.x, y: me.y, t: performance.now() };
-  const la = me.lat.toFixed(6), lo = me.lon.toFixed(6);
+  try { await isInAt(me.lat, me.lon, false); checkRegions(me.lat, me.lon); scheduleSave(); }
+  catch (e) { console.warn('is_in', e); lastIsIn.t = performance.now() - 5000; }
+  isinBusy = false;
+}
+async function isInAt(lat, lon, silent) {
+  const la = lat.toFixed(6), lo = lon.toFixed(6);
   const q = `[out:json][timeout:25];is_in(${la},${lo})->.a;
 rel(pivot.a)["boundary"="administrative"]["admin_level"~"^(4|8)$"];out tags;
 (rel(pivot.a)["boundary"="administrative"]["admin_level"="10"];
@@ -2007,7 +2022,7 @@ way(pivot.a)["leisure"="nature_reserve"]["name"];rel(pivot.a)["leisure"="nature_
 rel(pivot.a)["boundary"~"^(national_park|protected_area)$"]["name"];
 way(pivot.a)["landuse"="forest"]["name"];rel(pivot.a)["landuse"="forest"]["name"];
 way(pivot.a)["natural"~"^(wood|heath)$"]["name"];rel(pivot.a)["natural"~"^(wood|heath)$"]["name"];);out geom;`;
-  try {
+  {
     const j = await overpassJSON(q, 30000);
     for (const el of j.elements || []) {
       const t = el.tags || {}, id = el.type[0] + el.id, name = t.name;
@@ -2017,9 +2032,9 @@ way(pivot.a)["natural"~"^(wood|heath)$"]["name"];rel(pivot.a)["natural"~"^(wood|
         if (!state.adm[key][name]) {
           state.adm[key][name] = Date.now();
           const kind = key === 'p' ? 'provincie' : 'gemeente';
-          state.disc['a' + id] = { n: name, k: kind, lat: me.lat, lon: me.lon, t: Date.now() };
-          dayStat('n', 1);
-          banner({ n: name, k: kind, sub: (key === 'p' ? 'Provincie' : 'Gemeente') + ' betreden' }); progressSoon();
+          state.disc['a' + id] = { n: name, k: kind, lat, lon, t: Date.now() };
+          if (!silent) { dayStat('n', 1); banner({ n: name, k: kind, sub: (key === 'p' ? 'Provincie' : 'Gemeente') + ' betreden' }); }
+          progressSoon();
         }
         continue;
       }
@@ -2035,9 +2050,7 @@ way(pivot.a)["natural"~"^(wood|heath)$"]["name"];rel(pivot.a)["natural"~"^(wood|
       ringsLL = ringsLL.filter(r => r.length >= 8 && r[0] === r[r.length - 2] && r[1] === r[r.length - 1]);
       if (ringsLL.length) addRegion(id, name, kind, ringsLL, true);
     }
-    checkRegions(me.lat, me.lon); scheduleSave();
-  } catch (e) { console.warn('is_in', e); lastIsIn.t = performance.now() - 5000; }
-  isinBusy = false;
+  }
 }
 
 /* =====================================================================
@@ -2132,9 +2145,9 @@ nwr["natural"~"^(wood|heath)$"]["name"]${b};
    DAGEN, NIVEAUS, ERVARINGSPUNTEN EN BADGES
    ===================================================================== */
 const dayKey = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-function dayStat(f, v) {
-  if (state.settings.sim) return;                         // proefmodus telt niet mee voor dagen en tijden
-  const now = new Date(), k = dayKey(now), D = state.days[k] || (state.days[k] = { d: 0, c: 0, n: 0 });
+function dayStat(f, v, when) {
+  if (state.settings.sim && !when) return;               // proefmodus telt niet mee voor dagen en tijden
+  const now = when || new Date(), k = dayKey(now), D = state.days[k] || (state.days[k] = { d: 0, c: 0, n: 0 });
   D[f] += v;
   if (f === 'c' || f === 'n') {
     const h = now.getHours(), m = now.getMonth(), dd = now.getDate(), F = state.flags;
@@ -2292,7 +2305,7 @@ function checkProgress(silent) {
     if (!silent && state.lvlSeen) banner({ n: 'Niveau ' + L.level, sub: L.rank });
     state.lvlSeen = L.level;
   }
-  scheduleSave(); updateRegion();
+  scheduleSave(); updateRegion(); if (started) syncSoon();
 }
 function medal(cv, f, n) {
   const c = cv.getContext('2d'), s = cv.width; c.clearRect(0, 0, s, s);
@@ -2326,6 +2339,109 @@ function renderBadges(S) {
     }
   }
 }
+
+
+/* =====================================================================
+   WANDELINGEN INLADEN (GPX, bijv. opgenomen met je Garmin)
+   ===================================================================== */
+$('#bGpx').onclick = () => $('#gpxfile').click();
+$('#gpxfile').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  for (const f of files) { try { await importGpx(await f.text(), f.name); } catch (er) { console.warn(er); toast('Kon ' + f.name + ' niet lezen'); } }
+};
+async function importGpx(text, name) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const nodes = [...doc.getElementsByTagName('trkpt'), ...doc.getElementsByTagName('rtept')];
+  const pts = nodes.map(n => {
+    const tEl = n.getElementsByTagName('time')[0];
+    return { lat: +n.getAttribute('lat'), lon: +n.getAttribute('lon'), t: tEl ? new Date(tEl.textContent) : null };
+  }).filter(p => isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90);
+  if (pts.length < 2) { toast('Geen route gevonden in ' + name); return; }
+  if (!origin) { setOrigin(pts[0].lat, pts[0].lon); state.origin = { ...origin }; }
+  const sig = pts[0].lat.toFixed(5) + pts[0].lon.toFixed(5) + pts.length + (pts[0].t ? +pts[0].t : '');
+  state.gpx = state.gpx || {};
+  if (state.gpx[sig]) { toast('Deze wandeling is al ingeladen'); return; }
+  const c0 = cells.size, d0 = state.dist, R = state.settings.R;
+  let prev = null, km = 0;
+  const route = state.route || (state.route = []);
+  if (route.length && route[route.length - 1] !== null) route.push(null);
+  let lastR = null;
+  for (const p of pts) {
+    const [x, y] = proj(p.lat, p.lon), when = p.t && !isNaN(p.t) ? p.t : null;
+    if (!prev) { addPoint(p.lat, p.lon, R, false); prev = { x, y }; }
+    else {
+      const d = Math.hypot(x - prev.x, y - prev.y);
+      if (d < 10) continue;
+      if (d <= 400) {
+        km += d; state.dist += d; if (when) dayStat('d', d, when);
+        const n = Math.ceil(d / 10);
+        for (let i = 1; i <= n; i++) { const [la, lo] = unproj(prev.x + (x - prev.x) * i / n, prev.y + (y - prev.y) * i / n); addPoint(la, lo, R, false); }
+      } else { addPoint(p.lat, p.lon, R, false); route.push(null); }
+      prev = { x, y };
+    }
+    if (!lastR || Math.hypot(x - lastR.x, y - lastR.y) >= 20) { route.push(+p.lat.toFixed(6), +p.lon.toFixed(6)); lastR = { x, y }; }
+    if (when) { const k = dayKey(when), D = state.days[k] || (state.days[k] = { d: 0, c: 0, n: 0 }); }
+  }
+  route.push(null); lastRoute = null;
+  // nieuw verkende vakjes tellen voor de dag(en) van de wandeling
+  const newC = cells.size - c0, firstT = pts.find(p => p.t && !isNaN(p.t));
+  if (newC && firstT) dayStat('c', newC, firstT.t);
+  state.gpx[sig] = { n: name, t: Date.now(), km: km / 1000 };
+  for (const Rg of regions.values()) checkMilestone(Rg);
+  // kaart en vondsten langs de route ophalen, en gebieden langs de route bepalen
+  let s0 = Infinity, w0 = Infinity, n0 = -Infinity, e0 = -Infinity;
+  for (const p of pts) { s0 = Math.min(s0, p.lat); n0 = Math.max(n0, p.lat); w0 = Math.min(w0, p.lon); e0 = Math.max(e0, p.lon); }
+  setFollow(false);
+  const [cx, cy] = proj((s0 + n0) / 2, (w0 + e0) / 2); view.x = cx; view.y = cy;
+  view.s = clamp(Math.min(W / Math.max(50, (e0 - w0) * mLon), H / Math.max(50, (n0 - s0) * M_LAT)) * .8, .02, 2);
+  const want = new Set(); keysIn(s0, w0, n0, e0, want);
+  const fresh = [...want].filter(k => !tileState.has(k)); fresh.forEach(k => tileState.set(k, 'q')); tq.push(...fresh); pump();
+  for (let ty = Math.floor(s0 / XT_LAT); ty <= Math.floor(n0 / XT_LAT); ty++)
+    for (let tx = Math.floor(w0 / XT_LON); tx <= Math.floor(e0 / XT_LON); tx++) { const k = ty + '_' + tx; if (!xtState.has(k)) xtState.set(k, 'q'); }
+  pumpX();
+  scheduleSave(); progressSoon();
+  toast('Wandeling ingeladen: ' + (km / 1000).toFixed(1).replace('.', ',') + ' km, ' + (newC * CS * CS / 1e6).toFixed(2).replace('.', ',') + ' km² nieuw verkend');
+  // gebieden langs de route (elke ~800 m één vraag, hooguit 12)
+  const samples = []; let acc = 800, pp = null;
+  for (const p of pts) { if (pp) acc += Math.hypot((p.lat - pp.lat) * M_LAT, (p.lon - pp.lon) * mLon); if (acc >= 800) { samples.push(p); acc = 0; } pp = p; }
+  for (const p of samples.slice(0, 12)) { try { await isInAt(p.lat, p.lon, true); } catch (er) {} await sleep(1500); }
+  for (const Rg of regions.values()) if (Rg.k !== 'woonplaats' && Rg.got > 0 && !state.disc['r' + Rg.id]) {
+    const [la, lo] = regionCenterLL(Rg); state.disc['r' + Rg.id] = { n: Rg.n, k: Rg.k, lat: la, lon: lo, t: Date.now() };
+  }
+  scheduleSave(); progressSoon();
+}
+
+/* =====================================================================
+   HORLOGE-KOPPELING – stand naar je eigen server, de watchface leest mee
+   ===================================================================== */
+if (!state.sync) state.sync = { url: '', key: '' };
+if (!state.sync.key) { const a = new Uint8Array(12); crypto.getRandomValues(a); state.sync.key = [...a].map(b => b.toString(16).padStart(2, '0')).join(''); }
+$('#syncUrl').value = state.sync.url || '';
+$('#syncKey').value = state.sync.key;
+$('#syncUrl').onchange = () => { state.sync.url = $('#syncUrl').value.trim().replace(/\/+$/, ''); scheduleSave(); syncSoon(0); };
+$('#bKeyCopy').onclick = async () => { try { await navigator.clipboard.writeText(state.sync.key); toast('Sleutel gekopieerd'); } catch (e) { $('#syncKey').select(); } };
+$('#bSyncNow').onclick = () => syncSoon(0, true);
+let syncT = null, lastSync = '';
+function syncSoon(ms, force) { clearTimeout(syncT); syncT = setTimeout(() => doSync(force), ms == null ? 20000 : ms); }
+function syncPayload() {
+  const S = stats(), L = levelInfo(computeXP()), R = me.has ? regionAt(me.x, me.y) : null;
+  let wp = R; if (!wp) { let best = null; for (const r of regions.values()) if (r.k === 'woonplaats' && r.got && (!best || regionPct(r) > regionPct(best))) best = r; wp = best; }
+  const D = state.days[dayKey()] || { d: 0 };
+  return { l: L.level, r: L.rank, f: Math.round(L.frac * 1000) / 1000, x: L.xp, g: wp ? wp.n : '', p: wp ? Math.floor(regionPct(wp)) : 0,
+    k: Math.round(D.d / 100) / 10, s: S.streakNow, b: S.badges, bt: BADGE_TOTAL, d: S.disc, a: Math.round(S.km2 * 100) / 100, t: Math.floor(Date.now() / 1000) };
+}
+async function doSync(force) {
+  const url = state.sync.url; if (!url || !/^https:\/\//.test(url)) { $('#syncStat').textContent = url ? 'Het adres moet met https:// beginnen' : 'Nog niet gekoppeld'; return; }
+  const body = syncPayload(), sig = JSON.stringify({ ...body, t: 0 });
+  if (!force && sig === lastSync) return;
+  try {
+    const r = await fetch(url + '/v/' + state.sync.key, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body), keepalive: true });   // 'simpel' verzoek: geen CORS-voorcontrole nodig
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    lastSync = sig; $('#syncStat').textContent = 'Verstuurd om ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { $('#syncStat').textContent = 'Versturen mislukt (' + e.message + ')'; }
+}
+setInterval(() => { if (started) doSync(false); }, 120000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && started) doSync(false); });
 
 /* ---------- opstarten ---------- */
 function ensureOriginForDemo() {
