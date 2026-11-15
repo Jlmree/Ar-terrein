@@ -159,6 +159,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
       <div class="seg" id="optR"><button data-v="50">50 m</button><button data-v="100">100 m</button><button data-v="150">150 m</button><button data-v="250">250 m</button></div></div>
     <div class="row"><label>Proefmodus<small>Tik op de kaart om te lopen, GPS staat uit</small></label>
       <div class="seg" id="optSim"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
+    <div class="row"><label>Mist<small>Uit: de hele kaart zichtbaar, om rond te kijken</small></label>
+      <div class="seg" id="optFog"><button data-v="1">Aan</button><button data-v="0">Uit</button></div></div>
     <div class="row"><label>Tempo proef<small>Snelheid van je reiziger in proefmodus</small></label>
       <div class="seg" id="optSpd"><button data-v="1.5">Lopen</button><button data-v="6">Fiets</button><button data-v="30">Paard</button></div></div>
     <div class="row"><label>Geluid<small>Klank bij een ontdekking</small></label>
@@ -196,10 +198,10 @@ function unproj(x, y) { return [origin.lat - y / M_LAT, origin.lon + x / mLon]; 
 
 /* ---------- opslag ---------- */
 const KEY = 'verkenner.v1';
-let state = { origin: null, pts: [], disc: {}, dist: 0, settings: { R: 100, sound: true, sim: false, spd: 6 } };
+let state = { origin: null, pts: [], disc: {}, dist: 0, settings: { R: 100, sound: true, sim: false, spd: 6, fog: true } };
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-  if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6 }, s.settings || {}); }
+  if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6, fog: true }, s.settings || {}); }
 } catch (e) {}
 let saveT = null;
 function scheduleSave() { if (!saveT) saveT = setTimeout(saveNow, 4000); }
@@ -376,7 +378,14 @@ function ensureTiles() {
       tileKeysIn(s, w, n, e, want);
     }
   }
+  // zonder mist: alles laden wat in beeld is (niet te ver uitgezoomd)
+  if (!state.settings.fog && view.s > 0.06) {
+    const vb = viewBox(), [n, w] = unproj(vb[0], vb[1]), [s, e] = unproj(vb[2], vb[3]);
+    tileKeysIn(s, w, n, e, want);
+  }
   const [cl, co] = me.has ? [me.lat, me.lon] : unproj(view.x, view.y);
+  // wachtrij opschonen: tegels die niet meer nodig zijn eruit
+  for (let i = tq.length - 1; i >= 0; i--) if (!want.has(tq[i])) { tileState.delete(tq[i]); tq.splice(i, 1); }
   const fresh = [...want].filter(k => !tileState.has(k));
   fresh.forEach(k => tileState.set(k, 'q'));
   tq.push(...fresh);
@@ -733,7 +742,9 @@ function drawMap() {
 
   // ontdekte plekken: iconen en namen
   const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
-  const items = Object.entries(state.disc).map(([id, d]) => { const [x, y] = proj(d.lat, d.lon); return { id, ...d, x: x * s + ox, y: y * s + oy }; })
+  const src = Object.entries(state.disc).map(([id, d]) => ({ id, ...d }));
+  if (!state.settings.fog) for (const p of pois.values()) if (!state.disc[p.id]) src.push({ id: p.id, n: p.n, k: p.k, lat: p.lat, lon: p.lon, u: 1 });
+  const items = src.map(d => { const [x, y] = proj(d.lat, d.lon); return { ...d, x: x * s + ox, y: y * s + oy }; })
     .filter(d => d.x > -80 && d.y > -40 && d.x < W + 80 && d.y < H + 40)
     .sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k));
   const placed = [];
@@ -742,17 +753,19 @@ function drawMap() {
     const minS = { city: 0, town: 0, village: .03, suburb: .08, hamlet: .1, locality: .16 }[d.k] ?? .18;
     if (s < minS) continue;
     const isz = { city: 26, town: 22, village: 18, suburb: 15, hamlet: 14, locality: 9 }[d.k] || 16;
+    c.globalAlpha = d.u ? .5 : 1;
     drawIcon(c, d.k, d.x, d.y, isz, INK, '#eadcbc', 3);
-    if (!isPlace && s < .5) continue;
+    if (!isPlace && s < .5) { c.globalAlpha = 1; continue; }
     const fs = { city: 24, town: 20, village: 17, suburb: 14, hamlet: 14, locality: 13 }[d.k] || 13;
     c.font = (d.k === 'locality' || !isPlace ? 'italic ' : '') + fs + 'px ' + (isPlace && d.k !== 'locality' ? '"IM Fell English SC"' : '"IM Fell English"') + ',serif';
     try { c.letterSpacing = isPlace ? '1.5px' : '0px'; } catch (e) {}
     const label = d.n, tw = c.measureText(label).width, ly = d.y + isz / 2 + fs * .9;
     const box = [d.x - tw / 2, ly - fs, d.x + tw / 2, ly + 3];
-    if (placed.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) continue;
+    if (placed.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) { c.globalAlpha = 1; continue; }
     placed.push(box);
     c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(234,220,188,.9)'; c.strokeText(label, d.x, ly);
     c.fillStyle = INK; c.fillText(label, d.x, ly);
+    c.globalAlpha = 1;
   }
   try { c.letterSpacing = '0px'; } catch (e) {}
 }
@@ -872,7 +885,7 @@ function frame(t) {
   if (dirty) { drawMap(); dirty = false; }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(mapCv, 0, 0);
-  drawFog(t); ctx.drawImage(fogCv, 0, 0);
+  if (state.settings.fog) { drawFog(t); ctx.drawImage(fogCv, 0, 0); }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (simTarget && state.settings.sim) {
     const x = (simTarget.x - view.x) * view.s + W / 2, y = (simTarget.y - view.y) * view.s + H / 2;
@@ -1021,10 +1034,11 @@ $('#bJournal').onclick = () => {
 function syncSeg(id, val) { document.querySelectorAll(id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v == String(val))); }
 function syncSettings() {
   syncSeg('#optR', state.settings.R); syncSeg('#optSim', state.settings.sim ? 1 : 0);
-  syncSeg('#optSpd', state.settings.spd); syncSeg('#optSnd', state.settings.sound ? 1 : 0);
+  syncSeg('#optSpd', state.settings.spd); syncSeg('#optSnd', state.settings.sound ? 1 : 0); syncSeg('#optFog', state.settings.fog ? 1 : 0);
 }
 $('#bSettings').onclick = () => { syncSettings(); open('#settings'); };
 $('#optR').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.R = +v; syncSettings(); scheduleSave(); } };
+$('#optFog').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.fog = v === '1'; syncSettings(); scheduleSave(); dirty = true; ensureTiles(); } };
 $('#optSpd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.spd = +v; syncSettings(); scheduleSave(); } };
 $('#optSnd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.sound = v === '1'; syncSettings(); scheduleSave(); if (state.settings.sound) { initAudio(); chime(); } } };
 $('#optSim').onclick = e => {
