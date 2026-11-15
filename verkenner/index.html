@@ -35,7 +35,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 .btn.icon{padding:11px 14px;font-size:16px;letter-spacing:0}
 #status{position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom) + 70px);font-family:'IM Fell English',serif;font-style:italic;
   font-size:14px;color:var(--ink);text-shadow:0 0 4px #e9dcc0,0 0 8px #e9dcc0;pointer-events:none}
-#rose{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 70px);width:78px;height:78px;opacity:.85;pointer-events:none}
+#rose{position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom) + 66px);width:100px;height:100px;opacity:.9;pointer-events:none}
+#paperfx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 /* ontdekking-banner */
 #banner{position:fixed;left:0;right:0;top:24%;text-align:center;pointer-events:none;opacity:0}
 #banner.show{animation:bn 4.2s ease forwards}
@@ -92,23 +93,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 </head>
 <body>
 <canvas id="map"></canvas>
+<canvas id="paperfx"></canvas>
 <div id="vignette"></div>
 <div id="compassWrap"><canvas id="compass"></canvas></div>
 <div id="region"></div>
 <div id="status"></div>
-<svg id="rose" viewBox="-50 -50 100 100" aria-hidden="true">
-  <g fill="none" stroke="#2b1e10" stroke-width="1">
-    <circle r="30" opacity=".7"/><circle r="34" stroke-dasharray="1 3" opacity=".7"/>
-  </g>
-  <g stroke="#2b1e10" stroke-width=".8">
-    <path d="M0,-44 L6,-6 L0,0Z" fill="#2b1e10"/><path d="M0,-44 L-6,-6 L0,0Z" fill="#e9dcc0"/>
-    <path d="M0,44 L-6,6 L0,0Z" fill="#2b1e10"/><path d="M0,44 L6,6 L0,0Z" fill="#e9dcc0"/>
-    <path d="M44,0 L6,6 L0,0Z" fill="#2b1e10"/><path d="M44,0 L6,-6 L0,0Z" fill="#e9dcc0"/>
-    <path d="M-44,0 L-6,-6 L0,0Z" fill="#2b1e10"/><path d="M-44,0 L-6,6 L0,0Z" fill="#e9dcc0"/>
-    <path d="M22,-22 L4,-1 L0,0Z M-22,22 L-4,1 L0,0Z M22,22 L1,4 L0,0Z M-22,-22 L-1,-4 L0,0Z" fill="#2b1e10" opacity=".7"/>
-  </g>
-  <text y="-46" text-anchor="middle" font-family="Cinzel,serif" font-size="11" fill="#2b1e10" font-weight="700">N</text>
-</svg>
+<svg id="rose" viewBox="-62 -62 124 124" aria-hidden="true"></svg>
 <div id="banner"><div class="line"></div><div class="name"></div><div class="kind"></div><div class="line" style="margin-top:8px"></div></div>
 <div id="toast"></div>
 
@@ -163,7 +153,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
       <div class="seg" id="optFog"><button data-v="1">Aan</button><button data-v="0">Uit</button></div></div>
     <div class="row"><label>Tempo proef<small>Snelheid van je reiziger in proefmodus</small></label>
       <div class="seg" id="optSpd"><button data-v="1.5">Lopen</button><button data-v="6">Fiets</button><button data-v="30">Paard</button></div></div>
-    <div class="row"><label>Geluid<small>Klank bij een ontdekking</small></label>
+    <div class="row"><label>Reisspoor<small>Rode stippellijn van waar je bent geweest</small></label>
+      <div class="seg" id="optRoute"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
+    <div class="row"><label>Geluid<small>Klank bij een ontdekking, krassende veer bij verkennen</small></label>
       <div class="seg" id="optSnd"><button data-v="0">Uit</button><button data-v="1">Aan</button></div></div>
     <div class="actions">
       <button class="btn" id="bExport">Voortgang bewaren (bestand)</button>
@@ -198,10 +190,10 @@ function unproj(x, y) { return [origin.lat - y / M_LAT, origin.lon + x / mLon]; 
 
 /* ---------- opslag ---------- */
 const KEY = 'verkenner.v1';
-let state = { origin: null, pts: [], disc: {}, dist: 0, settings: { R: 100, sound: true, sim: false, spd: 6, fog: true } };
+let state = { origin: null, pts: [], disc: {}, dist: 0, settings: { R: 100, sound: true, sim: false, spd: 6, fog: true, route: true } };
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-  if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6, fog: true }, s.settings || {}); }
+  if (s && Array.isArray(s.pts)) { state = Object.assign(state, s); state.settings = Object.assign({ R: 100, sound: true, sim: false, spd: 6, fog: true, route: true }, s.settings || {}); }
 } catch (e) {}
 let saveT = null;
 function scheduleSave() { if (!saveT) saveT = setTimeout(saveNow, 4000); }
@@ -225,7 +217,7 @@ function maskTile(tx, ty) {
   return c;
 }
 const CS = 25; const cells = new Set();
-function reveal(x, y, r) {
+function commitMask(x, y, r) {
   const tx0 = Math.floor((x - r) / MT), tx1 = Math.floor((x + r) / MT), ty0 = Math.floor((y - r) / MT), ty1 = Math.floor((y + r) / MT);
   for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
     const g = maskTile(tx, ty).getContext('2d');
@@ -234,6 +226,13 @@ function reveal(x, y, r) {
     gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.55, 'rgba(255,255,255,.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr; g.beginPath(); g.arc(px, py, rp, 0, 7); g.fill();
   }
+}
+const anims = [];
+function reveal(x, y, r, anim) {
+  if (anim) {
+    anims.push({ x, y, r, t0: performance.now() });
+    if (anims.length > 60) { const o = anims.shift(); commitMask(o.x, o.y, o.r); }
+  } else commitMask(x, y, r);
   const rr = (r * .82) ** 2;
   for (let ix = Math.floor((x - r) / CS); ix <= Math.floor((x + r) / CS); ix++)
     for (let iy = Math.floor((y - r) / CS); iy <= Math.floor((y + r) / CS); iy++) {
@@ -249,11 +248,32 @@ function isCore(x, y, r) {
 
 /* ---------- positie verwerken ---------- */
 let lastRev = null;
-function addPoint(lat, lon, r) {
+function addPoint(lat, lon, r, anim) {
   const [x, y] = proj(lat, lon);
   if (isCore(x, y, r)) return;              // al verkend: niet opnieuw opslaan
   state.pts.push(+lat.toFixed(6), +lon.toFixed(6), r);
-  reveal(x, y, r);
+  reveal(x, y, r, anim);
+  if (anim) maybeScratch();
+}
+/* reisspoor */
+let lastRoute = null;
+function recordRoute(lat, lon, x, y) {
+  if (!state.route) state.route = [];
+  const R = state.route;
+  if (!lastRoute) { if (R.length) R.push(null); R.push(+lat.toFixed(6), +lon.toFixed(6)); lastRoute = { x, y }; return; }
+  const d = Math.hypot(x - lastRoute.x, y - lastRoute.y);
+  if (d < 20) return;
+  if (d > 400) R.push(null);
+  R.push(+lat.toFixed(6), +lon.toFixed(6)); lastRoute = { x, y };
+}
+function routeSegments() {
+  const out = [], R = state.route || []; let cur = [];
+  for (let i = 0; i < R.length;) {
+    if (R[i] === null) { if (cur.length > 2) out.push(cur); cur = []; i++; continue; }
+    const [x, y] = proj(R[i], R[i + 1]); cur.push(x, y); i += 2;
+  }
+  if (cur.length > 2) out.push(cur);
+  return out;
 }
 function onFix(lat, lon, acc, heading) {
   if (!origin) { setOrigin(lat, lon); state.origin = { lat, lon }; }
@@ -267,8 +287,9 @@ function onFix(lat, lon, acc, heading) {
   if (follow) { view.x = x; view.y = y; }
   dirty = true;
   if (acc > 80) { setStatus('GPS is onnauwkeurig (' + Math.round(acc) + ' m)…'); return; }
+  recordRoute(lat, lon, x, y);
   const R = state.settings.R;
-  if (!lastRev) { addPoint(lat, lon, R); lastRev = { x, y }; }
+  if (!lastRev) { addPoint(lat, lon, R, true); lastRev = { x, y }; }
   else {
     const d = Math.hypot(x - lastRev.x, y - lastRev.y);
     if (d >= 10) {
@@ -277,9 +298,9 @@ function onFix(lat, lon, acc, heading) {
         const n = Math.ceil(d / 10);
         for (let i = 1; i <= n; i++) {
           const t = i / n, [la, lo] = unproj(lastRev.x + (x - lastRev.x) * t, lastRev.y + (y - lastRev.y) * t);
-          addPoint(la, lo, R);
+          addPoint(la, lo, R, true);
         }
-      } else addPoint(lat, lon, R);
+      } else addPoint(lat, lon, R, true);
       lastRev = { x, y };
     }
   }
@@ -335,6 +356,25 @@ function chime() {
     ga.gain.exponentialRampToValueAtTime(.0001, t + d + len);
     o.connect(ga); ga.connect(lp); o.start(t + d); o.stop(t + d + len + .1);
   });
+}
+
+let lastScratch = 0, noiseBuf = null;
+function maybeScratch() { const n = performance.now(); if (n - lastScratch < 2600) return; lastScratch = n; scratch(); }
+function scratch() {
+  if (!state.settings.sound || !AC) return;
+  try {
+    if (!noiseBuf) { noiseBuf = AC.createBuffer(1, AC.sampleRate * .7, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const t = AC.currentTime, src = AC.createBufferSource(), bp = AC.createBiquadFilter(), hp = AC.createBiquadFilter(), g = AC.createGain();
+    src.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = 2.2; hp.type = 'highpass'; hp.frequency.value = 1600;
+    g.gain.setValueAtTime(0, t);
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let k = 0; k < n; k++) {
+      const s0 = t + .02 + k * .17 + Math.random() * .04, dur = .08 + Math.random() * .07;
+      g.gain.setValueAtTime(0, s0); g.gain.linearRampToValueAtTime(.13, s0 + .02); g.gain.linearRampToValueAtTime(0, s0 + dur);
+      bp.frequency.setValueAtTime(2400 + Math.random() * 1600, s0); bp.frequency.linearRampToValueAtTime(3600 + Math.random() * 1600, s0 + dur);
+    }
+    src.connect(bp); bp.connect(hp); hp.connect(g); g.connect(AC.destination); src.start(t); src.stop(t + .7);
+  } catch (e) {}
 }
 
 /* ---------- kaartdata (OpenStreetMap via Overpass) ---------- */
@@ -402,7 +442,7 @@ async function pump() {
   setStatus('De kartograaf tekent' + (tq.length ? ' (' + (tq.length + 1) + ')' : '') + '…');
   try {
     let rec = await idbGet(k);
-    if (!rec) { rec = { t: Date.now(), f: await fetchTile(k) }; idbPut(k, rec); }
+    if (!rec || rec.v !== 2) { rec = { v: 2, t: Date.now(), f: await fetchTile(k) }; idbPut(k, rec); }
     ingest(rec.f);
     tileState.set(k, 'ok');
   } catch (e) {
@@ -530,12 +570,12 @@ function parseOSM(j) {
     const ak = areaKind(t), lk = lineKind(t);
     if (el.type === 'way' && el.geometry) {
       const g = el.geometry, closed = g.length > 3 && g[0] && g[g.length - 1] && g[0].lat === g[g.length - 1].lat && g[0].lon === g[g.length - 1].lon;
-      if (ak && closed) out.push({ i: id, k: ak, A: 1, r: [flat(g)] });
+      if (ak && closed) out.push({ i: id, k: ak, A: 1, r: [flat(g)], n: t.name });
       else if (lk && t.area !== 'yes') out.push({ i: id, k: lk, g: flat(g) });
       else if (t.building && closed) out.push({ i: id, k: 'bld', A: 1, r: [flat(g)] });
     } else if (el.type === 'relation' && ak && el.members) {
       const rings = stitch(el.members.filter(m => m.type === 'way' && m.geometry).map(m => m.geometry));
-      if (rings.length) out.push({ i: id, k: ak, A: 1, r: rings.map(flat) });
+      if (rings.length) out.push({ i: id, k: ak, A: 1, r: rings.map(flat), n: t.name });
     }
   }
   return out;
@@ -561,7 +601,7 @@ function ingest(list) {
       pois.set(f.i, p);
       if (!state.disc[f.i] && isRevealed(x, y)) discover(p, false);
     } else if (f.A) {
-      const r = f.r.map(projFlat); (AREAS[f.k] = AREAS[f.k] || []).push({ r, bb: bbOf(r) });
+      const r = f.r.map(projFlat); (AREAS[f.k] = AREAS[f.k] || []).push({ r, bb: bbOf(r), n: f.n });
     } else {
       const c = projFlat(f.g); (LINES[f.k] = LINES[f.k] || []).push({ c, bb: bbOf([c]) });
     }
@@ -591,6 +631,22 @@ function fbmCanvas(size, octs, seed, colorFn) {
   g.putImageData(img, 0, 0); return c;
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function hash2(ix, iy) { let h = Math.imul(ix, 374761393) + Math.imul(iy, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967295; }
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix, iy), b = hash2(ix + 1, iy), c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy - .5;
+}
+function axisAngle(r) {
+  const n = r.length / 2, st = Math.max(1, Math.floor(n / 150)); let mx = 0, my = 0, k = 0;
+  for (let i = 0; i < n; i += st) { mx += r[2 * i]; my += r[2 * i + 1]; k++; }
+  mx /= k; my /= k; let xx = 0, yy = 0, xy = 0;
+  for (let i = 0; i < n; i += st) { const dx = r[2 * i] - mx, dy = r[2 * i + 1] - my; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+  let a = .5 * Math.atan2(2 * xy, xx - yy);
+  if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
+  return clamp(a, -1.05, 1.05);
+}
+const AREA_INK = { water: 'rgba(28,56,64,.85)', forest: 'rgba(40,50,18,.8)', heath: 'rgba(92,40,62,.78)', wetland: 'rgba(30,70,64,.75)', sand: 'rgba(100,70,30,.75)' };
 const paperCv = fbmCanvas(512, [[4, .5], [8, .25], [32, .15], [128, .1]], 7, (v, R) => {
   const k = clamp((v - .25) * 1.6, 0, 1), n = (R() - .5) * 10;
   return [204 + 34 * k + n, 180 + 32 * k + n, 132 + 30 * k + n, 255];
@@ -685,17 +741,25 @@ function drawMap() {
   c.fillStyle = PAT.mpaper; c.fillRect(0, 0, W, H);
   c.lineCap = 'round'; c.lineJoin = 'round';
   const minD = 1.2;
-  function addRing(r, close) {
-    let lx = r[0] * s + ox, ly = r[1] * s + oy; c.moveTo(lx, ly);
+  const jx = (px, py) => noise2((px - ox) / 22, (py - oy) / 22) * 2.6;
+  const jy = (px, py) => noise2((px - ox) / 22 + 41.3, (py - oy) / 22 + 17.9) * 2.6;
+  function addRing(r, close, wob) {
+    let lx = r[0] * s + ox, ly = r[1] * s + oy;
+    if (wob) c.moveTo(lx + jx(lx, ly), ly + jy(lx, ly)); else c.moveTo(lx, ly);
     const n = r.length;
     for (let i = 2; i < n; i += 2) {
       const x = r[i] * s + ox, y = r[i + 1] * s + oy;
       if (i < n - 2 && Math.abs(x - lx) < minD && Math.abs(y - ly) < minD) continue;
-      c.lineTo(x, y); lx = x; ly = y;
+      if (wob) {
+        const k = Math.min(40, Math.floor(Math.hypot(x - lx, y - ly) / 12));
+        for (let j = 1; j <= k; j++) { const t = j / (k + 1), px = lx + (x - lx) * t, py = ly + (y - ly) * t; c.lineTo(px + jx(px, py), py + jy(px, py)); }
+        c.lineTo(x + jx(x, y), y + jy(x, y));
+      } else c.lineTo(x, y);
+      lx = x; ly = y;
     }
     if (close) c.closePath();
   }
-  function area(kind, fill, pat, stroke, lw, minS) {
+  function area(kind, fill, pat, stroke, lw, minS, wob) {
     const L = AREAS[kind]; if (!L || s < (minS || 0)) return;
     c.beginPath(); const multi = [];
     let any = false;
@@ -703,7 +767,7 @@ function drawMap() {
       if (!hit(f.bb, vb)) continue;
       if ((f.bb[2] - f.bb[0]) * s < 1.5 && (f.bb[3] - f.bb[1]) * s < 1.5) continue;
       if (f.r.length > 1) { multi.push(f); continue; }
-      addRing(f.r[0], true); any = true;
+      addRing(f.r[0], true, wob); any = true;
     }
     const paint = rule => {
       if (fill) { c.fillStyle = fill; c.fill(rule); }
@@ -711,37 +775,75 @@ function drawMap() {
       if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
     };
     if (any) paint('nonzero');
-    for (const f of multi) { c.beginPath(); for (const r of f.r) addRing(r, true); paint('evenodd'); }
+    for (const f of multi) { c.beginPath(); for (const r of f.r) addRing(r, true, wob); paint('evenodd'); }
   }
-  function lines(kind, style, w, dash, minS) {
+  function lines(kind, style, w, dash, minS, sketch) {
     const L = LINES[kind]; if (!L || s < (minS || 0)) return;
     c.beginPath(); let any = false;
-    for (const f of L) { if (!hit(f.bb, vb)) continue; addRing(f.c, false); any = true; }
+    for (const f of L) { if (!hit(f.bb, vb)) continue; addRing(f.c, false, true); any = true; }
     if (!any) return;
-    c.setLineDash(dash || []); c.strokeStyle = style; c.lineWidth = w; c.stroke(); c.setLineDash([]);
+    c.setLineDash(dash || []); c.strokeStyle = style; c.lineWidth = w; c.stroke();
+    if (sketch) { c.save(); c.translate(.8, .6); c.globalAlpha = .35; c.lineWidth = Math.max(.6, w * .55); c.stroke(); c.restore(); }
+    c.setLineDash([]);
   }
   const zf = clamp(Math.sqrt(s / .3), .55, 2.4);
 
   area('resid', null, PAT.hatch, null, 0, .02);
-  area('sand', 'rgba(222,190,128,.35)', PAT.sand, 'rgba(120,90,50,.35)', .8);
-  area('heath', 'rgba(150,104,112,.16)', PAT.heath, 'rgba(96,52,70,.3)', .8, .03);
-  area('wetland', 'rgba(90,124,112,.14)', PAT.wet, null, 0, .03);
-  area('forest', 'rgba(96,106,58,.26)', s > .03 ? PAT.tree : null, 'rgba(58,60,28,.55)', 1);
-  // water met inktrand en echolijn
-  area('water', 'rgba(118,146,148,.62)', null, 'rgba(60,84,88,.18)', 6 * zf);
-  area('water', null, null, 'rgba(42,62,66,.85)', 1.2);
+  area('sand', 'rgba(222,190,128,.35)', PAT.sand, 'rgba(120,90,50,.35)', .8, 0, true);
+  area('heath', 'rgba(150,104,112,.16)', PAT.heath, 'rgba(96,52,70,.3)', .8, .03, true);
+  area('wetland', 'rgba(90,124,112,.14)', PAT.wet, null, 0, .03, true);
+  area('forest', 'rgba(96,106,58,.26)', s > .03 ? PAT.tree : null, 'rgba(58,60,28,.55)', 1, 0, true);
+  // water met inktrand en echolijnen
+  area('water', 'rgba(118,146,148,.62)', null, 'rgba(60,84,88,.16)', 9 * zf, 0, true);
+  area('water', null, null, 'rgba(60,84,88,.22)', 4 * zf, 0, true);
+  area('water', null, null, 'rgba(42,62,66,.85)', 1.3, 0, true);
   lines('stream', 'rgba(62,92,98,.8)', 1 * zf, null, .08);
-  lines('river', 'rgba(62,92,98,.9)', 3 * zf);
+  lines('river', 'rgba(62,92,98,.9)', 3 * zf, null, 0, true);
   area('bld', 'rgba(74,50,30,.55)', null, null, 0, .35);
   lines('path', 'rgba(52,36,20,.75)', .9 * zf, [1.5 * zf, 3.2 * zf], .25);
   lines('track', 'rgba(52,36,20,.7)', 1 * zf, [5 * zf, 3 * zf], .12);
   lines('hw4', 'rgba(43,30,16,.6)', .8 * zf, null, .45);
-  lines('hw3', 'rgba(43,30,16,.82)', 1.3 * zf, null, .07);
-  lines('hw2', INK, 2.3 * zf, null, .015);
-  lines('hw1', INK, 4.6 * zf);
+  lines('hw3', 'rgba(43,30,16,.82)', 1.3 * zf, null, .07, true);
+  lines('hw2', INK, 2.3 * zf, null, .015, true);
+  lines('hw1', INK, 4.6 * zf, null, 0, true);
   lines('hw1', '#eadcbc', 2.2 * zf);
   lines('rail', INK, 1.6 * zf, null, .02);
   lines('rail', INK, 5 * zf, [1, 6 * zf], .1);
+
+  // reisspoor: rode stippellijn
+  if (state.settings.route) {
+    c.beginPath();
+    for (const seg of routeSegments()) addRing(seg, false, true);
+    c.setLineDash([7, 6]); c.strokeStyle = 'rgba(150,30,20,.8)'; c.lineWidth = 2.2; c.stroke(); c.setLineDash([]);
+  }
+
+  // gebiedsnamen: bossen, heides, meren
+  const named = new Set(), aplaced = [];
+  for (const kind of ['water', 'forest', 'heath', 'wetland', 'sand']) {
+    const L = AREAS[kind]; if (!L) continue;
+    for (const f of L) {
+      if (!f.n || named.has(f.n) || !hit(f.bb, vb)) continue;
+      const bw = (f.bb[2] - f.bb[0]) * s, bh = (f.bb[3] - f.bb[1]) * s;
+      if (Math.max(bw, bh) < 110 || Math.min(bw, bh) < 26) continue;
+      const cx = (f.bb[0] + f.bb[2]) / 2, cy = (f.bb[1] + f.bb[3]) / 2;
+      if (state.settings.fog && !isRevealed(cx, cy)) continue;
+      if (f.ang == null) f.ang = axisAngle(f.r[0]);
+      const label = kind === 'water' ? f.n : f.n.toUpperCase();
+      const fs = clamp(Math.sqrt(bw * bh) / 10, 12, 30);
+      c.font = 'italic ' + fs + 'px "IM Fell English",serif';
+      try { c.letterSpacing = (kind === 'water' ? fs * .12 : fs * .32).toFixed(1) + 'px'; } catch (e) {}
+      const tw = c.measureText(label).width;
+      if (tw > Math.max(bw, bh) * 1.15) continue;
+      const sx = cx * s + ox, sy = cy * s + oy, ca = Math.abs(Math.cos(f.ang)), sa = Math.abs(Math.sin(f.ang));
+      const hw = ca * tw / 2 + sa * fs / 2, hh = sa * tw / 2 + ca * fs / 2, box = [sx - hw, sy - hh, sx + hw, sy + hh];
+      if (aplaced.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) continue;
+      aplaced.push(box); named.add(f.n);
+      c.save(); c.translate(sx, sy); c.rotate(f.ang); c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(label, 0, 0);
+      c.fillStyle = AREA_INK[kind]; c.fillText(label, 0, 0); c.restore();
+    }
+  }
+  try { c.letterSpacing = '0px'; } catch (e) {}
 
   // ontdekte plekken: iconen en namen
   const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
@@ -787,6 +889,16 @@ function drawFog(t) {
     const x = m._x * MT * s + ox, y = m._y * MT * s + oy;
     if (x > W || y > H || x + sz < 0 || y + sz < 0) continue;
     c.drawImage(m, x, y, sz, sz);
+  }
+  // nieuw gebied: mist lost langzaam op
+  const now = performance.now();
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const a = anims[i], p = (now - a.t0) / 1100;
+    if (p >= 1) { commitMask(a.x, a.y, a.r); anims.splice(i, 1); continue; }
+    const e = 1 - Math.pow(1 - p, 3), x = a.x * s + ox, y = a.y * s + oy, rr = a.r * s * (.3 + .7 * e);
+    const g = c.createRadialGradient(x, y, 0, x, y, rr);
+    g.addColorStop(0, 'rgba(0,0,0,' + e + ')'); g.addColorStop(.55, 'rgba(0,0,0,' + (.95 * e) + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, rr, 0, 7); c.fill();
   }
   c.globalCompositeOperation = 'source-over';
 }
@@ -878,6 +990,27 @@ function updateRegion() {
   $('#region').textContent = best ? best.n : '';
 }
 
+(function buildRose() {
+  const ink = '#2b1e10', pap = '#eadcbc', f = v => v.toFixed(2); let h = '';
+  h += `<circle r="45" fill="rgba(234,220,188,.45)" stroke="${ink}" stroke-width="1.3"/><circle r="41" fill="none" stroke="${ink}" stroke-width=".6"/><circle r="24" fill="none" stroke="${ink}" stroke-width=".5" stroke-dasharray="1 2"/>`;
+  for (let i = 0; i < 72; i++) {
+    const a = i * 5 * Math.PI / 180, r2 = i % 18 === 0 ? 34 : i % 6 === 0 ? 37 : 39;
+    h += `<line x1="${f(Math.sin(a) * 41)}" y1="${f(-Math.cos(a) * 41)}" x2="${f(Math.sin(a) * r2)}" y2="${f(-Math.cos(a) * r2)}" stroke="${ink}" stroke-width="${i % 6 === 0 ? .9 : .45}"/>`;
+  }
+  const star = (deg, len, w) => {
+    const a = deg * Math.PI / 180, tx = Math.sin(a) * len, ty = -Math.cos(a) * len, lx = Math.cos(a) * w, ly = Math.sin(a) * w;
+    return `<path d="M0,0 L${f(lx)},${f(ly)} L${f(tx)},${f(ty)}Z" fill="${ink}" stroke="${ink}" stroke-width=".5"/><path d="M0,0 L${f(-lx)},${f(-ly)} L${f(tx)},${f(ty)}Z" fill="${pap}" stroke="${ink}" stroke-width=".5"/>`;
+  };
+  for (let a = 22.5; a < 360; a += 45) h += star(a, 21, 2.4);
+  for (let a = 45; a < 360; a += 90) h += star(a, 31, 3.8);
+  for (let a = 0; a < 360; a += 90) h += star(a, 47, 6);
+  h += `<circle r="3.2" fill="${pap}" stroke="${ink}" stroke-width=".8"/><circle r="1.2" fill="${ink}"/>`;
+  h += `<path d="M0,-61 C3.5,-57 4,-54 0,-50 C-4,-54 -3.5,-57 0,-61Z M0.6,-51 C4,-58 10,-56 7.5,-51 C6.5,-52.5 4,-52.5 1.5,-49.5Z M-0.6,-51 C-4,-58 -10,-56 -7.5,-51 C-6.5,-52.5 -4,-52.5 -1.5,-49.5Z" fill="${ink}"/><rect x="-5" y="-49.6" width="10" height="1.6" fill="${ink}"/>`;
+  const t = (x, y, l) => `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle" font-family="Cinzel,serif" font-weight="700" font-size="9" fill="${ink}">${l}</text>`;
+  h += t(54, 0, 'O') + t(0, 55, 'Z') + t(-54, 0, 'W');
+  $('#rose').innerHTML = h;
+})();
+
 /* ---------- hoofdlus ---------- */
 let lastT = 0, simTarget = null;
 function frame(t) {
@@ -889,10 +1022,16 @@ function frame(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(mapCv, 0, 0);
   if (state.settings.fog) { drawFog(t); ctx.drawImage(fogCv, 0, 0); }
+  else while (anims.length) { const a = anims.pop(); commitMask(a.x, a.y, a.r); }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (simTarget && state.settings.sim) {
     const x = (simTarget.x - view.x) * view.s + W / 2, y = (simTarget.y - view.y) * view.s + H / 2;
     ctx.strokeStyle = 'rgba(43,30,16,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke();
+  }
+  if (state.settings.fog) for (const a of anims) {   // inkt die uitvloeit
+    const p = (performance.now() - a.t0) / 1100; if (p >= 1) continue;
+    const x = (a.x - view.x) * view.s + W / 2, y = (a.y - view.y) * view.s + H / 2, rr = a.r * view.s * (.3 + .7 * (1 - Math.pow(1 - p, 3))) * .8;
+    ctx.strokeStyle = 'rgba(60,38,15,' + ((1 - p) * .28).toFixed(3) + ')'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.stroke();
   }
   drawPlayer(); drawScale(); drawCompass();
   if (t - regionT > 1500) { regionT = t; updateRegion(); }
@@ -907,11 +1046,51 @@ function simStep(dt) {
 }
 
 /* ---------- formaat ---------- */
+const pcv = $('#paperfx'), pctx = pcv.getContext('2d');
+function makePaperFx() {
+  pcv.width = Math.round(W * DPR); pcv.height = Math.round(H * DPR);
+  const c = pctx; c.setTransform(DPR, 0, 0, DPR, 0, 0); c.clearRect(0, 0, W, H);
+  const R = rng(9137);
+  // vlekken en kringen
+  for (let i = 0; i < 6; i++) {
+    const x = R() * W, y = R() * H, r = 30 + R() * 90;
+    const g = c.createRadialGradient(x, y, r * .7, x, y, r);
+    g.addColorStop(0, 'rgba(120,78,30,0)'); g.addColorStop(.88, 'rgba(120,78,30,.09)'); g.addColorStop(1, 'rgba(120,78,30,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+    if (R() < .6) { const g2 = c.createRadialGradient(x, y, 0, x, y, r * .75); g2.addColorStop(0, 'rgba(110,70,25,.06)'); g2.addColorStop(1, 'rgba(110,70,25,0)'); c.fillStyle = g2; c.fill(); }
+  }
+  // vouwen
+  const fold = (x0, y0, x1, y1) => {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy), nx = -dy / L * 14, ny = dx / L * 14, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    const g = c.createLinearGradient(mx - nx, my - ny, mx + nx, my + ny);
+    g.addColorStop(0, 'rgba(70,45,20,0)'); g.addColorStop(.42, 'rgba(70,45,20,.1)'); g.addColorStop(.5, 'rgba(50,30,10,.2)');
+    g.addColorStop(.53, 'rgba(255,248,230,.2)'); g.addColorStop(.7, 'rgba(255,248,230,.06)'); g.addColorStop(1, 'rgba(255,248,230,0)');
+    c.fillStyle = g; c.beginPath(); c.moveTo(x0 - nx, y0 - ny); c.lineTo(x1 - nx, y1 - ny); c.lineTo(x1 + nx, y1 + ny); c.lineTo(x0 + nx, y0 + ny); c.closePath(); c.fill();
+  };
+  fold(W * .5 + 3, 0, W * .5 - 4, H);
+  fold(0, H * .34, W, H * .34 + 5);
+  fold(0, H * .67 + 4, W, H * .67 - 3);
+  // gescheurde, geschroeide rand
+  const per = 2 * (W + H), pts = [];
+  for (let d = 0; d < per; d += 5) {
+    let x, y, nx, ny;
+    if (d < W) { x = d; y = 0; nx = 0; ny = 1; } else if (d < W + H) { x = W; y = d - W; nx = -1; ny = 0; }
+    else if (d < 2 * W + H) { x = W - (d - W - H); y = H; nx = 0; ny = -1; } else { x = 0; y = H - (d - 2 * W - H); nx = 1; ny = 0; }
+    const ins = 4 + (noise2(d / 45, 3.3) + .5) * 11 + (noise2(d / 8, 7.1) + .5) * 4;
+    pts.push(x + nx * ins, y + ny * ins);
+  }
+  const ring = () => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.closePath(); };
+  c.save(); ring(); c.lineWidth = 16; c.strokeStyle = 'rgba(90,52,18,.28)'; try { c.filter = 'blur(6px)'; } catch (e) {} c.stroke(); c.restore();
+  c.beginPath(); c.rect(-5, -5, W + 10, H + 10); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.closePath();
+  c.fillStyle = 'rgba(24,14,6,.94)'; c.fill('evenodd');
+  ring(); c.lineWidth = 1.3; c.strokeStyle = 'rgba(55,30,10,.75)'; c.stroke();
+}
 function resize() {
   DPR = Math.min(devicePixelRatio || 1, 2);
   W = innerWidth; H = innerHeight;
   for (const c of [cv, mapCv, fogCv]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  makePaperFx();
   dirty = true;
 }
 addEventListener('resize', resize);
@@ -1037,11 +1216,12 @@ $('#bJournal').onclick = () => {
 function syncSeg(id, val) { document.querySelectorAll(id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v == String(val))); }
 function syncSettings() {
   syncSeg('#optR', state.settings.R); syncSeg('#optSim', state.settings.sim ? 1 : 0);
-  syncSeg('#optSpd', state.settings.spd); syncSeg('#optSnd', state.settings.sound ? 1 : 0); syncSeg('#optFog', state.settings.fog ? 1 : 0);
+  syncSeg('#optSpd', state.settings.spd); syncSeg('#optSnd', state.settings.sound ? 1 : 0); syncSeg('#optFog', state.settings.fog ? 1 : 0); syncSeg('#optRoute', state.settings.route ? 1 : 0);
 }
 $('#bSettings').onclick = () => { syncSettings(); open('#settings'); };
 $('#optR').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.R = +v; syncSettings(); scheduleSave(); } };
 $('#optFog').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.fog = v === '1'; syncSettings(); scheduleSave(); dirty = true; ensureTiles(); } };
+$('#optRoute').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.route = v === '1'; syncSettings(); scheduleSave(); dirty = true; } };
 $('#optSpd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.spd = +v; syncSettings(); scheduleSave(); } };
 $('#optSnd').onclick = e => { const v = e.target.dataset.v; if (v) { state.settings.sound = v === '1'; syncSettings(); scheduleSave(); if (state.settings.sound) { initAudio(); chime(); } } };
 $('#optSim').onclick = e => {
@@ -1086,6 +1266,14 @@ function rebuild() {
   setOrigin(state.origin.lat, state.origin.lon);
   const p = state.pts;
   for (let i = 0; i < p.length; i += 3) { const [x, y] = proj(p[i], p[i + 1]); reveal(x, y, p[i + 2]); }
+  if (!state.route) {   // oude voortgang: spoor afleiden uit verkende punten
+    state.route = []; let lx = null, ly = null;
+    for (let i = 0; i < p.length; i += 3) {
+      const [x, y] = proj(p[i], p[i + 1]), d = lx == null ? 0 : Math.hypot(x - lx, y - ly);
+      if (lx != null && d > 60) state.route.push(null);
+      if (lx == null || d >= 20) { state.route.push(p[i], p[i + 1]); lx = x; ly = y; }
+    }
+  }
   if (p.length) { const [x, y] = proj(p[p.length - 3], p[p.length - 2]); view.x = x; view.y = y; lastRev = { x, y }; }
 }
 async function begin(demo) {
