@@ -35,7 +35,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 .btn.icon{padding:11px 14px;font-size:16px;letter-spacing:0}
 #status{position:fixed;left:14px;bottom:calc(env(safe-area-inset-bottom) + 70px);font-family:'IM Fell English',serif;font-style:italic;
   font-size:14px;color:var(--ink);text-shadow:0 0 4px #e9dcc0,0 0 8px #e9dcc0;pointer-events:none}
-#rose{position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom) + 66px);width:100px;height:100px;opacity:.9;pointer-events:none}
+#rose{position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom) + 66px);width:100px;height:100px;opacity:.9;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}
 #paperfx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 /* ontdekking-banner */
 #banner{position:fixed;left:0;right:0;top:24%;text-align:center;pointer-events:none;opacity:0}
@@ -451,7 +451,7 @@ function requestRender() {
 const fogCv = document.createElement('canvas'), fctx = fogCv.getContext('2d');
 const ccv = $('#compass'), cctx = ccv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
-const MG = 280;                 // marge rond het scherm in de kaartbuffer (px)
+let MG = 280;                   // marge rond het scherm in de kaartbuffer (px), groot genoeg om te draaien
 const FD = 1;                   // resolutie van de mistlaag (zacht, dus laag is prima)
 let cache = { x: 0, y: 0, s: 1, ri: 0, cw: 0, ch: 0 }, lastInteract = 0;
 function cacheDims() { return [W + 2 * MG, H + 2 * MG]; }
@@ -479,7 +479,7 @@ function saveNow() {
 }
 
 /* ---------- view & speler ---------- */
-const view = { x: 0, y: 0, s: 0.9 };            // s = pixels per meter
+const view = { x: 0, y: 0, s: 0.9, r: 0 };      // s = pixels per meter, r = draaiing van de kaart (radialen)
 const me = { has: false, x: 0, y: 0, lat: 0, lon: 0, acc: 0, gpsHead: null, moveHead: null, shownHead: 0 };
 let follow = true, dirty = true, started = false;
 
@@ -1212,17 +1212,30 @@ function drawIcon(c, k, x, y, size, fill, stroke, lw) {
 }
 
 /* ---------- tekenen ---------- */
-function viewBox() { const s = view.s; return [view.x - W / 2 / s, view.y - H / 2 / s, view.x + W / 2 / s, view.y + H / 2 / s]; }
+function viewBox() {
+  const s = view.s, hx = (view.r ? Math.hypot(W, H) : W) / 2 / s, hy = (view.r ? Math.hypot(W, H) : H) / 2 / s;
+  return [view.x - hx, view.y - hy, view.x + hx, view.y + hy];
+}
+const normA = a => { a = (a + Math.PI) % (2 * Math.PI); if (a < 0) a += 2 * Math.PI; return a - Math.PI; };
+function toScreen(wx, wy) {
+  const dx = (wx - view.x) * view.s, dy = (wy - view.y) * view.s, c = Math.cos(view.r), s = Math.sin(view.r);
+  return [W / 2 + dx * c - dy * s, H / 2 + dx * s + dy * c];
+}
+function toWorld(sx, sy) {
+  const dx = sx - W / 2, dy = sy - H / 2, c = Math.cos(view.r), s = Math.sin(view.r);
+  return [view.x + (dx * c + dy * s) / view.s, view.y + (-dx * s + dy * c) / view.s];
+}
 const hit = (b, v) => !(b[0] > v[2] || b[2] < v[0] || b[1] > v[3] || b[3] < v[1]);
 function drawLabels() {
-  const c = ctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s;
+  const c = ctx, s = view.s;
   // gebiedsnamen (berekend door de tekenwerker, hier scherp getekend op de huidige zoom)
   for (const L of wLabels) {
-    const sx = L.x * s + ox, sy = L.y * s + oy;
+    const [sx, sy] = toScreen(L.x, L.y);
     if (sx < -250 || sy < -80 || sx > W + 250 || sy > H + 80) continue;
     c.font = 'italic ' + L.fs + 'px "IM Fell English",serif';
     try { c.letterSpacing = L.sp.toFixed(1) + 'px'; } catch (e) {}
-    c.save(); c.translate(sx, sy); c.rotate(L.ang); c.textAlign = 'center'; c.textBaseline = 'middle';
+    let la = normA(L.ang + view.r); if (la > Math.PI / 2) la -= Math.PI; if (la < -Math.PI / 2) la += Math.PI;
+    c.save(); c.translate(sx, sy); c.rotate(la); c.textAlign = 'center'; c.textBaseline = 'middle';
     c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(L.t, 0, 0);
     c.fillStyle = L.ink; c.fillText(L.t, 0, 0); c.restore();
   }
@@ -1231,7 +1244,7 @@ function drawLabels() {
   const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
   const src = Object.entries(state.disc).map(([id, d]) => ({ id, ...d }));
   if (!state.settings.fog) for (const p of pois.values()) if (!state.disc[p.id]) src.push({ id: p.id, n: p.n, k: p.k, lat: p.lat, lon: p.lon, u: 1 });
-  const items = src.map(d => { const [x, y] = projMemo(d.id, d.lat, d.lon); return { ...d, x: x * s + ox, y: y * s + oy }; })
+  const items = src.map(d => { const [x, y] = projMemo(d.id, d.lat, d.lon); const q = toScreen(x, y); return { ...d, x: q[0], y: q[1] }; })
     .filter(d => d.x > -80 && d.y > -40 && d.x < W + 80 && d.y < H + 40)
     .sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k));
   const placed = [];
@@ -1261,24 +1274,26 @@ const pm = new Map();
 function projMemo(id, lat, lon) { let v = pm.get(id); if (!v) { v = proj(lat, lon); pm.set(id, v); } return v; }
 const FS = { u: 0, v: 0, x: 0, y: 0, s: 0 };
 function drawFog(t) {
-  const c = fctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s;
+  const c = fctx, s = view.s, ox = W / 2 - view.x * s, oy = H / 2 - view.y * s, D = view.r ? Math.hypot(W, H) / 2 : 0;
   c.setTransform(FD, 0, 0, FD, 0, 0);
+  c.clearRect(0, 0, W, H);
+  if (view.r) { c.translate(W / 2, H / 2); c.rotate(view.r); c.translate(-W / 2, -H / 2); }
   c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
-  c.fillStyle = '#7f7a71'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#7f7a71'; c.fillRect(-D, -D, W + 2 * D, H + 2 * D);
   // wolken schuiven mee met de kaart en zoomen rond het midden van het scherm (geen sprongen bij zoomen)
   const sc = clamp(Math.pow(s / .9, .35), .45, 2.2);
   if (FS.s) { FS.u += (FS.x - view.x) * s / sc; FS.v += (FS.y - view.y) * s / sc; }
   FS.x = view.x; FS.y = view.y; FS.s = s;
   const lay = (k, du, dv) => new DOMMatrix().translateSelf(W / 2, H / 2).scaleSelf(sc * k, sc * k).translateSelf(FS.u / k + du, FS.v / k + dv);
   PAT.cloud.setTransform(lay(2.4, t * .0025, t * .001));
-  c.fillStyle = PAT.cloud; c.fillRect(0, 0, W, H);
+  c.fillStyle = PAT.cloud; c.fillRect(-D, -D, W + 2 * D, H + 2 * D);
   PAT.cloud.setTransform(lay(1.3, -t * .003, t * .0023));
-  c.globalAlpha = .55; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+  c.globalAlpha = .55; c.fillRect(-D, -D, W + 2 * D, H + 2 * D); c.globalAlpha = 1;
   c.globalCompositeOperation = 'destination-out'; c.imageSmoothingEnabled = true;
   const sz = MT * s;
   for (const m of masks.values()) {
     const x = m._x * MT * s + ox, y = m._y * MT * s + oy;
-    if (x > W || y > H || x + sz < 0 || y + sz < 0) continue;
+    if (x > W + D || y > H + D || x + sz < -D || y + sz < -D) continue;
     c.drawImage(m, x, y, sz, sz);
   }
   // nieuw gebied: mist lost langzaam op
@@ -1300,11 +1315,11 @@ function headingNow() {
 }
 function drawPlayer() {
   if (!me.has) return;
-  const c = ctx, s = view.s, x = (me.x - view.x) * s + W / 2, y = (me.y - view.y) * s + H / 2;
+  const c = ctx, s = view.s, [x, y] = toScreen(me.x, me.y);
   if (me.acc > 12) { c.beginPath(); c.arc(x, y, me.acc * s, 0, 7); c.fillStyle = 'rgba(200,150,40,.12)'; c.fill(); c.strokeStyle = 'rgba(120,80,20,.3)'; c.lineWidth = 1; c.stroke(); }
   const h = headingNow();
   if (h != null) { let d = ((h - me.shownHead + 540) % 360) - 180; me.shownHead = (me.shownHead + d * .25 + 360) % 360; }
-  c.save(); c.translate(x, y); c.rotate(me.shownHead * Math.PI / 180);
+  c.save(); c.translate(x, y); c.rotate(me.shownHead * Math.PI / 180 + view.r);
   c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 8;
   const g = c.createLinearGradient(0, -15, 0, 11); g.addColorStop(0, '#f6dc8e'); g.addColorStop(1, '#94701f');
   c.beginPath(); c.moveTo(0, -15); c.lineTo(10, 11); c.lineTo(0, 5); c.lineTo(-10, 11); c.closePath();
@@ -1404,6 +1419,18 @@ function updateRegion() {
 
 /* ---------- hoofdlus ---------- */
 let lastT = 0, simTarget = null;
+let rAnim = null, headUp = false, roseR = 0;
+// waar ligt de kaartbuffer t.o.v. het scherm, en hoeveel ruimte is er nog over (ook als de kaart gedraaid is)
+function bufGeom() {
+  const k = view.s / cache.s, hw = cache.cw * k / 2, hh = cache.ch * k / 2;
+  const bcx = (cache.x - view.x) * view.s, bcy = (cache.y - view.y) * view.s, c = Math.cos(view.r), s = Math.sin(view.r);
+  let slack = Infinity;
+  for (const [qx, qy] of [[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]]) {
+    const ux = qx * c + qy * s, uy = -qx * s + qy * c;
+    slack = Math.min(slack, hw - Math.abs(ux - bcx), hh - Math.abs(uy - bcy));
+  }
+  return { hw, hh, x0: W / 2 + bcx - hw, y0: H / 2 + bcy - hh, slack };
+}
 function frame(t) {
   requestAnimationFrame(frame);
   const busy = ptrs.size > 0 || t - lastInteract < 250;
@@ -1416,20 +1443,29 @@ function frame(t) {
     lastInteract = performance.now(); if (p >= 1) zAnim = null;
   }
   // kaart alleen opnieuw tekenen als het moet; tijdens schuiven/knijpen de buffer verschuiven
+  if (rAnim) {   // terug naar het noorden
+    const p = Math.min(1, (performance.now() - rAnim.t0) / 350), e = 1 - Math.pow(1 - p, 3), [ax, ay] = zAnchor(W / 2, H / 2);
+    rotateAt(ax, ay, rAnim.from * (1 - e) - view.r); lastInteract = performance.now(); if (p >= 1) { rotateAt(ax, ay, -view.r); rAnim = null; }
+  }
+  if (headUp && follow && me.has) {   // kaart draait mee met je looprichting
+    const h = headingNow();
+    if (h != null) { const d = normA(-h * Math.PI / 180 - view.r); if (Math.abs(d) > .002) { rotateAt(W / 2, H / 2, d * .15); lastInteract = performance.now(); } }
+  }
+  if (view.r !== roseR) { roseR = view.r; $('#rose').style.transform = 'rotate(' + view.r.toFixed(4) + 'rad)'; }
   {
-    const k = view.s / cache.s, dx = Math.abs((cache.x - view.x) * view.s), dy = Math.abs((cache.y - view.y) * view.s);
-    const moved = Math.abs(k - 1) > .003 || dx > MG * .6 || dy > MG * .6;
-    const exposed = dx > MG * .95 || dy > MG * .95 || k < .8;
+    const g = bufGeom(), k = view.s / cache.s;
+    const moved = Math.abs(k - 1) > .003 || g.slack < MG * .4;
     const tail = (state.route || []).length - cache.ri > 60;
-    const needBusy = Math.abs(k - 1) > .04 || dx > MG * .35 || dy > MG * .35;
-    if (!wBusy && (busy ? (needBusy || exposed) && t - lastReq > 90 : (dirty || moved || tail || !mapBmp))) requestRender();
+    const needBusy = Math.abs(k - 1) > .04 || g.slack < MG * .25;
+    if (!wBusy && (busy ? (needBusy || g.slack < 0) && t - lastReq > 90 : (dirty || moved || tail || !mapBmp))) requestRender();
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   {
-    const k = view.s / cache.s, dw = cache.cw * k, dh = cache.ch * k;
-    const x0 = (cache.x - view.x) * view.s + W / 2 - dw / 2, y0 = (cache.y - view.y) * view.s + H / 2 - dh / 2;
-    if (!mapBmp || x0 > 0 || y0 > 0 || x0 + dw < W || y0 + dh < H) { ctx.fillStyle = '#dcc8a0'; ctx.fillRect(0, 0, cv.width, cv.height); }
-    if (mapBmp) ctx.drawImage(mapBmp, x0 * DPR, y0 * DPR, dw * DPR, dh * DPR);
+    const g = bufGeom();
+    if (!mapBmp || g.slack < 0) { ctx.fillStyle = '#dcc8a0'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    if (view.r) { ctx.translate(cv.width / 2, cv.height / 2); ctx.rotate(view.r); ctx.translate(-cv.width / 2, -cv.height / 2); }
+    if (mapBmp) ctx.drawImage(mapBmp, g.x0 * DPR, g.y0 * DPR, 2 * g.hw * DPR, 2 * g.hh * DPR);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
   if (state.settings.fog) { drawFog(t); ctx.drawImage(fogCv, 0, 0, cv.width, cv.height); }
   else while (anims.length) { const a = anims.pop(); commitMask(a.x, a.y, a.r); }
@@ -1440,21 +1476,21 @@ function frame(t) {
     ctx.beginPath();
     while (i < R.length) {
       if (R[i] === null) { on = false; i++; continue; }
-      const [x, y] = proj(R[i], R[i + 1]), sx = (x - view.x) * view.s + W / 2, sy = (y - view.y) * view.s + H / 2;
+      const [x, y] = proj(R[i], R[i + 1]), [sx, sy] = toScreen(x, y);
       if (on) ctx.lineTo(sx, sy); else { ctx.moveTo(sx, sy); on = true; }
       i += 2;
     }
-    if (on) ctx.lineTo((me.x - view.x) * view.s + W / 2, (me.y - view.y) * view.s + H / 2);
+    if (on) { const q = toScreen(me.x, me.y); ctx.lineTo(q[0], q[1]); }
     ctx.setLineDash([7, 6]); ctx.strokeStyle = 'rgba(150,30,20,.8)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   if (simTarget && state.settings.sim) {
-    const x = (simTarget.x - view.x) * view.s + W / 2, y = (simTarget.y - view.y) * view.s + H / 2;
+    const [x, y] = toScreen(simTarget.x, simTarget.y);
     ctx.strokeStyle = 'rgba(43,30,16,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke();
   }
   if (state.settings.fog) for (const a of anims) {   // inkt die uitvloeit
     const p = (performance.now() - a.t0) / 1100; if (p >= 1) continue;
-    const x = (a.x - view.x) * view.s + W / 2, y = (a.y - view.y) * view.s + H / 2, rr = a.r * view.s * (.3 + .7 * (1 - Math.pow(1 - p, 3))) * .8;
+    const [x, y] = toScreen(a.x, a.y), rr = a.r * view.s * (.3 + .7 * (1 - Math.pow(1 - p, 3))) * .8;
     ctx.strokeStyle = 'rgba(60,38,15,' + ((1 - p) * .28).toFixed(3) + ')'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.stroke();
   }
   drawLabels();
@@ -1513,6 +1549,7 @@ function makePaperFx() {
 function resize() {
   DPR = Math.min(devicePixelRatio || 1, 2);
   W = innerWidth; H = innerHeight;
+  MG = Math.max(280, Math.ceil(Math.hypot(W, H) / 2 + 140 - Math.min(W, H) / 2));
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   fogCv.width = Math.round(W * FD); fogCv.height = Math.round(H * FD);
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
@@ -1522,17 +1559,27 @@ function resize() {
 addEventListener('resize', resize);
 
 /* ---------- aanraken: schuiven, knijpen, tikken ---------- */
-const ptrs = new Map(); let tap = null, prevSim = null, lastTap = 0, lastTapPos = null, prevPinch = null, qz = null, zAnim = null;
+const ptrs = new Map(); let tap = null, rotAcc = 0, rotOn = false, prevSim = null, lastTap = 0, lastTapPos = null, prevPinch = null, qz = null, zAnim = null;
 // ankerpunt voor zoomen: je eigen positie als de kaart je volgt, anders het punt onder je vinger
 const zAnchor = (x, y) => follow && me.has ? [W / 2, H / 2] : [x, y];
 function animZoom(sx, sy, f) { const [ax, ay] = zAnchor(sx, sy); zAnim = { ax, ay, from: view.s, to: clamp(view.s * f, .004, 6), t0: performance.now() }; }
 function zoomAt(sx, sy, f) {
-  const ns = clamp(view.s * f, .004, 6);
-  const wx = view.x + (sx - W / 2) / view.s, wy = view.y + (sy - H / 2) / view.s;
-  view.s = ns; view.x = wx - (sx - W / 2) / ns; view.y = wy - (sy - H / 2) / ns;
-  dirty = true; ensureTilesSoon();
+  const [wx, wy] = toWorld(sx, sy);
+  view.s = clamp(view.s * f, .004, 6);
+  const [nx, ny] = toWorld(sx, sy); view.x += wx - nx; view.y += wy - ny;
+  ensureTilesSoon();
 }
-function setFollow(v) { follow = v; $('#bFollow').classList.toggle('on', v); if (v && me.has) { view.x = me.x; view.y = me.y; dirty = true; } }
+function rotateAt(sx, sy, da) {
+  const [wx, wy] = toWorld(sx, sy);
+  view.r = normA(view.r + da);
+  const [nx, ny] = toWorld(sx, sy); view.x += wx - nx; view.y += wy - ny;
+}
+function panBy(dx, dy) {
+  const c = Math.cos(view.r), s = Math.sin(view.r);
+  view.x -= (dx * c + dy * s) / view.s; view.y -= (-dx * s + dy * c) / view.s;
+}
+function setHeadUp(v) { headUp = v; $('#bFollow').textContent = v ? '➤' : '◎'; }
+function setFollow(v) { follow = v; if (!v) setHeadUp(false); $('#bFollow').classList.toggle('on', v); if (v && me.has) { view.x = me.x; view.y = me.y; dirty = true; } }
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (er) {} ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const now = performance.now();
@@ -1545,7 +1592,7 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
   qz = null;
-  if (ptrs.size === 1) tap = { x: e.clientX, y: e.clientY, t: now, moved: false }; else { tap = null; prevPinch = null; }
+  if (ptrs.size === 1) tap = { x: e.clientX, y: e.clientY, t: now, moved: false }; else { tap = null; prevPinch = null; rotAcc = 0; rotOn = false; }
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
@@ -1558,15 +1605,20 @@ cv.addEventListener('pointermove', e => {
   }
   if (ptrs.size === 1) {
     if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) tap.moved = true;
-    if (!tap || tap.moved) { view.x -= dx / view.s; view.y -= dy / view.s; dirty = true; if (follow) setFollow(false); ensureTilesSoon(); }
+    if (!tap || tap.moved) { panBy(dx, dy); if (follow) setFollow(false); ensureTilesSoon(); }
   } else if (ptrs.size === 2) {
-    const [a, b] = [...ptrs.values()], cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y);
+    const [a, b] = [...ptrs.values()], cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
     if (prevPinch) {
-      view.x -= (cx - prevPinch.cx) / view.s; view.y -= (cy - prevPinch.cy) / view.s;
-      zoomAt(follow && me.has ? W / 2 : cx, follow && me.has ? H / 2 : cy, d / prevPinch.d);
+      if (!(follow && me.has)) panBy(cx - prevPinch.cx, cy - prevPinch.cy);
+      const [ax, ay] = zAnchor(cx, cy);
+      zoomAt(ax, ay, d / prevPinch.d);
+      // draaien met twee vingers (pas na ~10 graden, zodat knijpen niet per ongeluk draait)
+      const da = normA(ang - prevPinch.ang);
+      rotAcc += da;
+      if (rotOn || Math.abs(rotAcc) > .17) { rotOn = true; rAnim = null; if (headUp) setHeadUp(false); rotateAt(ax, ay, da); }
     }
     if (follow && me.has) { view.x = me.x; view.y = me.y; }
-    prevPinch = { cx, cy, d };
+    prevPinch = { cx, cy, d, ang };
   }
 });
 function endPtr(e) {
@@ -1578,14 +1630,14 @@ function endPtr(e) {
       lastTap = now; lastTapPos = [e.clientX, e.clientY];
       prevSim = simTarget;
       if (state.settings.sim && origin) {
-        simTarget = { x: view.x + (e.clientX - W / 2) / view.s, y: view.y + (e.clientY - H / 2) / view.s };
+        const [tx, ty] = toWorld(e.clientX, e.clientY); simTarget = { x: tx, y: ty };
       }
     }
   }
   if (ptrs.size === 0) tap = null;
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
-cv.addEventListener('wheel', e => { e.preventDefault(); lastInteract = performance.now(); zoomAt(follow && me.has ? W / 2 : e.clientX, follow && me.has ? H / 2 : e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
+cv.addEventListener('wheel', e => { e.preventDefault(); lastInteract = performance.now(); if (e.shiftKey) { const [ax, ay] = zAnchor(e.clientX, e.clientY); rotateAt(ax, ay, e.deltaY * .003); return; } zoomAt(follow && me.has ? W / 2 : e.clientX, follow && me.has ? H / 2 : e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
 
 /* ---------- kompasrichting van het toestel ---------- */
 let devHead = null;
@@ -1628,7 +1680,12 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add
 function open(id) { document.querySelectorAll('.overlay').forEach(o => o.id !== 'start' && o.classList.add('hidden')); $(id).classList.remove('hidden'); }
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('.overlay').classList.add('hidden'));
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o && o.id !== 'start') o.classList.add('hidden'); }));
-$('#bFollow').onclick = () => setFollow(true);
+$('#bFollow').onclick = () => {
+  if (!follow) setFollow(true);
+  else if (!headUp) { setHeadUp(true); toast('Kaart draait mee met je looprichting'); }
+  else { setHeadUp(false); rAnim = { from: view.r, t0: performance.now() }; }
+};
+$('#rose').addEventListener('click', () => { setHeadUp(false); if (view.r) rAnim = { from: view.r, t0: performance.now() }; });
 
 function fmtKm(m) { return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toLocaleString('nl-NL', { maximumFractionDigits: m < 10000 ? 2 : 1 }) + ' km'; }
 $('#bJournal').onclick = () => {
