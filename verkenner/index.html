@@ -408,8 +408,11 @@ async function pump() {
   } catch (e) {
     console.warn('tegel', k, e);
     tileState.delete(k);
-    setStatus('De kartograaf rust even uit… (geen verbinding?)');
+    setStatus('Kaart laden mislukt (' + (e && e.message || e) + '). Nieuwe poging over 10 s…');
     await sleep(10000);
+    tBusy = false;
+    ensureTiles();
+    return;
   }
   tBusy = false;
   pump();
@@ -417,7 +420,7 @@ async function pump() {
 function overpassQuery(k) {
   const [ty, tx] = k.split('_').map(Number);
   const b = `(${(ty * TLAT).toFixed(4)},${(tx * TLON).toFixed(4)},${((ty + 1) * TLAT).toFixed(4)},${((tx + 1) * TLON).toFixed(4)})`;
-  return `[out:json][timeout:90];(
+  return `[out:json][timeout:40];(
 way[highway]${b};
 way[railway~"^(rail|light_rail|narrow_gauge|tram)$"]${b};
 way[waterway~"^(river|canal|stream|ditch|drain)$"]${b};
@@ -434,10 +437,10 @@ nwr[tourism~"^(viewpoint|camp_site)$"]${b};
 }
 async function fetchTile(k) {
   const body = 'data=' + encodeURIComponent(overpassQuery(k));
-  let lastErr;
+  const errs = [];
   for (let i = 0; i < OVERPASS.length; i++) {
     const url = OVERPASS[(ovi + i) % OVERPASS.length];
-    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 95000);
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 45000);
     try {
       const r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ac.signal });
       clearTimeout(to);
@@ -445,9 +448,9 @@ async function fetchTile(k) {
       const j = await r.json();
       ovi = (ovi + i) % OVERPASS.length;
       return parseOSM(j);
-    } catch (e) { clearTimeout(to); lastErr = e; }
+    } catch (e) { clearTimeout(to); errs.push(new URL(url).hostname.split('.').slice(-2, -1)[0] + ': ' + (e.name === 'AbortError' ? 'te traag' : e.message)); }
   }
-  throw lastErr;
+  throw new Error(errs.join(', '));
 }
 
 /* --- OSM omzetten naar compacte features --- */
