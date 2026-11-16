@@ -117,6 +117,8 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 #xrUI{position:fixed;inset:0;pointer-events:none;z-index:100;font-family:system-ui}
 #xrUI .xrb{position:absolute;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px;pointer-events:auto}
 #xrUI button{background:#16181de6;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:17px;font-weight:700}
+#xrUI .xrs{top:calc(58px + env(safe-area-inset-top))!important}
+#xrUI .xrs + .xrl{top:calc(100px + env(safe-area-inset-top))}
 #xrUI .xrl{position:absolute;top:calc(58px + env(safe-area-inset-top));left:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;pointer-events:auto}
 #xrUI .xrl button{padding:6px 10px;font-size:13px;font-weight:600;opacity:.55}
 #xrUI .xrl button.on{opacity:1;background:#2563ebe6}
@@ -211,7 +213,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v22 · 13-11 21:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v23 · 16-11 14:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -237,6 +239,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
 <div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
+  <div class="xrl xrs" id="xrSizes"><button data-s="table" class="on">🗺 60 cm</button><button data-s="room">🛋 3 m</button><button data-s="big">🏡 10 m</button><button data-s="real">🌍 1:1</button><button data-s="gps">📍 1:1 op mijn plek</button></div>
   <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="life" class="on">🚗 Verkeer</button><button data-l="time">⏱ Tijd</button></div>
   <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
   <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
@@ -1168,7 +1171,7 @@ function pinTex(color,label){const k=color+'|'+(label||'');if(pinTexCache[k]) re
   return pinTexCache[k]=new THREE.CanvasTexture(c);}
 function mkPin(color,h,label){ // speld met vaste schermgrootte (in AR op kaartschaal)
   const ar=renderer.xr.isPresenting,s=new THREE.Sprite(new THREE.SpriteMaterial({map:pinTex(color,label),sizeAttenuation:ar,depthTest:false,transparent:true}));
-  s.center.set(0.5,0);const k=ar?cur.bb.S*0.035:0.06;s.scale.set(k*0.75,k,1);s.renderOrder=19;const g=new THREE.Group();g.add(s);g.userData.keepMap=true;return g;}
+  s.center.set(0.5,0);const k=ar?arSz(0.035):0.06;s.scale.set(k*0.75,k,1);s.renderOrder=19;const g=new THREE.Group();g.add(s);g.userData.keepMap=true;return g;}
 function toolsDispose(){for(const k of Object.keys(tmeshes)) tRemove(k); wxShadowKey=''; wxFxOff();}
 function toolsExag(){
   if(!cur) return;
@@ -1793,7 +1796,7 @@ async function startXR(){
     if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
       $('xrT').value=wx.ofs;}
     else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
-    xrL.tac=tacOn(); xrLayersUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();
+    xrL.tac=tacOn(); xrLayersUI(); xrSizesUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
     s.addEventListener('select',xrSelect); s.addEventListener('end',endXR);
@@ -1819,7 +1822,7 @@ function xrApplyLayers(){
 }
 function xrUpdate(frame){
   xrApplyLayers(); if(frame&&xrPlaced) xrFollowAnchor(frame);
-  if(camera.near!==0.01){camera.near=0.01;camera.far=100;camera.updateProjectionMatrix();}
+  {const nn=xrSize>50?0.05:0.01,ff=Math.max(100,xrSize*3);if(camera.near!==nn||camera.far!==ff){camera.near=nn;camera.far=ff;camera.updateProjectionMatrix();}}
   if(!frame||!xrHit) return; const hits=frame.getHitTestResults(xrHit);
   if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrLastRes=hits[0];xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
     if(!xrPlaced&&xrSeen!==1){xrSeen=1;$('xrMsg').textContent='Oppervlak gevonden – tik om te plaatsen';}}
@@ -1829,28 +1832,59 @@ function xrUpdate(frame){
 function xrPlaceHere(){ // zonder oppervlak: 70 cm voor je, 35 cm onder ooghoogte
   const c=renderer.xr.getCamera(),pos=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld),dir=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld));
   dir.y=0; if(dir.lengthSq()<1e-6) dir.set(0,0,-1); dir.normalize();
-  const k=xrSize/cur.bb.S; xrPlaneY=pos.y-0.35; world.scale.setScalar(k);
-  world.position.set(pos.x+dir.x*0.7,xrPlaneY-(cur.skirtBase||0)*k,pos.z+dir.z*0.7);
-  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Zwevend geplaatst · ${Math.round(xrSize*100)} cm breed`;
+  const dd=xrSize>2?Math.min(xrSize*0.3,3):0.7; xrPlaceAt(new THREE.Vector3(pos.x+dir.x*dd,pos.y-(xrSize>2?1.5:0.35),pos.z+dir.z*dd),0,0);
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Geplaatst · ${xrSizeTxt()}`;
 }
+let xrAP=null,xrExagSaved=null;
+function arSz(f){const S=cur.bb.S,k=xrSize/S;return clamp(xrSize*f,0.02,f*45)/k;} // vaste fysieke maat, ook bij 1:1
+const _xv=new THREE.Vector3(),_xY=new THREE.Vector3(0,1,0);
+function xrSizeTxt(){return xrSize>=cur.bb.S*0.99?'ware grootte (1:1)':xrSize>=1?nf(xrSize,xrSize<10?1:0)+' m breed':Math.round(xrSize*100)+' cm breed';}
+function xrSetExagForSize(){ // groot = echte hoogtes (geen overhoging)
+  if(xrSize>2){if(xrExagSaved==null){xrExagSaved=+$('exag').value;$('exag').value=1;applyExag();}}
+  else if(xrExagSaved!=null){$('exag').value=xrExagSaved;xrExagSaved=null;applyExag();}
+}
+function xrTarget(p,cx,cz){ // wereldpositie zodat kaartpunt (cx,cz) op vloer-/tafelpunt p staat
+  const k=xrSize/cur.bb.S, by=xrSize>2?-surfaceY(cx,cz):-(cur.skirtBase||0);
+  _xv.set(cx*k,0,cz*k).applyAxisAngle(_xY,world.rotation.y); return new THREE.Vector3(p.x-_xv.x,p.y+by*k,p.z-_xv.z);
+}
+function xrPlaceAt(p,cx,cz){xrSetExagForSize();xrAP={p:p.clone(),cx,cz};world.scale.setScalar(xrSize/cur.bb.S);world.position.copy(xrTarget(p,cx,cz));xrPlaneY=p.y;}
 function xrSelect(){
   if(xrPlaced||!xrLast) return;
   const m=new THREE.Matrix4().fromArray(xrLast.transform.matrix),p=new THREE.Vector3().setFromMatrixPosition(m);
-  const k=xrSize/cur.bb.S; xrPlaneY=p.y; world.scale.setScalar(k); world.position.set(p.x,p.y-(cur.skirtBase||0)*k,p.z);
-  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Terrein ${Math.round(xrSize*100)} cm breed · loop eromheen`;
+  xrPlaceAt(p,0,0);
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Terrein ${xrSizeTxt()} · loop eromheen`;
   xrDropAnchor(); if(xrLastRes&&xrLastRes.createAnchor) xrLastRes.createAnchor().then(a=>{xrAnchor=a;}).catch(e=>console.warn('anker',e));
 }
 function xrDropAnchor(){if(xrAnchor){try{xrAnchor.delete();}catch(e){}xrAnchor=null;}}
 function xrFollowAnchor(frame){ // houdt de kaart vast op de tafel en dempt trillen
   if(!xrAnchor||!frame.trackedAnchors||!frame.trackedAnchors.has(xrAnchor)) return;
-  const pose=frame.getPose(xrAnchor.anchorSpace,xrRef);if(!pose) return;const p=pose.transform.position,k=xrSize/cur.bb.S;
-  const ty=p.y-(cur.skirtBase||0)*k, d=Math.hypot(world.position.x-p.x,world.position.y-ty,world.position.z-p.z);
-  const a=d>0.05?1:0.08; world.position.x+=(p.x-world.position.x)*a; world.position.y+=(ty-world.position.y)*a; world.position.z+=(p.z-world.position.z)*a; xrPlaneY+=(p.y-xrPlaneY)*a;
+  const pose=frame.getPose(xrAnchor.anchorSpace,xrRef);if(!pose||!xrAP) return;const q=pose.transform.position;xrAP.p.set(q.x,q.y,q.z);
+  const t=xrTarget(xrAP.p,xrAP.cx,xrAP.cz),d=world.position.distanceTo(t),a=d>0.05*Math.max(1,xrSize/0.6)?1:0.08; world.position.lerp(t,a); xrPlaneY=q.y;
 }
 let xrPlaneY=0;
-function xrRescale(f){xrSize=clamp(xrSize*f,0.15,5);const k=xrSize/cur.bb.S;$('xrMsg').textContent=`Terrein ${Math.round(xrSize*100)} cm breed`;
-  if(!xrPlaced) return; world.scale.setScalar(k); world.position.y=xrPlaneY-(cur.skirtBase||0)*k;}
+function xrRescale(f){xrSize=clamp(xrSize*f,0.15,cur.bb.S);$('xrMsg').textContent=`Terrein ${xrSizeTxt()}`;xrSizesUI();
+  if(!xrPlaced||!xrAP) return; xrPlaceAt(xrAP.p,xrAP.cx,xrAP.cz); renderTac(); renderPeers(); tRemove('me'); renderMe();}
+function xrSizesUI(){const S=cur.bb.S;document.querySelectorAll('#xrSizes button').forEach(b=>{const v={table:0.6,room:3,big:10,real:S}[b.dataset.s];b.classList.toggle('on',v!=null&&Math.abs(v-xrSize)/v<0.01&&!(b.dataset.s==='real'&&xrGpsMode));if(b.dataset.s==='gps') b.classList.toggle('on',xrGpsMode);});}
+let xrGpsMode=false;
+function xrPlaceGps(){ // 1:1 op je eigen plek, noorden van de kaart = echt noorden (GPS + kompas)
+  if(!me.pos){meStart();toast('GPS zoeken… probeer zo opnieuw');$('xrMsg').textContent='Wachten op GPS-positie…';return false;}
+  const [cx,cz]=ll2w(me.pos.lat,me.pos.lon); if(!inArea(cx,cz)){$('xrMsg').textContent='Je bent buiten het geladen gebied – kies een gebied rond je positie';return false;}
+  const hd=me.hd??me.gpsHd; if(hd==null){$('xrMsg').textContent='Geen kompas – richt de kaart zelf met ⟳';}
+  const c=renderer.xr.getCamera(),cp=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld),f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld));
+  const ayaw=Math.atan2(f.x,-f.z)/D2R; world.rotation.y=hd!=null?(hd-ayaw)*D2R:0;
+  const fy=xrLast?new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(xrLast.transform.matrix)).y:cp.y-1.55;
+  xrSize=cur.bb.S; xrDropAnchor(); xrPlaceAt(new THREE.Vector3(cp.x,Math.min(fy,cp.y-1.0),cp.z),cx,cz);
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; xrGpsMode=true;
+  $('xrMsg').textContent=`1:1 op je plek · GPS ±${Math.round(me.acc||10)} m${hd!=null?' · noorden via kompas (±10°)':''}`; return true;
+}
+document.querySelectorAll('#xrSizes button').forEach(b=>b.onclick=()=>{
+  const S=cur.bb.S,v={table:0.6,room:3,big:10,real:S}[b.dataset.s];
+  if(b.dataset.s==='gps'){xrPlaceGps();xrSizesUI();renderTac();renderPeers();tRemove('me');renderMe();return;}
+  xrGpsMode=false; xrSize=v; $('xrMsg').textContent=`Terrein ${xrSizeTxt()}${xrPlaced?'':' · tik om te plaatsen'}`;
+  if(xrPlaced&&xrAP) xrPlaceAt(xrAP.p,xrAP.cx,xrAP.cz); else xrSetExagForSize();
+  xrSizesUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();});
 function endXR(){
+  if(xrExagSaved!=null){$('exag').value=xrExagSaved;xrExagSaved=null;applyExag();} xrGpsMode=false; xrAP=null; if(xrSize>5) xrSize=0.6;
   xrDropAnchor(); xrHit=null; world.visible=true; world.position.set(0,0,0); world.scale.setScalar(1); world.rotation.set(0,0,0);
   if(xrSaved){scene.background=xrSaved.bg; if(terrain){terrain.material.uniforms.fogN.value=xrSaved.fogN;terrain.material.uniforms.fogF.value=xrSaved.fogF;}}
   if(xrCam){camera.near=xrCam.near;camera.far=xrCam.far;camera.updateProjectionMatrix();xrCam=null;}
@@ -1859,13 +1893,13 @@ function endXR(){
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=()=>{xrDropAnchor();xrPlaceHere();};
-for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers','xrSizes']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
 $('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
 $('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';wxShadowKey='';applyWx();return;}
   $('xrPlayB').textContent='⏸';xrPlay=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;$('xrT').value=wx.ofs;applyWx(true);},230);};
 $('xrMinus').onclick=()=>xrRescale(1/1.25); $('xrPlus').onclick=()=>xrRescale(1.25);
-$('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;};
+$('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;if(xrPlaced&&xrAP) world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz));};
 $('xrMove').onclick=()=>{xrDropAnchor();xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
 $('xrExit').onclick=()=>{const s=renderer.xr.getSession();if(s) s.end();};
 
@@ -2088,7 +2122,7 @@ function renderTac(){
   for(const t of tacList()){ if(t.kind!=='unit') continue; const [x,z]=ll2w(t.pts[0][0],t.pts[0][1]); if(!inArea(x,z)) continue;
     const y=surfaceY(x,z), cv=symCanvas(t), tx=new THREE.CanvasTexture(cv);
     const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,sizeAttenuation:ar,depthTest:false,transparent:true}));
-    const k=ar?S*0.075:0.085; sp.center.set(0.5,0); sp.scale.set(k,k*cv.height/cv.width,1); sp.position.set(x,y+S*0.004,z); sp.renderOrder=15; g.add(sp);
+    const k=ar?arSz(0.075):0.085; sp.center.set(0.5,0); sp.scale.set(k,k*cv.height/cv.width,1); sp.position.set(x,y+S*0.004,z); sp.renderOrder=15; g.add(sp);
     const pole=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x,y,z),new THREE.Vector3(x,y+S*0.004,z)]),new THREE.LineBasicMaterial({color:'#000'}));g.add(pole);}
   tAdd('tac',g);
 }
@@ -2269,7 +2303,7 @@ function personSprite(name,col){
   x.font='bold 30px system-ui';x.textAlign='center';x.textBaseline='bottom';x.lineWidth=7;x.strokeStyle='rgba(0,0,0,.75)';x.strokeText(name,120,66);x.fillStyle='#fff';x.fillText(name,120,66);
   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),sizeAttenuation:false,depthTest:false,transparent:true}));
   const ar=renderer&&renderer.xr.isPresenting; if(ar){s.material.sizeAttenuation=true;}
-  const k=ar?cur.bb.S*0.07:0.09; s.center.set(0.5,0.13);s.scale.set(k,k*150/240,1);s.renderOrder=16;return s;
+  const k=ar?arSz(0.07):0.09; s.center.set(0.5,0.13);s.scale.set(k,k*150/240,1);s.renderOrder=16;return s;
 }
 function renderPeers(){
   tRemove('peers'); if(!cur) return; const g=new THREE.Group(), now=Date.now();
@@ -2406,7 +2440,7 @@ function renderMe(){
   hud.classList.add('hidden');$('meBtn').style.opacity=1;
   const ar=renderer.xr.isPresenting; let g=tmeshes.me;
   if(!g||g.userData.ar!==ar){g=new THREE.Group();
-    const mk=b=>{const s=new THREE.Sprite(new THREE.SpriteMaterial({map:meTex(b),sizeAttenuation:ar,depthTest:false,transparent:true}));const k=ar?cur.bb.S*(b?0.09:0.045):(b?0.13:0.065);s.scale.set(k,k,1);s.renderOrder=b?17:18;return s;};
+    const mk=b=>{const s=new THREE.Sprite(new THREE.SpriteMaterial({map:meTex(b),sizeAttenuation:ar,depthTest:false,transparent:true}));const k=ar?arSz(b?0.09:0.045):(b?0.13:0.065);s.scale.set(k,k,1);s.renderOrder=b?17:18;return s;};
     const beam=mk(true),dot=mk(false);g.add(beam,dot);g.userData={beam,dot,ar};tAdd('me',g);}
   const y=surfaceY(x,z);g.userData.beam.position.set(x,y,z);g.userData.dot.position.set(x,y,z);meRot();
 }
@@ -2613,7 +2647,7 @@ function lifeFrame(now){
   if(!tmeshes.life||!cur) return;
   const dt=Math.min(0.1,life.last?(now-life.last)/1000:0.016);life.last=now;
   const S=cur.bb.S,ar=renderer.xr.isPresenting,sp=+($('lifeSp')?$('lifeSp').value:1),T=wxTime(),hr=new Date(T).getHours(),dens=DENS[hr];
-  const dist=ar?0:camera.position.distanceTo(controls.target),vs=ar?clamp(S/700,1,12):clamp(dist/320,1,10);
+  const dist=ar?0:camera.position.distanceTo(controls.target),vs=ar?clamp(S/700*0.6/xrSize,1,12):clamp(dist/320,1,10);
   const night=sunPos(T,cur.bb.lat,cur.bb.lon).alt<-2,ex=exag();
   const L=life.m.lights,la=L.geometry.attributes.position.array,lc=L.geometry.attributes.color.array;let li=0;
   const put=(m,i,x,y,z,yaw,s)=>{_lq.setFromAxisAngle(_lY,yaw);_lp.set(x,y,z);_ls.set(s,s,s);_lm.compose(_lp,_lq,_ls);m.setMatrixAt(i,_lm);};
