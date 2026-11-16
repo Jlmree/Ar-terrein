@@ -115,6 +115,13 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 #start h1{font-weight:400;font-size:clamp(30px,9vw,44px);letter-spacing:.3em;margin:0;text-transform:uppercase}
 #start p{font-family:'IM Fell English',serif;font-size:17px;color:var(--dim);line-height:1.45;margin:6px 0 0}
 #start .note{font-size:13px;margin-top:18px;font-style:italic}
+#pocket{position:fixed;inset:0;background:#000;z-index:60;touch-action:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:'Cinzel',serif;color:#3b3328;-webkit-user-select:none;user-select:none}
+#pkBox{text-align:center;transition:transform 2s}
+#pkText{font-size:15px;letter-spacing:.14em;line-height:1.7;text-transform:uppercase}
+#pkNote{font-family:'IM Fell English',serif;font-style:italic;font-size:17px;color:#6b5a3c;min-height:24px;margin-top:6px}
+#pkHint{font-size:11px;letter-spacing:.22em;margin-top:22px;transition:opacity 1s;text-transform:uppercase}
+#pkArrow{font-size:20px;margin-top:8px;transition:opacity 1s}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 120px);transform:translateX(-50%);background:var(--panel);
   border:1px solid rgba(239,230,210,.3);padding:9px 14px;font-size:12px;letter-spacing:.12em;opacity:0;transition:opacity .4s;pointer-events:none;
   max-width:88vw;text-align:center;z-index:30}
@@ -132,10 +139,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:#14100b;color:var(--bo
 <svg id="rose" viewBox="-62 -62 124 124" aria-hidden="true"></svg>
 <div id="banner"><div class="line"></div><div class="name"></div><div class="kind"></div><div class="line" style="margin-top:8px"></div></div>
 <div id="toast"></div>
+<div id="pocket" class="hidden"><div id="pkBox"><div id="pkText"></div><div id="pkNote"></div><div id="pkArrow">︿</div><div id="pkHint">Veeg omhoog om te ontgrendelen</div></div></div>
 
 <div id="bar">
   <button class="btn" id="bJournal">Dagboek</button>
   <button class="btn icon on" id="bFollow" title="Volg mij">◎</button>
+  <button class="btn icon" id="bPocket" title="Zakmodus">☾</button>
   <button class="btn" id="bSettings">Opties</button>
 </div>
 
@@ -639,6 +648,7 @@ function discover(p, announce) {
   state.disc[p.id] = { n: p.n, k: p.k, lat: p.lat, lon: p.lon, t: Date.now() };
   if (announce) {
     dayStat('n', 1);
+    if (pocket) { pocketNote((p.n === KIND[p.k] ? p.n : p.n + ' · ' + (KIND[p.k] || '')) + ' ontdekt'); if (navigator.vibrate) try { navigator.vibrate(MINOR.has(p.k) ? [40] : [60, 80, 60]); } catch (e) {} }
     if (MINOR.has(p.k)) { toast('Gevonden: ' + p.n + (p.n !== KIND[p.k] ? ' (' + (KIND[p.k] || '').toLowerCase() + ')' : '')); scratch(); }
     else banner(p);
   }
@@ -1564,6 +1574,7 @@ function frame(t) {
   if (!busy && t - lastT < 30) return;          // in rust ~30 fps, tijdens schuiven elk frame
   const dt = Math.min(.25, (t - lastT) / 1000); lastT = t;
   simStep(dt);
+  if (pocket) return;                                       // zakmodus: niets tekenen, wel GPS en ontdekken
   if (zAnim) {   // vloeiende zoom na dubbeltik
     const p = Math.min(1, (performance.now() - zAnim.t0) / 260), e = 1 - Math.pow(1 - p, 3);
     zoomAt(zAnim.ax, zAnim.ay, zAnim.from * Math.pow(zAnim.to / zAnim.from, e) / view.s);
@@ -2341,6 +2352,53 @@ function renderBadges(S) {
     }
   }
 }
+
+
+/* =====================================================================
+   ZAKMODUS – scherm zwart, aanraken geblokkeerd, Verkenner loopt door
+   ===================================================================== */
+let pocket = false, pkStart = null, pkY = null, pkHintT = null, pkNoteT = null, pkTick = null;
+function setPocket(on) {
+  pocket = on;
+  $('#pocket').classList.toggle('hidden', !on);
+  if (on) {
+    keepAwake();
+    pkStart = { dist: state.dist, disc: Object.keys(state.disc).length, cells: cells.size, t: Date.now() };
+    $('#pkNote').textContent = ''; pocketHint(); updPocket();
+    clearInterval(pkTick); pkTick = setInterval(updPocket, 30000);
+  } else {
+    clearInterval(pkTick); dirty = true; lastT = 0;
+  }
+}
+function pocketHint() {
+  $('#pkHint').style.opacity = 1; $('#pkArrow').style.opacity = 1;
+  clearTimeout(pkHintT); pkHintT = setTimeout(() => { $('#pkHint').style.opacity = .15; $('#pkArrow').style.opacity = .15; }, 3500);
+}
+function updPocket() {
+  if (!pocket || !pkStart) return;
+  const km = (state.dist - pkStart.dist) / 1000, n = Object.keys(state.disc).length - pkStart.disc, a = (cells.size - pkStart.cells) * CS * CS / 1e6;
+  const min = Math.round((Date.now() - pkStart.t) / 60000);
+  $('#pkText').innerHTML = '';
+  const add = t => { const d = document.createElement('div'); d.textContent = t; $('#pkText').appendChild(d); };
+  add(new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }));
+  add(km.toFixed(1).replace('.', ',') + ' km · ' + n + ' ' + (n === 1 ? 'ontdekking' : 'ontdekkingen'));
+  add(a.toFixed(2).replace('.', ',') + ' km² nieuw · ' + min + ' min');
+  if (!me.has || me.acc > 80) add('wacht op gps…');
+  // tekst steeds iets verplaatsen, zodat er niets inbrandt
+  $('#pkBox').style.transform = 'translate(' + Math.round((Math.random() - .5) * 120) + 'px,' + Math.round((Math.random() - .5) * 260) + 'px)';
+}
+function pocketNote(t) {
+  $('#pkNote').textContent = t; clearTimeout(pkNoteT);
+  pkNoteT = setTimeout(() => { $('#pkNote').textContent = ''; }, 12000);
+  updPocket();
+}
+$('#bPocket').onclick = () => { if (!started) return; setPocket(true); };
+const pk = $('#pocket');
+pk.addEventListener('pointerdown', e => { e.preventDefault(); pkY = e.clientY; pocketHint(); });
+pk.addEventListener('pointermove', e => { e.preventDefault(); if (pkY != null && pkY - e.clientY > 140) { pkY = null; setPocket(false); } });
+pk.addEventListener('pointerup', () => { pkY = null; });
+pk.addEventListener('pointercancel', () => { pkY = null; });
+pk.addEventListener('contextmenu', e => e.preventDefault());
 
 /* ---------- opstarten ---------- */
 function ensureOriginForDemo() {
