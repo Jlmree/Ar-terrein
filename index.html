@@ -741,7 +741,7 @@ void main(){
   if(snow>0.0){float fl=smoothstep(0.5,0.9,Nn.y);col=mix(col,vec3(0.93,0.95,0.98),snow*fl);}
   if(wet>0.0){col*=1.0-0.22*wet;col=mix(col,col*col*1.7,0.22*wet);}
   if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a);}
-  float sh=shOn>0.5?texture2D(shMap,muv).r:1.0;
+  float sh=shOn>0.001?mix(1.0,texture2D(shMap,muv).r,shOn):1.0;
   float cs=1.0; if(cloudOn>0.5){vec2 p=vL.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
   float d=max(dot(Nn,sun),0.0)*sh*cs;
   col*=mix(1.0,amb+dirK*d,shade);
@@ -1564,7 +1564,7 @@ function applyWx(fast){
     else{const ml=mp.alt>0?mi.f:0; lightK=0.13+0.25*ml*(1-0.6*cc); tint=[0.62,0.72,1]; amb=0.6; dirK=mp.alt>0.3?0.55*(1-0.75*cc):0; src=mp.alt>0.3?mp:null;}
     lightK*=1-0.15*rainy;
     if(src){U.sun.value.copy(sunVec(src)); dirL.position.copy(U.sun.value).multiplyScalar(1000);}
-    U.shOn.value=src?1:0; if(src&&!(fast&&(fx.shSkip++%4))) scheduleShadows(src);
+    const shK=src&&src===sp?sm(2,8,src.alt):0; // maanlicht: geen harde slagschaduwen U.shOn.value=shK; if(shK>0&&!(fast&&(fx.shSkip++%4))) scheduleShadows(src);
     // lucht
     const D=dome.material.uniforms; D.sunD.value.copy(sunVec(sp)); D.moonD.value.copy(sunVec(mp)); D.day.value=day; D.dusk.value=dusk;
     D.cloudy.value=clamp(cc*cc*1.1,0,1); D.moonF.value=mi.f; D.starK.value=starK; dome.visible=!renderer.xr.isPresenting;
@@ -1616,7 +1616,7 @@ function scheduleShadows(p){
 }
 function computeShadows(p){
   if(!cur||!terrain) return;
-  const {n,E,bb}=cur,cell=bb.S/(n-1),O=obstacleGrid(),tanA=Math.tan(Math.max(0.2,p.alt)*D2R);
+  const {n,E,bb}=cur,cell=bb.S/(n-1),O=obstacleGrid(),tanA=Math.tan(Math.max(2,p.alt)*D2R);
   const di=Math.sin(p.b*D2R),dj=-Math.cos(p.b*D2R); // per stap richting zon (i=oost, j=zuid)
   let Om=-Infinity;for(const v of O) if(v>Om) Om=v;
   const L=new Uint8Array(n*n),step=1;
