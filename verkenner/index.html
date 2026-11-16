@@ -1325,7 +1325,7 @@ function drawLabels() {
     if (sx < -250 || sy < -80 || sx > W + 250 || sy > H + 80) continue;
     c.font = 'italic ' + L.fs + 'px "IM Fell English",serif';
     try { c.letterSpacing = L.sp.toFixed(1) + 'px'; } catch (e) {}
-    let la = normA(L.ang + view.r); if (la > Math.PI / 2) la -= Math.PI; if (la < -Math.PI / 2) la += Math.PI;
+    const la = 0;   // namen staan altijd recht op het scherm, hoe de kaart ook gedraaid is
     c.save(); c.translate(sx, sy); c.rotate(la); c.textAlign = 'center'; c.textBaseline = 'middle';
     c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(L.t, 0, 0);
     c.fillStyle = L.ink; c.fillText(L.t, 0, 0); c.restore();
