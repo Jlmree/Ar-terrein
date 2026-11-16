@@ -107,6 +107,14 @@ input[type=range]{flex:1}
 #toolB{max-height:40vh;overflow:auto}
 #tool.tap #toolB{max-height:30vh}
 .note{font-size:12.5px;color:#b9bdc7;line-height:1.4;margin:4px 0}
+.sec{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#8b95a7;margin:14px 0 4px}
+.sec:first-child{margin-top:4px}
+.card{background:#1b1f27;border-radius:12px;padding:10px 12px;margin:8px 0}
+.card h4{margin:0 0 4px;font-size:14.5px;font-weight:700;color:#eef1f6}
+.card .row:last-child{margin-bottom:0}
+details.more{margin:6px 0}details.more>summary{cursor:pointer;font-size:12.5px;color:#9db8ff;list-style:none;padding:2px 0}details.more>summary::before{content:'ⓘ ';}
+.seg{display:flex;background:#2a2e37;border-radius:9px;padding:3px;gap:3px}.seg button{flex:1;border:none;background:none;color:#cfd4dd;padding:6px 4px;border-radius:7px;font-size:13px}.seg button:active{background:#3a4050}
+.attr.small{font-size:10.5px;color:#7d8596;margin-top:12px}
 .note b{color:#fff}
 .prof{width:100%;height:auto;background:#0f1115;border-radius:8px;margin-top:6px;display:block}
 .mlist{font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.45}
@@ -198,41 +206,33 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div id="tool" class="panel sheet hidden"><div class="head"><span id="toolT"></span><span><button class="btn sm dark" id="toolMin" title="Inklappen">▾</button> <button class="btn sm dark" id="toolX">✕</button></span></div><div id="toolB"></div></div>
   <div id="info" class="hud hidden"><span class="m" id="iM"></span><span id="iD"></span><button class="ib" id="iCopy" title="Kopieer">⧉</button><button class="ib" id="iX">✕</button></div>
   <div id="ctrl" class="panel sheet hidden">
-    <div class="head" id="ctrlHead"><span>⚙ Lagen &amp; instellingen</span><span><button class="btn sm dark" id="ctrlMin">▾</button> <button class="btn sm dark" id="ctrlX">✕</button></span></div>
+    <div class="head" id="ctrlHead"><span>⚙ Lagen</span><span><button class="btn sm dark" id="ctrlMin">▾</button> <button class="btn sm dark" id="ctrlX">✕</button></span></div>
     <div class="note" id="feat" style="margin:0 0 4px"></div>
     <div class="body">
-      <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
-      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
-      <div class="row"><span class="t">Verkeerstempo</span><input type="range" id="lifeSp" min="1" max="10" step="1" value="1"><span class="val" id="lifeSpV">1×</span></div>
-      <div class="row"><span class="t">Hoogtelijnen</span><select id="ci">
-        <option value="auto">Automatisch</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="2.5">2,5 m</option><option value="5">5 m</option><option value="10">10 m</option><option value="25">25 m</option><option value="50">50 m</option><option value="0">Uit</option>
-      </select></div>
+      <div class="sec">Beeld</div>
+      <div class="seg"><button id="vTop">⬇ Boven</button><button id="vReset">◢ Schuin</button><button id="vLow">👁 Laag</button></div>
+      <div class="sec">Kaart</div>
       <div class="row"><span class="t">Kaartlaag</span><select id="layerSel3"></select></div>
       <div class="row"><span class="t">Detaillaag</span><select id="ovl">
         <option value="off">Uit</option><option value="top10">TOP10NL (Kadaster 1:10.000)</option><option value="bgtl">BGT omtrek (zeer gedetailleerd)</option><option value="bgtk">BGT kleur (zeer gedetailleerd)</option><option value="top25">Topo 1:25.000 eroverheen</option>
       </select></div>
-      <div class="row"><span class="t">Dekking</span><input type="range" id="ovlA" min="0.2" max="1" step="0.05" value="0.85"><span class="val" id="ovlAV">85%</span></div>
+      <div class="row" id="ovlARow"><span class="t">Dekking</span><input type="range" id="ovlA" min="0.2" max="1" step="0.05" value="0.85"><span class="val" id="ovlAV">85%</span></div>
+      <div class="row"><span class="t">Hoogtelijnen</span><select id="ci">
+        <option value="auto">Automatisch</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="2.5">2,5 m</option><option value="5">5 m</option><option value="10">10 m</option><option value="25">25 m</option><option value="50">50 m</option><option value="0">Uit</option>
+      </select></div>
+      <div class="grid2"><label class="tg"><input type="checkbox" id="tGrid" checked> MGRS-raster</label><label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label><label class="tg"><input type="checkbox" id="tRoads"> Wegen/paden extra</label></div>
+      <div class="sec">Terrein</div>
       <div class="row"><span class="t">Hoogte</span><select id="demSel3">
         <option value="ahn_dtm">AHN maaiveld (NL)</option><option value="ahn_dsm">AHN met bomen &amp; gebouwen</option><option value="world">Wereldwijd</option>
       </select></div>
-      <div class="grid2">
-        <label class="tg"><input type="checkbox" id="tTrees" checked> 3D-bomen</label>
-        <label class="tg"><input type="checkbox" id="tLabels" checked> Kenmerken</label>
-        <label class="tg"><input type="checkbox" id="tGrid" checked> MGRS-raster</label>
-        <label class="tg"><input type="checkbox" id="tRoads"> Wegen/paden</label>
-        <label class="tg"><input type="checkbox" id="tShade" checked> Reliëfschaduw</label>
-        <label class="tg"><input type="checkbox" id="tDetail" checked> Scherper bij inzoomen</label>
-        <label class="tg"><input type="checkbox" id="tSlope"> Hellingkaart</label>
-        <label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label>
-        <label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label>
-        <label class="tg"><input type="checkbox" id="tBld" checked> 3D-gebouwen</label>
-        <label class="tg"><input type="checkbox" id="tLife" checked> Verkeer &amp; leven</label>
-        <label class="tg"><input type="checkbox" id="tAhnT" checked> Boomhoogtes uit AHN</label>
-        <label class="tg"><input type="checkbox" id="tWater" checked> Water glinstert</label>
-        <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
-      </div>
-      <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v33 · 16-11 20:35. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="row"><span class="t">Overhoging</span><input type="range" id="exag" min="1" max="10" step="0.5" value="3"><span class="val" id="exagV">3×</span></div>
+      <div class="grid2"><label class="tg"><input type="checkbox" id="tShade" checked> Reliëfschaduw</label><label class="tg"><input type="checkbox" id="tDetail" checked> Scherper bij inzoomen</label></div>
+      <div class="sec">Op de kaart</div>
+      <div class="grid2"><label class="tg"><input type="checkbox" id="tLabels" checked> Kenmerken</label><label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label><label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label></div>
+      <div class="sec">3D en sfeer</div>
+      <div class="grid2"><label class="tg"><input type="checkbox" id="tBld" checked> Gebouwen</label><label class="tg"><input type="checkbox" id="tTrees" checked> Bomen</label><label class="tg"><input type="checkbox" id="tAhnT" checked> Echte boomhoogtes (AHN)</label><label class="tg"><input type="checkbox" id="tLife" checked> Windmolens</label><label class="tg"><input type="checkbox" id="tWater" checked> Water glinstert</label><label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label></div>
+      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
+      <div class="attr small">Versie v38 · 16-11 22:45. · Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -1184,7 +1184,8 @@ $('tLabels').onchange=setLabelsVisible;
 $('tTac').onchange=()=>{renderTac();redrawTexture();};
 $('tGrid').onchange=redrawTexture; $('tRoads').onchange=redrawTexture;
 $('ovl').value=state.ovl||'off'; $('ovlA').value=state.ovlA||0.85; $('ovlAV').textContent=Math.round($('ovlA').value*100)+'%';
-$('ovl').onchange=()=>{state.ovl=$('ovl').value; lsSet('terrein3d',state); refreshOverlay(mainSurf); if(patch) refreshOverlay(patch.userData.surf);};
+const ovlRow=()=>{$('ovlARow').style.display=$('ovl').value==='off'?'none':'';};ovlRow();
+$('ovl').onchange=()=>{ovlRow();state.ovl=$('ovl').value; lsSet('terrein3d',state); refreshOverlay(mainSurf); if(patch) refreshOverlay(patch.userData.surf);};
 $('ovlA').oninput=()=>{$('ovlAV').textContent=Math.round($('ovlA').value*100)+'%'; state.ovlA=+$('ovlA').value; lsSet('terrein3d',state); redrawTexture();};
 $('tDetail').onchange=()=>{if($('tDetail').checked) schedulePatch(); else removePatch();};
 $('vTop').onclick=()=>setView('top'); $('vReset').onclick=()=>setView('reset'); $('vLow').onclick=()=>setView('low');
@@ -1421,18 +1422,18 @@ function drawProfile(p){
 
 /* ---------- ⤓ export ---------- */
 function uiExp(){
-  $('toolT').textContent='⤓ Exporteren & offline';
+  $('toolT').textContent='⤓ Export & offline';
   const sc=150/cur.bb.S, auto=clamp(Math.round(12/Math.max(0.1,(cur.eMax-cur.eMin)*sc)),1,40);
-  tb.innerHTML=`<div class="note"><b>GPX</b> – meetpunten als waypoints, route én track (Garmin Connect → Training → Koersen → Importeren, of Garmin Explore/BaseCamp).</div>
-  <div class="row"><button class="btn sm" id="eGpx">GPX opslaan</button><button class="btn sm dark" id="eCopy">Kopieer MGRS-lijst</button></div>
-  <div class="note" style="margin-top:12px"><b>STL voor 3D-print</b> – terrein met sokkel (slicer: Bambu Studio, plat neerleggen).</div>
+  tb.innerHTML=`<div class="card"><h4>📍 Meetpunten &amp; route</h4><div class="note">GPX met waypoints, route en track, voor Garmin (Connect → Koersen → Importeren) en andere apps.</div>
+  <div class="row"><button class="btn sm" id="eGpx">GPX opslaan</button><button class="btn sm dark" id="eCopy">Kopieer MGRS-lijst</button></div></div>
+  <div class="card"><h4>🖨 3D-print (STL)</h4><div class="note">Terrein met sokkel; in de slicer plat neerleggen.</div>
   <div class="row"><span class="t">Breedte</span><input id="eW" type="number" value="150" style="width:80px"> mm</div>
   <div class="row"><span class="t">Sokkel</span><input id="eB" type="number" value="3" step="0.5" style="width:80px"> mm</div>
   <div class="row"><span class="t">Overhoging</span><input id="eX" type="number" value="${auto}" step="0.5" style="width:80px"> ×</div>
   <div class="row"><label class="tg"><input type="checkbox" id="eT" ${useCanopy()?'':'disabled'}> Bos als verhoging (+15 m)</label></div>
   <div id="eInfo" class="note"></div>
-  <div class="row"><button class="btn sm" id="eStl">STL opslaan</button></div>
-  <div id="eOff" style="margin-top:12px;border-top:1px solid #2a2e37;padding-top:8px"></div>`;
+  <div class="row"><button class="btn sm" id="eStl">STL opslaan</button></div></div>
+  <div id="eOff" class="card"></div>`;
   uiExpOffline();
   const info=()=>{const w=+$('eW').value||150,x=+$('eX').value||1;$('eInfo').textContent=`Schaal 1:${Math.round(cur.bb.S*1000/w).toLocaleString('nl-NL')} · reliëf in print ${nf((cur.eMax-cur.eMin)*x*w/cur.bb.S,1)} mm`;};
   ['eW','eX'].forEach(id=>$(id).oninput=info);info();
@@ -1555,25 +1556,29 @@ function uiWx(){
   $('toolT').textContent='⛅ Weer, zon & maan';
   tb.innerHTML=`<div id="wxNow" class="wxnow">Weer laden…</div>
   <div class="row"><span class="t">Tijdstip</span><input type="range" id="wxT" min="-8" max="192" step="1" value="${wx.ofs}"><span class="val" id="wxTV" style="width:92px;font-size:12px"></span></div>
+  <div class="sec">Tonen</div>
   <div class="grid2">
     <label class="tg"><input type="checkbox" id="wSun" ${wx.sun?'checked':''}> Zon/maan &amp; schaduw</label>
     <label class="tg"><input type="checkbox" id="wWind" ${wx.wind?'checked':''}> Wind</label>
     <label class="tg"><input type="checkbox" id="wCloud" ${wx.cloud?'checked':''}> Wolken</label>
     <label class="tg"><input type="checkbox" id="wRain" ${wx.rain?'checked':''}> Neerslag</label>
     <label class="tg"><input type="checkbox" id="wMist" ${wx.mist?'checked':''}> Zicht/mist</label>
-    <label class="tg"><input type="checkbox" id="wStar" ${stars.on?'checked':''}> ✨ Echte sterren &amp; planeten</label>
+  </div>
+  <div class="sec">Nachthemel</div>
+  <div class="grid2">
+    <label class="tg"><input type="checkbox" id="wStar" ${stars.on?'checked':''}> ✨ Sterren &amp; planeten</label>
     <label class="tg"><input type="checkbox" id="wCon" ${stars.con?'checked':''}> Sterrenbeelden &amp; namen</label>
     <label class="tg"><input type="checkbox" id="wMw" ${stars.mw?'checked':''}> Melkweg</label>
   </div>
-  <details id="simBox" ${wx.sim?'open':''}><summary>🧪 Weer simuleren (testen)</summary>
+  <div class="row"><span class="t">Wolken tonen</span><select id="wCm"><option value="rain">Alleen bij neerslag</option><option value="all">Altijd (weermodel)</option></select></div>
+  <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
+  <div id="sunInfo" class="note"></div>
+  <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
+  <div class="sec">Simuleren</div><details id="simBox" ${wx.sim?'open':''}><summary>🧪 Zelf weer instellen</summary>
     <div class="chips" id="simP">${Object.entries(SIMP).map(([k,v])=>`<span class="chip${wx.simKey===k?' on':''}" data-k="${k}">${v.n}</span>`).join('')}</div>
     <div id="simS"></div>
     <div class="row"><button class="btn sm dark" id="simOff">↩︎ Terug naar echt weer</button></div>
   </details>
-  <div class="row"><span class="t">Wolken tonen</span><select id="wCm"><option value="rain">Alleen bij regen/buien (en echte mist)</option><option value="all">Altijd volgens het weermodel</option></select></div>
-  <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
-  <div id="sunInfo" class="note"></div>
-  <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
   <div class="attr">Weer: Open-Meteo · Radar: RainViewer · Zon/maan berekend (SunCalc) · Sterren: Hipparcos via d3-celestial (BSD)</div>`;
   const tl=()=>{$('wxTV').textContent=wx.ofs===0?'nu':new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});};tl();
   $('wxT').oninput=()=>{wx.ofs=+$('wxT').value;tl();applyWx();};
@@ -1969,14 +1974,14 @@ async function drawRadar(){
 /* ---------- 🕶 AR ---------- */
 function uiAR(){
   $('toolT').textContent='🕶 AR';
-  tb.innerHTML=`<div class="note"><b>Zandbak op tafel</b> – het terrein als 3D-model op je tafel; loop eromheen. Werkt in Chrome op Android met ARCore (Google Play-services voor AR).</div>
+  tb.innerHTML=`<div class="card"><h4>🧱 Zandbak op tafel</h4><div class="note">Het terrein als 3D-model op tafel of vloer; loop eromheen. Grootte tot 1:1 kies je in AR.</div>
   <div class="row"><button class="btn sm" id="arT">Start AR op tafel</button><span id="arTs" class="note"></span></div>
-  <div class="row"><label class="tg"><input type="checkbox" id="arWx" checked> Weer, zon &amp; maan tonen in AR</label></div>
-  <div class="note" style="margin-top:12px"><b>AR in het veld</b> – camerabeeld met labels van kenmerken, meetpunten en waarnemer, met afstand en richting in streep. Gebruikt GPS en kompas (±5–10°): hulpmiddel, geen richtmiddel.</div>
-  <div class="row"><button class="btn sm" id="arF">Start veld-AR</button></div>
-  <div class="note">Camera, kompas en GPS werken alleen in een "veilige" pagina: via https (bijv. op je eigen server) of als lokaal bestand in Chrome.</div>`;
+  <div class="row"><label class="tg"><input type="checkbox" id="arWx" checked> Weer, zon &amp; maan in AR</label></div></div>
+  <div class="card"><h4>📷 AR in het veld</h4><div class="note">Camerabeeld met labels van kenmerken, meetpunten en waarnemer, met afstand en richting. GPS en kompas (±5–10°): hulpmiddel, geen richtmiddel.</div>
+  <div class="row"><button class="btn sm" id="arF">Start veld-AR</button></div></div>`;
   $('arT').onclick=startXR; $('arF').onclick=startFieldAR;
-  tb.insertAdjacentHTML('beforeend','<div id="arDiag" class="note" style="margin-top:8px;padding:8px;background:#0f1115;border-radius:8px"></div>');
+  tb.insertAdjacentHTML('beforeend','<details class="more" id="arDiagB"><summary>Toestelcontrole</summary><div id="arDiag" class="note" style="padding:8px;background:#0f1115;border-radius:8px"></div></details>');
+  const diagOpen=()=>{const d=$('arDiag');if(d&&/❌/.test(d.innerHTML)) $('arDiagB').open=true;}; setTimeout(diagOpen,1500);
   const dg=[];const ok=v=>v?'✅':'❌';
   const web=location.protocol==='https:'||location.hostname==='localhost';
   dg.push(`${ok(web)} Geopend via een https-webadres${web?'':' – nu geopend als <b>'+location.protocol+'</b> (lokaal bestand). Chrome staat AR op tafel alleen toe vanaf een echt https-adres.'}`);
@@ -2574,12 +2579,13 @@ function shareLink(){return location.origin+location.pathname+'#room-'+share.cod
 function uiShare(){
   $('toolT').textContent='👥 Live delen';
   if(!share.on){
-    tb.innerHTML=`<div class="row"><span class="t">Jouw naam</span><input id="shName" value="${(share.name||'').replace(/"/g,'&quot;')}" placeholder="bijv. Jelmer / 1-1" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"></div>
+    tb.innerHTML=`<div class="card"><h4>Samen kijken</h4><div class="row"><span class="t">Jouw naam</span><input id="shName" value="${(share.name||'').replace(/"/g,'&quot;')}" placeholder="bijv. Jelmer / 1-1" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"></div>
     <div class="row"><button class="btn sm" id="shNew">Nieuwe sessie starten</button></div>
-    <div class="row"><span class="t">Code</span><input id="shCode" placeholder="ABC-DEF-GHJ" autocapitalize="characters" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee;letter-spacing:1px"><button class="btn sm dark" id="shJoin">Deelnemen</button></div>
+    <div class="row"><span class="t">Code</span><input id="shCode" placeholder="ABC-DEF-GHJ" autocapitalize="characters" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee;letter-spacing:1px"><button class="btn sm dark" id="shJoin">Deelnemen</button></div></div>
     <div id="shSt" class="note">${share.status||''}</div>
-    <div class="note">Iedereen met de code of link ziet hetzelfde gebied, dezelfde meetpunten, waarnemer en tactische symbolen, en desgewenst elkaars GPS-positie – ook in AR.<br>
-    🔒 Alles wordt op je telefoon versleuteld (AES-256) vóór het via een openbare server gaat; zonder code is het onleesbaar. Toch: <b>geen echte operationele gegevens</b> delen.</div>`;
+    <div class="note">🔒 Versleuteld op je toestel (AES-256). Deel <b>geen echte operationele gegevens</b>.</div>
+    <details class="more"><summary>Hoe werkt delen?</summary><div class="note">Iedereen met de code of link ziet hetzelfde gebied, dezelfde meetpunten, waarnemer en tactische symbolen, en desgewenst elkaars GPS-positie – ook in AR.<br>
+    🔒 Alles wordt op je telefoon versleuteld (AES-256) vóór het via een openbare server gaat; zonder code is het onleesbaar. Een tv kan via de uitnodigingslink jouw beeld volgen (Presenteren).</div></details>`;
     const nm=()=>{share.name=$('shName').value.trim().slice(0,20)||'Deelnemer';state.name=share.name;lsSet('terrein3d',state);};
     $('shNew').onclick=async()=>{nm();try{await shareJoin(newCode(),true);}catch(e){setShareStatus('❌ '+e.message);}};
     $('shJoin').onclick=async()=>{nm();try{await shareJoin($('shCode').value,false);}catch(e){setShareStatus('❌ '+e.message);}};
@@ -2648,9 +2654,9 @@ async function uiExpOffline(){
   const el=$('eOff');if(!el) return;
   let est='';try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();est=`Gebruikt: ${(e.usage/1048576).toFixed(0)} MB van ~${(e.quota/1073741824).toFixed(1)} GB.`;}}catch(e){}
   const sw=('serviceWorker' in navigator)&&navigator.serviceWorker.controller;
-  el.innerHTML=`<div class="note"><b>💾 Offline</b> – alles wat je bekijkt (kaart, hoogtes, kenmerken, weer) wordt bewaard. Sla een gebied op om het later zonder internet te openen via 📂 op het startscherm.</div>
+  el.innerHTML=`<h4>💾 Offline</h4><div class="note">Sla dit gebied op om het zonder internet te openen via 📂 Opgeslagen op het startscherm.</div>
   <div class="row"><input id="eOffN" placeholder="Naam, bijv. Oefening Havelte" style="flex:1;min-width:0;padding:7px 9px;border-radius:8px;border:none;background:#2a2e37;color:#eee"><button class="btn sm" id="eOffS">Offline opslaan</button></div>
-  <div class="note">${sw?'✅ Offline-modus actief.':'⚠️ Offline-modus wordt actief na één keer herladen van de pagina (alleen via https).'} ${est} Tip: zoom vooraf in op de stukken die je scherp wilt hebben.</div>
+  <div class="note">${sw?'✅ Offline-modus actief.':'⚠️ Offline-modus wordt actief na één keer herladen van de pagina (alleen via https).'} ${est}</div>
   <div class="row"><button class="btn sm dark" id="eOffC">Offline-opslag wissen</button></div>`;
   $('eOffS').onclick=()=>saveOffline($('eOffN').value.trim());
   $('eOffC').onclick=async()=>{try{for(const k of await caches.keys()) if(k.startsWith('t3d-data')) await caches.delete(k);toast('Offline-opslag gewist');uiExpOffline();}catch(e){toast('Wissen mislukt');}};
@@ -2863,7 +2869,6 @@ function lifeMesh(key,geo,count,color){
 function buildLife(){
   tRemove('life'); life.ways=[];life.graph={};life.agents=[];life.tur=[];life.m={};
   if(!cur) return;
-  for(const r of (cur.feats&&cur.feats.roads)||[]) addWay('road',r.cls,r.pts,r);
   const stations=[];
   for(const el of (life.extra&&life.extra.elements)||[]){const t=el.tags||{};
     if(el.type==='way'&&el.geometry){const ll=el.geometry.map(g=>[g.lat,g.lon]);
@@ -2877,10 +2882,10 @@ function buildLife(){
     for(let k=0;k<n;k++){let r=Math.random()*T,w=ws[0];for(const c of ws){r-=c.len;if(r<=0){w=c;break;}}
       life.agents.push({type,w,s:Math.random()*w.len,dir:Math.random()<0.5?1:-1,v:0,vmax:0,rank:Math.random(),col:Math.random(),seg:0,trail:[],stop:0,cool:0});}};
   const S=cur.bb.S,carLen=total(pool('car'));
-  spawn('car',Math.round(clamp(carLen/220,4,240))); spawn('truck',Math.round(clamp(total(pool('truck'))/1500,0,30)));
-  spawn('tractor',Math.round(clamp(total(pool('tractor'))/2500,0,12))); spawn('bike',Math.round(clamp(total(pool('bike'))/900,0,45)));
-  spawn('walk',Math.round(clamp(total(pool('walk'))/700,0,60))); spawn('boat',Math.round(clamp(total(pool('boat'))/1500,0,12)));
-  const rl=total(pool('train')); if(rl>300) spawn('train',Math.round(clamp(rl/5000,1,4)));
+  // spawn('car',Math.round(clamp(carLen/220,4,240))); spawn('truck',Math.round(clamp(total(pool('truck'))/1500,0,30))); // verkeer verwijderd
+  // spawn('tractor',Math.round(clamp(total(pool('tractor'))/2500,0,12))); spawn('bike',Math.round(clamp(total(pool('bike'))/900,0,45))); // verkeer verwijderd
+  // spawn('walk',Math.round(clamp(total(pool('walk'))/700,0,60))); spawn('boat',Math.round(clamp(total(pool('boat'))/1500,0,12))); // verkeer verwijderd
+  // const rl=total(pool('train')); if(rl>300) spawn('train',Math.round(clamp(rl/5000,1,4))); // verkeer verwijderd
   const cnt=t=>life.agents.filter(a=>a.type===t).length, g=new THREE.Group();
   const nCar=cnt('car'),nTr=cnt('truck'),nTra=cnt('tractor'),nB=cnt('bike'),nW=cnt('walk'),nBo=cnt('boat'),nT=cnt('train');
   if(nCar){g.add(lifeMesh('car',mkBox(4.4,1.8,1.0,0.25),nCar));g.add(lifeMesh('carTop',mkBox(2.3,1.6,0.6,1.25),nCar,0x22303c));}
@@ -2905,7 +2910,6 @@ function buildLife(){
   const idx={};for(const a of life.agents){const k=a.type;a.i=idx[k]=(idx[k]??-1)+1;const m=life.m[k];if(m&&pal[k]){C.set(pal[k][Math.floor(a.col*pal[k].length)]);m.setColorAt(a.i,C);}}
   for(const k of Object.keys(pal)) if(life.m[k]&&life.m[k].instanceColor) life.m[k].instanceColor.needsUpdate=true;
   tAdd('life',g); buildBridges();
-  const f=$('feat');if(f) f.textContent=f.textContent.replace(/ · \d+ in beweging/,'')+` · ${life.agents.length} in beweging`;
 }
 function enterWay(a,o){ // stap over op weg o.w bij punt o.j
   const w=o.w,last=w.pts.length-1;a.w=w;a.s=w.cum[o.j];
@@ -2932,7 +2936,7 @@ const _lm=new THREE.Matrix4(),_lq=new THREE.Quaternion(),_lp=new THREE.Vector3()
 function lifeFrame(now){
   if(!tmeshes.life||!cur) return;
   const dt=Math.min(0.1,life.last?(now-life.last)/1000:0.016);life.last=now;
-  const S=cur.bb.S,ar=renderer.xr.isPresenting,sp=+($('lifeSp')?$('lifeSp').value:1),T=wxTime(),hr=new Date(T).getHours(),dens=DENS[hr];
+  const S=cur.bb.S,ar=renderer.xr.isPresenting,sp=1,T=wxTime(),hr=new Date(T).getHours(),dens=DENS[hr];
   const dist=ar?0:camera.position.distanceTo(controls.target),vs=1; // echte afmetingen: past in de wereld, ook bij in- en uitzoomen
   const night=sunPos(T,cur.bb.lat,cur.bb.lon).alt<-2,ex=exag();
   const L=life.m.lights,la=L.geometry.attributes.position.array,lc=L.geometry.attributes.color.array;let li=0;
@@ -3081,7 +3085,6 @@ $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees();
 window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},wx:()=>({sim:wx.simKey,en:wx.enabled,p:!!tmeshes.precip,pk:fx.pKey,c:!!tmeshes.clouds,ck:fx.cKey}),look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
-$('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
 
 /* =================================================================
    🍂 SEIZOENEN, 💧 WATER-/HEIDEKAART en 🌳 ECHTE BOOMHOOGTES (AHN)
