@@ -65,6 +65,9 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 #meBtn{right:66px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:20px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
 #meBtn.on{background:#16a34a}
 #meHud{left:8px;right:8px;top:calc(96px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
+#presB{top:auto;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));background:#7c3aedee;color:#fff;border-radius:999px;padding:7px 14px;font-size:13px;white-space:nowrap;cursor:pointer;box-shadow:0 2px 10px #0008;z-index:13}
+body.tv #tools,body.tv #tool,body.tv #ctrl,body.tv #stat,body.tv #det,body.tv #info,body.tv #back,body.tv #meBtn,body.tv #meHud{display:none!important}
+body.tv #presB{bottom:16px;opacity:.75}
 #compass.on{box-shadow:0 0 0 3px #2563eb}
 #compass{right:10px;width:48px;height:48px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0;border:none}
 #compass svg{width:100%;height:100%;display:block}
@@ -169,6 +172,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div id="det" class="hud"></div>
   <button id="meBtn" class="hud" title="Naar mijn positie">📍</button>
   <div id="meHud" class="hud hidden"></div>
+  <div id="presB" class="hud hidden"></div>
   <button id="compass" class="hud" title="Noord boven">
     <svg viewBox="0 0 48 48"><g id="needle" style="transform-origin:24px 24px">
       <polygon points="24,6 29,24 19,24" fill="#ef4444"/><polygon points="24,42 29,24 19,24" fill="#cbd5e1"/>
@@ -222,7 +226,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v26 · 16-11 16:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v27 · 16-11 17:05. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -669,10 +673,11 @@ function frame(t,xrFrame){
     const now=performance.now(); xrFT.ema=xrFT.ema*0.9+Math.min(100,now-(xrFT.last||now))*0.1; xrFT.last=now; xrFT.n++;
     const heavy=xrFT.ema<19||xrFT.n%2===0;
     xrUpdate(xrFrame); if(tmeshes.me) meRot();
-    if(heavy){if(wx.enabled&&xrWx) wxFrame(now); if(tmeshes.life) lifeFrame(now);}
+    if(heavy){if(wx.enabled&&xrWx) wxFrame(now); if(tmeshes.life) lifeFrame(now);} if(pres.on) presSend();
     if(terrain) terrain.material.uniforms.uT.value=now/1000; renderer.render(scene,camera); return;}
   if(!running) return;
-  controls.update();
+  presFrame();
+  if(controls.enabled) controls.update();
   if(cur){const dd=camera.position.distanceTo(controls.target),nn=clamp(dd/400,0.3,Math.max(0.5,cur.bb.S/2000));if(Math.abs(nn-camera.near)/camera.near>0.25){camera.near=nn;camera.updateProjectionMatrix();}}
   if(typeof wx!=='undefined'&&wx.enabled) wxFrame(performance.now());
   if(tmeshes.me) meRot();
@@ -2298,7 +2303,7 @@ async function shareJoin(code,isNew){
   client.on('reconnect',()=>setShareStatus('⏳ Opnieuw verbinden…'));
   client.on('connect',()=>{setShareStatus('🟢 Verbonden');});
   client.on('offline',()=>setShareStatus('🔴 Geen verbinding'));
-  client.subscribe([share.topic+'/doc',share.topic+'/pos'],{qos:1});
+  client.subscribe([share.topic+'/doc',share.topic+'/pos',share.topic+'/cam'],{qos:1});
   setShareStatus('🟢 Verbonden · '+new URL(share.broker).hostname);
   try{history.replaceState(null,'','#room-'+code);}catch(e){location.hash='room-'+code;}
   if(isNew){if(cur) docTouch('area'); sharePublish();}
@@ -2329,6 +2334,7 @@ async function onShareMsg(topic,msg){
   let d; try{d=await unseal(typeof msg==='string'?msg:td.decode(msg));}catch(e){return;}
   if(topic.endsWith('/pos')){if(d.id===share.me) return; share.peers[d.id]={...d,seen:Date.now()}; renderPeers(); if(toolMode==='share') sharePeersUI(); return;}
   if(topic.endsWith('/doc')){share.gotDoc=true; mergeDoc(d);}
+  if(topic.endsWith('/cam')) presRx(d);
 }
 function mergeDoc(d){
   let localNewer=false, tacCh=false, load=false, mCh=false, vCh=false;
@@ -2390,6 +2396,9 @@ function uiShare(){
   <div class="row"><button class="btn sm" id="shCopy">Kopieer uitnodigingslink</button><button class="btn sm dark" id="shCopyC">Kopieer code</button></div>
   <div class="note" style="word-break:break-all">${shareLink()}</div>
   <div class="row"><label class="tg"><input type="checkbox" id="shGps" ${share.gps?'checked':''}> Deel mijn GPS-positie</label></div>
+  <div class="note" style="margin-top:8px"><b>📺 Presenteren</b> – laat een tv of laptop jouw beeld volgen (ook vanuit AR), zonder spiegelvertraging en in volle kwaliteit. Open daarvoor de uitnodigingslink op het grote scherm.</div>
+  <div class="row"><label class="tg"><input type="checkbox" id="shPres" ${pres.on?'checked':''}> Ik presenteer</label><label class="tg"><input type="checkbox" id="shFollow" ${pres.follow?'checked':''}> Volg presentator</label></div>
+  <div class="row"><button class="btn sm dark" id="shTv">⛶ Tv-weergave (alleen de kaart)</button></div>
   <div id="shSt" class="note">${share.status}</div>
   <div class="note"><b>Deelnemers</b></div><div id="shPeers" class="mlist"></div>
   <div class="row"><button class="btn sm dark" id="shLeave">Sessie verlaten</button></div>
@@ -2397,6 +2406,9 @@ function uiShare(){
   const cp=async t=>{try{await navigator.clipboard.writeText(t);toast('Gekopieerd');}catch(e){toast('Kopiëren niet toegestaan – selecteer de tekst');}};
   $('shCopy').onclick=()=>cp(shareLink()); $('shCopyC').onclick=()=>cp(fmtCode(share.code));
   $('shGps').onchange=()=>setShareGps($('shGps').checked);
+  $('shPres').onchange=()=>{pres.on=$('shPres').checked;if(pres.on){pres.follow=false;$('shFollow').checked=false;controls.enabled=true;pres.lastKey='';}presBadge();};
+  $('shFollow').onchange=()=>{pres.follow=$('shFollow').checked;if(pres.follow){pres.on=false;$('shPres').checked=false;}else{controls.enabled=true;pres.tgt=null;}presBadge();};
+  $('shTv').onclick=()=>{pres.follow=true;pres.on=false;setTv(true);presBadge();};
   $('shLeave').onclick=shareLeave;
   sharePeersUI();
 }
@@ -2819,7 +2831,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z)=>{camera.position.set(x,y,z);controls.update();}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
@@ -2936,6 +2948,56 @@ async function loadAhnTrees(){
     setDet(''); const f=$('feat'); if(f) f.textContent=f.textContent.replace(/\d+ bomen/,trees.length+' bomen (AHN)');
   }catch(e){console.warn('AHN-bomen',e);if(tk===aht.tok) setDet('boomhoogtes niet geladen – bos uit OSM');}
 }
+
+
+/* =================================================================
+   📺 PRESENTATIEMODUS – anderen (tv/laptop) volgen jouw camerabeeld
+   ================================================================= */
+const pres={on:false,follow:true,last:0,lastKey:'',src:null,tgt:null,rx:0,tv:false};
+const areaKey=()=>cur?cur.bb.lat.toFixed(6)+','+cur.bb.lon.toFixed(6)+','+cur.bb.S:'';
+const _pv=new THREE.Vector3(),_pq=new THREE.Quaternion();
+function presSend(){
+  if(!pres.on||!share.on||!share.client||!cur) return; const now=performance.now(); if(now-pres.last<110) return;
+  let m;
+  if(renderer.xr.isPresenting){const c=renderer.xr.getCamera();c.updateMatrixWorld();const wp=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
+    const lp=world.worldToLocal(wp),q=new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld),lq=world.quaternion.clone().invert().multiply(q);m={m:'ar',p:lp.toArray(),q:lq.toArray()};}
+  else m={m:'orbit',p:camera.position.toArray(),t:controls.target.toArray()};
+  m.ex=+$('exag').value;m.ofs=wx.ofs;m.wx=wx.enabled;m.ak=areaKey();m.id=share.me;m.name=share.name||'Presentator';
+  const key=JSON.stringify([m.m,m.p.map(v=>v.toFixed(1)),(m.t||m.q).map(v=>v.toFixed(3)),m.ex,m.ofs]);
+  if(key===pres.lastKey&&now-pres.last<2000) return; pres.last=now; pres.lastKey=key;
+  seal(m).then(pl=>{if(share.client) share.client.publish(share.topic+'/cam',pl,{qos:0});});
+}
+function presRx(d){
+  if(d.id===share.me) return; pres.src=d; pres.rx=performance.now(); presBadge();
+  if(!pres.follow||!cur||d.ak!==areaKey()) return;
+  pres.tgt=d;
+  if(Math.abs((+$('exag').value)-d.ex)>0.01){$('exag').value=d.ex;applyExag();}
+  if(d.wx){if(!wx.enabled){wx.enabled=true;(wx.data?Promise.resolve():loadWeather()).then(()=>{fx.cKey='';applyWx();}).catch(()=>{});}
+    if(wx.ofs!==d.ofs){wx.ofs=d.ofs;applyWx(true);const sl=$('wxT');if(sl) sl.value=wx.ofs;}}
+}
+function presFrame(){ // kijker: vloeiend naar het beeld van de presentator
+  if(pres.on) presSend();
+  const d=pres.tgt; if(!d||!pres.follow||renderer.xr.isPresenting) {if(!controls.enabled&&!pres.follow) controls.enabled=true; return;}
+  if(performance.now()-pres.rx>6000){presBadge();return;}
+  controls.enabled=false; const nw=performance.now(),dt=Math.min(0.5,(nw-(pres.ft||nw))/1000); pres.ft=nw; const a=1-Math.exp(-dt/0.18);
+  if(d.m==='orbit'){_pv.fromArray(d.p);camera.position.lerp(_pv,a);_pv.fromArray(d.t);controls.target.lerp(_pv,a);camera.lookAt(controls.target);}
+  else{_pv.fromArray(d.p);camera.position.lerp(_pv,a);_pq.fromArray(d.q);camera.quaternion.slerp(_pq,a);
+    const f=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);controls.target.copy(camera.position).addScaledVector(f,cur.bb.S*0.2);}
+}
+function presBadge(){
+  const b=$('presB'); if(!b) return; const now=performance.now();
+  if(pres.on){b.innerHTML='📺 Je presenteert – anderen volgen jouw beeld';b.classList.remove('hidden');return;}
+  if(pres.src&&now-pres.rx<6000){b.innerHTML=pres.follow?`📺 Je volgt <b>${String(pres.src.name).replace(/</g,'&lt;')}</b> · tik om zelf te kijken`:`📺 ${String(pres.src.name).replace(/</g,'&lt;')} presenteert · tik om te volgen`;b.classList.remove('hidden');}
+  else if(pres.src){b.innerHTML='📺 Presentator is gestopt';b.classList.remove('hidden');}
+  else b.classList.add('hidden');
+}
+$('presB').onclick=()=>{if(pres.on) return; pres.follow=!pres.follow; if(!pres.follow){controls.enabled=true;pres.tgt=null;} if(pres.tv&&!pres.follow) setTv(false); presBadge(); if(toolMode==='share') uiShare();};
+function setTv(on){ // schone tv-weergave: alleen de kaart
+  pres.tv=on; document.body.classList.toggle('tv',on);
+  if(on){try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();}catch(e){} closeTool();}
+  else{try{document.fullscreenElement&&document.exitFullscreen();}catch(e){}}
+}
+setInterval(presBadge,2000);
 
 </script>
 </body>
