@@ -1636,7 +1636,7 @@ function applyWx(fast){
   U.snow.value=w&&wx.rain?clamp((w.snow_depth||0)/0.04,0,1):0;
   fx.storm=!!(w&&wx.rain&&w.weather_code>=95);
   U.wave.value=w?0.05+Math.min(w.wind_speed_10m||0,16)*0.018:0.12; applySeason();
-  updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w); updateCelest();
+  updateFlow(w); updateClouds(w,tint,lightK,rainy); updatePrecip(w); updateCelest(); updateWinLights();
   // tekst
   if($('wxNow')){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
@@ -2735,11 +2735,22 @@ async function loadBuildings(){
 }
 const BTYPE_H={house:7.5,detached:8,semidetached_house:8,terrace:8,residential:8,apartments:13,garage:2.8,garages:2.8,shed:2.8,hut:3,cabin:3.5,roof:4,carport:2.6,barn:8,farm_auxiliary:7,cowshed:6,stable:6,greenhouse:4,industrial:9,warehouse:9,commercial:9,retail:7,office:12,school:9,church:16,chapel:9,cathedral:25,hospital:15,bunker:3,hangar:12,military:6,transformer_tower:6,service:3,bridge:2};
 const BCOL={house:'#c9a58a',residential:'#c9a58a',apartments:'#d8c7b4',garage:'#bdbdbd',shed:'#b9a48c',barn:'#a3836b',farm_auxiliary:'#a3836b',industrial:'#c7ccd1',warehouse:'#c7ccd1',commercial:'#d7d2cb',church:'#c2b49c',greenhouse:'#dbeef2',bunker:'#8e9188',hangar:'#b8bec4'};
+// --- licht achter de ramen in het donker (subtiel)
+const WINB=new Set(['yes','house','detached','semidetached_house','terrace','residential','apartments','farm','bungalow','dormitory','office','commercial','retail','hotel','school','civic','public','hospital','university','townhall','cabin']);
+const WIN_VS=`attribute float rnd; attribute vec3 col; uniform float lit; uniform float k; uniform float ph; varying vec3 vC; varying float vA;
+void main(){vec4 mv=modelViewMatrix*vec4(position,1.0); float on=step(rnd,lit); float sc=length(modelMatrix[0].xyz);
+  float px=1.25*sc*ph/max(-mv.z,0.001); vA=on*k*clamp(px/1.5,0.25,1.0); vC=col; gl_PointSize=clamp(px,1.0,14.0); gl_Position=projectionMatrix*mv;}`;
+const WIN_FS=`varying vec3 vC; varying float vA; void main(){if(vA<0.01) discard; vec2 p=abs(gl_PointCoord-0.5)*2.0; float a=1.0-smoothstep(0.55,1.0,max(p.x,p.y*0.8)); gl_FragColor=vec4(vC*vA*a*0.65,1.0);}`;
+function updateWinLights(){const w=bld.win; if(!w||!cur) return; const T=wxTime(),hr=new Date(T).getHours()+new Date(T).getMinutes()/60,alt=sunPos(T,cur.bb.lat,cur.bb.lon).alt;
+  const dark=clamp((2-alt)/8,0,1); // vanaf zonsondergang
+  const lit=hr>=16&&hr<22?0.5:hr>=22&&hr<23.5?0.5-0.3*(hr-22)/1.5:hr>=23.5||hr<1?0.18:hr<5.5?0.05:hr<8.5?0.32:0.4;
+  w.material.uniforms.lit.value=lit; w.material.uniforms.k.value=dark; w.material.uniforms.ph.value=renderer.domElement.height/2;}
+setInterval(updateWinLights,30000);
 function buildBuildings(){
   tRemove('bld'); if(!cur||!bld.data) return;
   const S=cur.bb.S,ex=exag(),dsm=bld.dsm&&bld.dsm.E, n=dsm?Math.round(Math.sqrt(dsm.length)):0;
   const dsmAt=(x,z)=>bilin(dsm,n,n,(x+S/2)/S*(n-1),(z+S/2)/S*(n-1));
-  const pos=[],col=[],c=new THREE.Color();let count=0;
+  const pos=[],col=[],c=new THREE.Color();let count=0; const wp=[],wr=[],wc=[]; const WMAX=state.hiq?90000:45000;
   const add=(rings,t)=>{
     const outer=rings[0].map(([la,lo])=>ll2w(la,lo)); if(outer.length<3) return;
     if(outer.length>2&&Math.abs(outer[0][0]-outer[outer.length-1][0])<1e-6&&Math.abs(outer[0][1]-outer[outer.length-1][1])<1e-6) outer.pop();
@@ -2757,7 +2768,13 @@ function buildBuildings(){
     // wanden
     for(let i=0;i<outer.length;i++){const a=outer[i],b=outer[(i+1)%outer.length];
       pos.push(a[0],y0,a[1], b[0],y0,b[1], b[0],y1,b[1],  a[0],y0,a[1], b[0],y1,b[1], a[0],y1,a[1]);
-      for(let k=0;k<6;k++) col.push(c.r,c.g,c.b);}
+      for(let k=0;k<6;k++) col.push(c.r,c.g,c.b);
+      // ramen met licht (alleen woon- en kantoorachtige gebouwen)
+      if(WINB.has(t.building||'yes')&&wp.length<WMAX*3){const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz); if(L>2.5){
+        const nx=dz/L,nz=-dx/L, fl=Math.max(1,Math.min(30,Math.floor((h-0.6)/2.9))), nw=Math.max(1,Math.floor(L/3.6)), warm=Math.random();
+        for(let f=0;f<fl;f++) for(let k=0;k<nw;k++){const u=(k+0.5)/nw; const ox=a[0]+dx*u, oz=a[1]+dz*u;
+          // beide kanten: welke kant buiten is weten we niet zeker, dus een punt net voor de muur aan de kant van de normaal en één erachter
+          for(const sd of [0.18,-0.18]){wp.push(ox+nx*sd,y0+0.5+1.5+f*2.9,oz+nz*sd);wr.push(Math.random());const q=Math.random();wc.push(1,0.72+0.12*q+0.06*warm,0.38+0.25*q*warm);}}}}}
     // dak
     const contour=outer.map(p=>new THREE.Vector2(p[0],p[1])), holes=(rings.slice(1)||[]).map(r=>r.map(([la,lo])=>{const w=ll2w(la,lo);return new THREE.Vector2(w[0],w[1]);}));
     let tris;try{tris=THREE.ShapeUtils.triangulateShape(contour,holes);}catch(e){return;}
@@ -2774,6 +2791,9 @@ function buildBuildings(){
   g.computeVertexNormals();
   const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));m.userData.count=count;
   tAdd('bld',m);
+  if(wp.length){const wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(wp,3));wg.setAttribute('rnd',new THREE.Float32BufferAttribute(wr,1));wg.setAttribute('col',new THREE.Float32BufferAttribute(wc,3));
+    const wm=new THREE.Points(wg,new THREE.ShaderMaterial({vertexShader:WIN_VS,fragmentShader:WIN_FS,uniforms:{lit:{value:0},k:{value:0},ph:{value:renderer.domElement.height/2}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+    wm.frustumCulled=false; wm.renderOrder=5; m.add(wm); bld.win=wm; updateWinLights();}
   const f=$('feat');if(f&&!/gebouwen/.test(f.textContent)) f.textContent+=` · ${count} gebouwen`;
 }
 $('tBld').onchange=()=>{state.bld=$('tBld').checked;lsSet('terrein3d',state);if(bldOn()) loadBuildings(); else {bld.tok++;tRemove('bld');}};
@@ -2900,7 +2920,7 @@ function lifeFrame(now){
   if(!tmeshes.life||!cur) return;
   const dt=Math.min(0.1,life.last?(now-life.last)/1000:0.016);life.last=now;
   const S=cur.bb.S,ar=renderer.xr.isPresenting,sp=+($('lifeSp')?$('lifeSp').value:1),T=wxTime(),hr=new Date(T).getHours(),dens=DENS[hr];
-  const dist=ar?0:camera.position.distanceTo(controls.target),vs=ar?clamp(S/700*0.6/xrSize,1,12):clamp(dist/320,1,10);
+  const dist=ar?0:camera.position.distanceTo(controls.target),vs=1; // echte afmetingen: past in de wereld, ook bij in- en uitzoomen
   const night=sunPos(T,cur.bb.lat,cur.bb.lon).alt<-2,ex=exag();
   const L=life.m.lights,la=L.geometry.attributes.position.array,lc=L.geometry.attributes.color.array;let li=0;
   const put=(m,i,x,y,z,yaw,s)=>{_lq.setFromAxisAngle(_lY,yaw);_lp.set(x,y,z);_ls.set(s,s,s);_lm.compose(_lp,_lq,_ls);m.setMatrixAt(i,_lm);};
