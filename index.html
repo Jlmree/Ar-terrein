@@ -226,7 +226,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v28 · 16-11 19:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v29 · 16-11 19:15. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -1210,7 +1210,7 @@ function toolsExag(){
   if(tmeshes.bld){clearTimeout(bld.exT);bld.exT=setTimeout(buildBuildings,150);}
   if(tmeshes.brg){clearTimeout(bld.brT);bld.brT=setTimeout(buildBridges,150);}
 }
-function toolsFeatures(){buildBridges(); if(lifeOn()) loadLife(); loadLandcover(); loadAhnTrees(); applySeason(true);if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
+function toolsFeatures(){buildBridges(); ensureExtra().then(()=>{if(!lifeOn()) buildBridges();}); if(lifeOn()) loadLife(); loadLandcover(); loadAhnTrees(); applySeason(true);if(cur.vsObs) computeVS(); if(wx.enabled){wxShadowKey='';applyWx();} if(toolMode==='meas') updateMeas();}
 
 /* ---------- paneel ---------- */
 let toolMode=null; const tb=$('toolB');
@@ -2617,16 +2617,20 @@ const ptKey=(x,z)=>Math.round(x*2)+','+Math.round(z*2);
 async function loadLife(){
   if(!cur||!lifeOn()){lifeClear();return;}
   const tk=++life.tok,key=cur.bb.x0+'|'+cur.bb.S;
-  if(life.key!==key){life.extra=null;life.key=key;}
-  if(!life.extra){
+  await ensureExtra(); if(tk!==life.tok||!cur) return;
+  buildLife();
+}
+async function ensureExtra(){ // spoor, stations, kanalen, windmolens (ook nodig voor spoorbruggen)
+  if(!cur) return; const key=cur.bb.x0+'|'+cur.bb.S;
+  if(life.key!==key){life.extra=null;life.key=key;life.exP=null;}
+  if(life.extra) return; if(life.exP) return life.exP;
+  life.exP=(async()=>{
     const b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`;
     const q=`[out:json][timeout:40];(way["railway"~"^(rail|light_rail|tram|narrow_gauge)$"](${bx});node["railway"~"^(station|halt)$"](${bx});way["waterway"~"^(canal|river)$"](${bx});node["power"="generator"]["generator:source"="wind"](${bx});node["generator:source"="wind"](${bx}););out geom;`;
     for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
       try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw new Error(r.status);life.extra=await r.json();break;}catch(e){console.warn('leven',e);}}
     if(!life.extra) life.extra={elements:[]};
-  }
-  if(tk!==life.tok||!cur) return;
-  buildLife();
+  })(); return life.exP;
 }
 function lifeClear(){life.tok++;life.agents=[];life.tur=[];tRemove('life');life.m={};}
 function addWay(kind,cls,ll,src){
@@ -2811,8 +2815,27 @@ function buildBridges(){
       const rh=1.1; const up=v=>[v[0],v[1]+rh,v[2]];  // leuning
       quad(aL,bL,up(bL),up(aL),rail); quad(aR,up(aR),up(bR),bR,rail);
     }
-    // pijlers waar de brug hoog genoeg boven de grond ligt
-    for(let s=len>40?17:len/2;s<len-5;s+=34){let i=0;while(i<cum.length-2&&cum[i+1]<s)i++;const f=(s-cum[i])/((cum[i+1]-cum[i])||1),a=V[i],b=V[i+1];
+    // spoorbrug: rails, en bij een lange overspanning een stalen boog met hangstangen
+    const at=s0=>{let i=0;while(i<cum.length-2&&cum[i+1]<s0)i++;const f=clamp((s0-cum[i])/((cum[i+1]-cum[i])||1),0,1),a=V[i],b=V[i+1];
+      return {x:a.x+(b.x-a.x)*f,z:a.z+(b.z-a.z)*f,y:a.y+(b.y-a.y)*f,nx:a.nx,nz:a.nz};};
+    const prism=(a,b,lx,lz,wl,hv,cl)=>{const h=wl/2,v=hv/2,c=(p,sx,sy)=>[p[0]+lx*h*sx,p[1]+v*sy,p[2]+lz*h*sx];
+      quad(c(a,-1,1),c(b,-1,1),c(b,1,1),c(a,1,1),cl);quad(c(a,-1,-1),c(a,1,-1),c(b,1,-1),c(b,-1,-1),cl);
+      quad(c(a,-1,-1),c(b,-1,-1),c(b,-1,1),c(a,-1,1),cl);quad(c(a,1,-1),c(a,1,1),c(b,1,1),c(b,1,-1),cl);};
+    let spans=[];
+    if(r.rail){const steel=new THREE.Color('#2f2f33');
+      for(const off of [-0.72,0.72]) for(let i=0;i<V.length-1;i++){const a=V[i],b=V[i+1];prism([a.x+a.nx*off,a.y+0.12,a.z+a.nz*off],[b.x+b.nx*off,b.y+0.12,b.z+b.nz*off],a.nx,a.nz,0.12,0.18,steel);}
+      if(len>=25){const ns=Math.max(1,Math.round(len/90)),sl=(len-2)/ns,arc=new THREE.Color('#4f7286'),K=18;
+        for(let k=0;k<ns;k++) spans.push([1+k*sl,1+(k+1)*sl]);
+        for(const [s0,s1] of spans){const H=clamp((s1-s0)*0.17,4,24);
+          const side=sg=>{const pts=[];for(let k=0;k<=K;k++){const u=k/K,q=at(s0+(s1-s0)*u),o=(w+0.35)*sg;pts.push({p:[q.x+q.nx*o,q.y+H*4*u*(1-u)+0.4,q.z+q.nz*o],d:[q.x+q.nx*o,q.y,q.z+q.nz*o],nx:q.nx,nz:q.nz});}return pts;};
+          const Lp=side(-1),Rp=side(1);
+          for(const A of [Lp,Rp]){for(let k=0;k<K;k++) prism(A[k].p,A[k+1].p,A[k].nx,A[k].nz,0.8,1.0,arc);       // boog
+            for(let k=1;k<K;k++) prism(A[k].d,A[k].p,A[k].nz,-A[k].nx,0.22,0.22,arc);}                        // hangstangen
+          for(let k=3;k<=K-3;k+=3){const a=Lp[k].p,b=Rp[k].p,tx=-Lp[k].nz,tz=Lp[k].nx;prism(a,b,tx,tz,0.35,0.35,arc);}}}  // windverbanden
+    }
+    // pijlers waar de brug hoog genoeg boven de grond ligt (bij een boogbrug alleen tussen de bogen)
+    const pil=spans.length?spans.slice(1).map(sp=>sp[0]):null;
+    for(let s=pil?(pil[0]??len+1):(len>40?17:len/2),pi=0;s<len-5;s=pil?(pil[++pi]??len+1):s+34){let i=0;while(i<cum.length-2&&cum[i+1]<s)i++;const f=(s-cum[i])/((cum[i+1]-cum[i])||1),a=V[i],b=V[i+1];
       const x=a.x+(b.x-a.x)*f,z=a.z+(b.z-a.z)*f,yt=a.y+(b.y-a.y)*f-th,yg=(elevAt(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2))-cur.eMin)*ex-1;if(yt-yg<2) continue;
       const pw=0.9,nx=a.nx,nz=a.nz,tx=-nz,tz=nx;
       for(const off of (w>4?[-w*0.55,w*0.55]:[0])){const px=x+nx*off,pz=z+nz*off;
@@ -2832,7 +2855,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z)=>{camera.position.set(x,y,z);controls.update();}}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
