@@ -115,18 +115,25 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 #farTop{left:50%;transform:translateX(-50%);background:#000a;border-radius:10px;padding:4px 12px;font:700 15px system-ui;font-variant-numeric:tabular-nums}
 #farX{left:8px}
 #farBot{bottom:calc(8px + env(safe-area-inset-bottom))}
-#xrUI{position:fixed;inset:0;pointer-events:none;z-index:100;font-family:system-ui}
-#xrUI .xrb{position:absolute;left:0;right:0;bottom:calc(20px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px;pointer-events:auto}
-#xrUI button{background:#16181de6;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:17px;font-weight:700}
-#xrUI .xrs{top:calc(58px + env(safe-area-inset-top))!important}
-#xrUI .xrs + .xrl{top:calc(100px + env(safe-area-inset-top))}
-#xrUI .xrl{position:absolute;top:calc(58px + env(safe-area-inset-top));left:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;pointer-events:auto}
-#xrUI .xrl button{padding:6px 10px;font-size:13px;font-weight:600;opacity:.55}
-#xrUI .xrl button.on{opacity:1;background:#2563ebe6}
-#xrUI #xrNorth.on{background:#2563ebe6}
-#xrUI .xrt{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));background:#000a;border-radius:12px;padding:8px 10px;pointer-events:auto;color:#fff;font-size:13px}
-#xrUI .xrt button{padding:6px 12px;font-size:15px}
-#xrMsg{position:absolute;top:calc(20px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#000a;color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;white-space:nowrap}
+#xrUI{position:fixed;inset:0;pointer-events:auto;z-index:100;font-family:system-ui;touch-action:none}
+#xrUI button{background:#16181de6;color:#fff;border:none;font-weight:700;cursor:pointer}
+#xrUI .xround{width:52px;height:52px;border-radius:50%;font-size:22px;padding:0;box-shadow:0 2px 10px #0008}
+#xrUI .xround.on,#xrUI #xrMenu.open{background:#2563ebe6}
+#xrUI .xtop{position:absolute;top:calc(12px + env(safe-area-inset-top));left:12px;right:12px;display:flex;gap:10px;align-items:center}
+#xrMsg{flex:1;min-width:0;background:#000b;color:#fff;padding:9px 14px;border-radius:12px;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#xrUI .xside{position:absolute;right:12px;top:calc(78px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:12px}
+#xrUI .xbot{position:absolute;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom));display:flex;justify-content:center;align-items:center;gap:22px}
+#xrUI .xmain{min-width:150px;height:60px;border-radius:30px;font-size:18px;background:#2563ebf0!important;box-shadow:0 4px 14px #0009}
+#xrUI .xmain.placed{background:#16181de6!important}
+#xrUI .xsheet{position:absolute;left:10px;right:10px;bottom:calc(98px + env(safe-area-inset-bottom));max-height:46vh;overflow:auto;background:#0f1115e8;border-radius:16px;padding:10px 10px 12px;box-shadow:0 6px 20px #000a}
+#xrUI .xsheet.hidden{display:none}
+#xrUI .xh{color:#9ca3af;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:4px 2px 6px}
+#xrUI .xsheet .xrl{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#xrUI .xsheet .xrl button{padding:8px 11px;font-size:13px;font-weight:600;border-radius:10px;opacity:.6}
+#xrUI .xsheet .xrl button.on{opacity:1;background:#2563ebe6}
+#xrUI .xrt{background:#000a;border-radius:12px;padding:8px 10px;color:#fff;font-size:12.5px;margin-top:4px}
+#xrUI .xrt button{padding:6px 12px;font-size:15px;border-radius:10px}
+#xrUI .xhint{position:absolute;left:0;right:0;bottom:calc(92px + env(safe-area-inset-bottom));text-align:center;color:#fff;font-size:12px;text-shadow:0 1px 3px #000;pointer-events:none;transition:opacity .6s}
 </style>
 </head>
 <body>
@@ -215,7 +222,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v25 · 16-11 15:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v26 · 16-11 16:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -240,11 +247,13 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   </div>
 </div>
 <!-- ============ AR OP TAFEL (WebXR overlay) ============ -->
-<div id="xrUI" class="hidden"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div>
-  <div class="xrl xrs" id="xrSizes"><button data-s="table" class="on">🗺 60 cm</button><button data-s="room">🛋 3 m</button><button data-s="big">🏡 10 m</button><button data-s="real">🌍 1:1</button><button data-s="gps">📍 1:1 op mijn plek</button></div>
-  <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="life" class="on">🚗 Verkeer</button><button data-l="time">⏱ Tijd</button></div>
-  <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
-  <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrNorth" class="on" title="Noorden = echt noorden">🧭</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
+<div id="xrUI" class="hidden">
+  <div class="xtop"><div id="xrMsg">Richt op de tafel en tik om het terrein te plaatsen</div><button id="xrExit" class="xround" title="Stop AR">✕</button></div>
+  <div class="xside"><button id="xrPlus" class="xround" title="Groter">＋</button><button id="xrMinus" class="xround" title="Kleiner">－</button><button id="xrRot" class="xround" title="Draaien">⟳</button><button id="xrNorth" class="xround on" title="Noorden = echt noorden">🧭</button></div>
+  <div class="xsheet hidden" id="xrSheet"><div class="xh">Grootte</div><div class="xrl" id="xrSizes"><button data-s="table" class="on">🗺 60 cm</button><button data-s="room">🛋 3 m</button><button data-s="big">🏡 10 m</button><button data-s="real">🌍 1:1</button><button data-s="gps">📍 1:1 op mijn plek</button></div><div class="xh">Lagen</div><div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="life" class="on">🚗 Verkeer</button><button data-l="time">⏱ Tijd</button></div><div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div></div>
+  <div class="xbot"><button id="xrMenu" class="xround" title="Grootte &amp; lagen">☰</button><button id="xrMove" class="xmain">Plaats</button><button id="xrHere" class="xround" title="Zwevend voor je plaatsen">📍</button></div>
+  <div class="xhint" id="xrHint">Twee vingers: knijpen = groter/kleiner · draaien = kaart draaien</div>
+</div>
 
 <!-- ============ GEO (UTM / MGRS / Mercator) ============ -->
 <script>
@@ -1813,7 +1822,7 @@ async function startXR(){
     if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
       $('xrT').value=wx.ofs;}
     else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
-    meStart(); $('xrNorth').classList.toggle('on',xrNorth);
+    meStart(); $('xrNorth').classList.toggle('on',xrNorth); xrMainUI(); $('xrSheet').classList.add('hidden'); $('xrMenu').classList.remove('open'); $('xrHint').style.opacity=1;
     xrL.tac=tacOn(); xrLayersUI(); xrSizesUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
@@ -1852,7 +1861,7 @@ function xrPlaceHere(){ // zonder oppervlak: 70 cm voor je, 35 cm onder ooghoogt
   const c=renderer.xr.getCamera(),pos=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld),dir=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld));
   dir.y=0; if(dir.lengthSq()<1e-6) dir.set(0,0,-1); dir.normalize();
   const dd=xrSize>2?Math.min(xrSize*0.3,3):0.7; xrPlaceAt(new THREE.Vector3(pos.x+dir.x*dd,pos.y-(xrSize>2?1.5:0.35),pos.z+dir.z*dd),0,0);
-  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Geplaatst · ${xrSizeTxt()}`;
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Geplaatst · ${xrSizeTxt()}`; xrMainUI();
 }
 let xrAP=null,xrExagSaved=null;
 function arSz(f){const S=cur.bb.S,k=xrSize/S;return clamp(xrSize*f,0.02,f*45)/k;} // vaste fysieke maat, ook bij 1:1
@@ -1880,7 +1889,7 @@ function xrSelect(){
   if(xrPlaced||!xrLast) return;
   const m=new THREE.Matrix4().fromArray(xrLast.transform.matrix),p=new THREE.Vector3().setFromMatrixPosition(m);
   xrPlaceAt(p,0,0);
-  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Terrein ${xrSizeTxt()} · loop eromheen`;
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; $('xrMsg').textContent=`Terrein ${xrSizeTxt()} · loop eromheen`; xrMainUI();
   xrDropAnchor(); if(xrLastRes&&xrLastRes.createAnchor) xrLastRes.createAnchor().then(a=>{xrAnchor=a;}).catch(e=>console.warn('anker',e));
 }
 function xrDropAnchor(){if(xrAnchor){try{xrAnchor.delete();}catch(e){}xrAnchor=null;}}
@@ -1906,7 +1915,7 @@ function xrPlaceGps(){ // 1:1 op je eigen plek, noorden van de kaart = echt noor
   world.rotation.y=hd!=null?(hd-xrCompassYaw())*D2R:0;
   const fy=xrLast?new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(xrLast.transform.matrix)).y:cp.y-1.55;
   xrSize=cur.bb.S; xrDropAnchor(); xrPlaceAt(new THREE.Vector3(cp.x,Math.min(fy,cp.y-1.0),cp.z),cx,cz);
-  world.visible=true; xrPlaced=true; xrReticle.visible=false; xrGpsMode=true;
+  world.visible=true; xrPlaced=true; xrReticle.visible=false; xrGpsMode=true; xrMainUI();
   $('xrMsg').textContent=`1:1 op je plek · GPS ±${Math.round(me.acc||10)} m${hd!=null?' · noorden via kompas (±10°)':''}`; return true;
 }
 document.querySelectorAll('#xrSizes button').forEach(b=>b.onclick=()=>{
@@ -1925,7 +1934,7 @@ function endXR(){
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=()=>{xrDropAnchor();xrPlaceHere();};
-for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers','xrSizes','xrNorth']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrSheet','xrMenu','xrNorth']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
 $('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
 $('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';wxShadowKey='';applyWx();return;}
@@ -1935,7 +1944,23 @@ $('xrNorth').onclick=()=>{xrNorth=!xrNorth;$('xrNorth').classList.toggle('on',xr
   if(xrNorth){if(xrAlignNorth()) $('xrMsg').textContent='Noorden van de kaart = echt noorden (kompas ±10°)'; else $('xrMsg').textContent='Geen kompas beschikbaar – draai met ⟳';}
   else $('xrMsg').textContent='Vrij draaien met ⟳';};
 $('xrRot').onclick=()=>{xrNorth=false;$('xrNorth').classList.remove('on');world.rotation.y+=Math.PI/8;if(xrPlaced&&xrAP) world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz));};
-$('xrMove').onclick=()=>{xrDropAnchor();xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
+function xrMainUI(){const b=$('xrMove');b.textContent=xrPlaced?'Verplaats':'Plaats';b.classList.toggle('placed',xrPlaced);}
+$('xrMove').onclick=()=>{
+  if(!xrPlaced){if(xrLast){xrSelect();} else $('xrMsg').textContent='Nog geen oppervlak gevonden – beweeg langzaam of tik 📍';}
+  else{xrDropAnchor();xrPlaced=false;xrSeen=0;xrGpsMode=false;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';}
+  xrMainUI();};
+$('xrMenu').onclick=()=>{const h=$('xrSheet').classList.toggle('hidden');$('xrMenu').classList.toggle('open',!h);};
+// twee vingers: knijpen = schalen, draaien = kaart draaien (één vinger blijft 'plaatsen')
+const xg={on:false};
+const tinfo=t=>{const a=t[0],b=t[1];return {d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),a:Math.atan2(b.clientY-a.clientY,b.clientX-a.clientX)};};
+$('xrUI').addEventListener('touchstart',e=>{if(e.touches.length===2&&xrPlaced){const i=tinfo(e.touches);Object.assign(xg,{on:true,d0:i.d,a0:i.a,size:xrSize,rot:world.rotation.y});}},{passive:true});
+$('xrUI').addEventListener('touchmove',e=>{if(!xg.on||e.touches.length!==2) return;const i=tinfo(e.touches);
+  xrSize=clamp(xg.size*i.d/Math.max(20,xg.d0),0.15,cur.bb.S); const da=i.a-xg.a0;
+  if(Math.abs(da)>0.06){world.rotation.y=xg.rot-da; if(xrNorth){xrNorth=false;$('xrNorth').classList.remove('on');}}
+  if(xrAP){world.scale.setScalar(xrSize/cur.bb.S);world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz));}
+  $('xrMsg').textContent=`Terrein ${xrSizeTxt()}`;},{passive:true});
+$('xrUI').addEventListener('touchend',e=>{if(xg.on&&e.touches.length<2){xg.on=false;xg.until=performance.now()+350;if(xrAP) xrPlaceAt(xrAP.p,xrAP.cx,xrAP.cz);xrSizesUI();renderTac();renderPeers();tRemove('me');renderMe();$('xrHint').style.opacity=0;}},{passive:true});
+$('xrUI').addEventListener('beforexrselect',e=>{if(xg.on||(xg.until&&performance.now()<xg.until)||e.target.closest('button,input,.xsheet')) e.preventDefault();});
 $('xrExit').onclick=()=>{const s=renderer.xr.getSession();if(s) s.end();};
 
 // --- veld-AR (camera + kompas + GPS)
