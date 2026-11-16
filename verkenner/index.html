@@ -400,48 +400,28 @@ function drawMap() {
   }
 
   const labels = [];
-  // gebiedsnamen: bossen, heides, meren, natuurgebieden (stukken met dezelfde naam samen)
-  const groups = new Map(), aplaced = [];
+  // gebiedsnamen: kandidaten met een vaste plek (midden van het hele gebied), de hoofdthread
+  // bepaalt per beeldje grootte, zichtbaarheid en overlap, zodat namen niet verspringen bij zoomen
+  const groups = new Map();
   for (const kind of ['park', 'water', 'forest', 'heath', 'wetland', 'sand']) {
     const L = AREAS[kind]; if (!L) continue;
     for (const f of L) {
-      if (!f.n || !hit(f.bb, vb)) continue;
-      const key = kind + '|' + f.n, bb = [Math.max(f.bb[0], vb[0]), Math.max(f.bb[1], vb[1]), Math.min(f.bb[2], vb[2]), Math.min(f.bb[3], vb[3])];
-      const ar = (f.bb[2] - f.bb[0]) * (f.bb[3] - f.bb[1]);
+      if (!f.n) continue;
+      const key = kind + '|' + f.n;
       let g = groups.get(key);
-      if (!g) groups.set(key, { kind, n: f.n, bb, big: f, ar });
-      else { g.bb = [Math.min(g.bb[0], bb[0]), Math.min(g.bb[1], bb[1]), Math.max(g.bb[2], bb[2]), Math.max(g.bb[3], bb[3])]; if (ar > g.ar) { g.ar = ar; g.big = f; } }
+      if (!g) groups.set(key, { kind, n: f.n, bb: f.bb.slice() });
+      else g.bb = [Math.min(g.bb[0], f.bb[0]), Math.min(g.bb[1], f.bb[1]), Math.max(g.bb[2], f.bb[2]), Math.max(g.bb[3], f.bb[3])];
     }
   }
-  const drawAreaLabel = (kind, label, cx, cy, ang, fs, spacing) => {
-    c.font = 'italic ' + fs + 'px "IM Fell English",serif';
-    try { c.letterSpacing = spacing.toFixed(1) + 'px'; } catch (e) {}
-    const tw = c.measureText(label).width, sx = cx * s + ox, sy = cy * s + oy, ca = Math.abs(Math.cos(ang)), sa = Math.abs(Math.sin(ang));
-    const hw = ca * tw / 2 + sa * fs / 2, hh = sa * tw / 2 + ca * fs / 2, box = [sx - hw, sy - hh, sx + hw, sy + hh];
-    if (aplaced.some(q => !(box[0] > q[2] || box[2] < q[0] || box[1] > q[3] || box[3] < q[1]))) return false;
-    aplaced.push(box);
-    labels.push({ t: label, x: cx, y: cy, ang, fs, sp: spacing, ink: AREA_INK[kind] });
-    return tw;
-  };
-  for (const g of groups.values()) {
-    const bw = (g.bb[2] - g.bb[0]) * s, bh = (g.bb[3] - g.bb[1]) * s;
-    if (Math.max(bw, bh) < 110 || Math.min(bw, bh) < 26) continue;
-    const cx = (g.bb[0] + g.bb[2]) / 2, cy = (g.bb[1] + g.bb[3]) / 2;
-    if (S.fog && !isRevealed(cx, cy)) continue;
-    if (g.big.ang == null) g.big.ang = g.big.e ? 0 : axisAngle(g.big.r[0]);
-    const label = g.kind === 'water' ? g.n : g.n.toUpperCase(), fs = clamp(Math.sqrt(bw * bh) / 10, 12, g.kind === 'park' ? 26 : 30);
-    c.font = 'italic ' + fs + 'px "IM Fell English",serif';
-    if (c.measureText(label).width * 1.4 > Math.max(bw, bh) * 1.15) continue;
-    drawAreaLabel(g.kind, label, cx, cy, g.big.ang, fs, g.kind === 'water' ? fs * .12 : fs * .32);
+  for (const [key, g] of groups) {
+    if (!hit(g.bb, vb)) continue;
+    labels.push({ key: 'a' + key, t: g.kind === 'water' ? g.n : g.n.toUpperCase(), x: (g.bb[0] + g.bb[2]) / 2, y: (g.bb[1] + g.bb[3]) / 2,
+      ww: g.bb[2] - g.bb[0], wh: g.bb[3] - g.bb[1], k: g.kind, ink: AREA_INK[g.kind], spf: g.kind === 'water' ? .12 : .32 });
   }
-  if (s > .08) for (const lb of LABELS) {
-    const sx = lb.x * s + ox, sy = lb.y * s + oy;
-    if (sx < -100 || sy < -30 || sx > W + 100 || sy > H + 30) continue;
-    if (S.fog && !isRevealed(lb.x, lb.y)) continue;
-    drawAreaLabel('water', lb.n, lb.x, lb.y, 0, 15, 1.5);
+  for (const lb of LABELS) {
+    if (lb.x < vb[0] || lb.y < vb[1] || lb.x > vb[2] || lb.y > vb[3]) continue;
+    labels.push({ key: 'w' + lb.n + Math.round(lb.x), t: lb.n, x: lb.x, y: lb.y, ww: 0, wh: 0, k: 'water', ink: AREA_INK.water, spf: .1, pt: 1 });
   }
-  try { c.letterSpacing = '0px'; } catch (e) {}
-
   try { c.letterSpacing = '0px'; } catch (e) {}
   return labels;
 }
@@ -1317,47 +1297,82 @@ function toWorld(sx, sy) {
   return [view.x + (dx * c + dy * s) / view.s, view.y + (-dx * s + dy * c) / view.s];
 }
 const hit = (b, v) => !(b[0] > v[2] || b[2] < v[0] || b[1] > v[3] || b[3] < v[1]);
+const LA = new Map(); let lastLblT = 0;
+// laat een naam rustig in- en uitfaden in plaats van te verspringen
+function fadeA(key, want, dt) {
+  let a = LA.get(key) || 0;
+  a += ((want ? 1 : 0) - a) * Math.min(1, dt * 9);
+  if (!want && a < .02) { LA.delete(key); return 0; }
+  LA.set(key, a); return a;
+}
+const shown = key => (LA.get(key) || 0) > .5;
+const overlaps = (list, b) => list.some(q => !(b[0] > q[2] || b[2] < q[0] || b[1] > q[3] || b[3] < q[1]));
 function drawLabels() {
-  const c = ctx, s = view.s;
-  // gebiedsnamen (berekend door de tekenwerker, hier scherp getekend op de huidige zoom)
-  for (const L of wLabels) {
+  const c = ctx, s = view.s, now = performance.now(), dt = Math.min(.1, (now - lastLblT) / 1000); lastLblT = now;
+  c.textAlign = 'center';
+  // ---- gebiedsnamen: grootte groeit vloeiend mee met de zoom, recht op het scherm ----
+  const aplaced = [];
+  const list = wLabels.slice().sort((a, b) => (shown(b.key) - shown(a.key)) || (b.ww * b.wh - a.ww * a.wh));
+  c.textBaseline = 'middle';
+  for (const L of list) {
+    const vis = shown(L.key), hy = vis ? .85 : 1;           // wat al staat, blijft iets langer staan (geen geflikker)
     const [sx, sy] = toScreen(L.x, L.y);
-    if (sx < -250 || sy < -80 || sx > W + 250 || sy > H + 80) continue;
-    c.font = 'italic ' + L.fs + 'px "IM Fell English",serif';
-    try { c.letterSpacing = L.sp.toFixed(1) + 'px'; } catch (e) {}
-    const la = 0;   // namen staan altijd recht op het scherm, hoe de kaart ook gedraaid is
-    c.save(); c.translate(sx, sy); c.rotate(la); c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(L.t, 0, 0);
-    c.fillStyle = L.ink; c.fillText(L.t, 0, 0); c.restore();
+    if (sx < -300 || sy < -120 || sx > W + 300 || sy > H + 120) { LA.delete(L.key); continue; }
+    let fs, want;
+    if (L.pt) { fs = 15; want = s > .08 * hy; }
+    else {
+      const sw = L.ww * s, sh = L.wh * s;
+      fs = clamp(Math.sqrt(sw * sh) / 10, 12, L.k === 'park' ? 26 : 30);
+      want = Math.max(sw, sh) >= 110 * hy && Math.min(sw, sh) >= 26 * hy;
+    }
+    if (want && state.settings.fog && !isRevealed(L.x, L.y)) want = false;
+    c.font = 'italic ' + fs.toFixed(1) + 'px "IM Fell English",serif';
+    try { c.letterSpacing = (L.pt ? 1.5 : fs * L.spf).toFixed(1) + 'px'; } catch (e) {}
+    const tw = c.measureText(L.t).width;
+    if (want && !L.pt && tw * hy > Math.max(L.ww, L.wh) * s * 1.2) want = false;
+    const box = [sx - tw / 2, sy - fs / 2, sx + tw / 2, sy + fs / 2];
+    if (want && overlaps(aplaced, box)) want = false;
+    if (want) aplaced.push(box);
+    const a = fadeA(L.key, want, dt); if (a <= 0) continue;
+    c.globalAlpha = a;
+    c.lineWidth = 3; c.strokeStyle = 'rgba(234,220,188,.5)'; c.strokeText(L.t, sx, sy);
+    c.fillStyle = L.ink; c.fillText(L.t, sx, sy);
   }
+  c.globalAlpha = 1; c.textBaseline = 'alphabetic';
   try { c.letterSpacing = '0px'; } catch (e) {}
-  // ontdekte plekken: iconen en namen
+  // ---- ontdekte plekken: iconen en namen (grote plaatsen gaan voor) ----
   const order = ['locality', 'hamlet', 'suburb', 'village', 'town', 'city'];
   const src = Object.entries(state.disc).filter(([, d]) => !NOMAP.has(d.k)).map(([id, d]) => ({ id, ...d }));
   if (!state.settings.fog) for (const p of pois.values()) if (!state.disc[p.id]) src.push({ id: p.id, n: p.n, k: p.k, lat: p.lat, lon: p.lon, u: 1 });
   const items = src.map(d => { const [x, y] = projMemo(d.id, d.lat, d.lon); const q = toScreen(x, y); return { ...d, x: q[0], y: q[1] }; })
     .filter(d => d.x > -80 && d.y > -40 && d.x < W + 80 && d.y < H + 40)
-    .sort((a, b) => order.indexOf(a.k) - order.indexOf(b.k));
+    .sort((a, b) => (shown('n' + b.id) - shown('n' + a.id)) || (order.indexOf(b.k) - order.indexOf(a.k)));
   const placed = [];
   for (const d of items) {
-    const isPlace = d.k in DR;
+    const isPlace = d.k in DR, hy = shown('i' + d.id) ? .85 : 1;
     const minS = { city: 0, town: 0, village: .03, suburb: .08, hamlet: .1, locality: .16 }[d.k] ?? .18;
-    if (s < minS) continue;
+    const wantIcon = s >= minS * hy, aI = fadeA('i' + d.id, wantIcon, dt);
+    if (aI <= 0) { LA.delete('n' + d.id); continue; }
+    const base = d.u ? .5 : 1;
     const isz = { city: 26, town: 22, village: 18, suburb: 15, hamlet: 14, locality: 9 }[d.k] || 16;
-    c.globalAlpha = d.u ? .5 : 1;
+    c.globalAlpha = aI * base;
     drawIcon(c, d.k, d.x, d.y, isz, INK, '#eadcbc', 3);
-    if (!isPlace && s < .5) { c.globalAlpha = 1; continue; }
     const fs = { city: 24, town: 20, village: 17, suburb: 14, hamlet: 14, locality: 13 }[d.k] || 13;
     c.font = (d.k === 'locality' || !isPlace ? 'italic ' : '') + fs + 'px ' + (isPlace && d.k !== 'locality' ? '"IM Fell English SC"' : '"IM Fell English"') + ',serif';
     try { c.letterSpacing = isPlace ? '1.5px' : '0px'; } catch (e) {}
     const label = d.n, tw = c.measureText(label).width, ly = d.y + isz / 2 + fs * .9;
     const box = [d.x - tw / 2, ly - fs, d.x + tw / 2, ly + 3];
-    if (placed.some(b => !(box[0] > b[2] || box[2] < b[0] || box[1] > b[3] || box[3] < b[1]))) { c.globalAlpha = 1; continue; }
-    placed.push(box);
-    c.textAlign = 'center'; c.lineWidth = 3.5; c.strokeStyle = 'rgba(234,220,188,.9)'; c.strokeText(label, d.x, ly);
-    c.fillStyle = INK; c.fillText(label, d.x, ly);
-    c.globalAlpha = 1;
+    let wantName = wantIcon && (isPlace || s >= .5 * (shown('n' + d.id) ? .85 : 1));
+    if (wantName && overlaps(placed, box)) wantName = false;
+    if (wantName) placed.push(box);
+    const aN = fadeA('n' + d.id, wantName, dt);
+    if (aN > 0) {
+      c.globalAlpha = Math.min(aI, aN) * base;
+      c.lineWidth = 3.5; c.strokeStyle = 'rgba(234,220,188,.9)'; c.strokeText(label, d.x, ly);
+      c.fillStyle = INK; c.fillText(label, d.x, ly);
+    }
   }
+  c.globalAlpha = 1;
   try { c.letterSpacing = '0px'; } catch (e) {}
 }
 
