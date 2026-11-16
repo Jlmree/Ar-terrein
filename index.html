@@ -65,6 +65,7 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 #meBtn{right:66px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:20px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
 #meBtn.on{background:#16a34a}
 #meHud{left:8px;right:8px;top:calc(96px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
+#compass.on{box-shadow:0 0 0 3px #2563eb}
 #compass{right:10px;width:48px;height:48px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0;border:none}
 #compass svg{width:100%;height:100%;display:block}
 #info{left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));background:#16181df0;border-radius:10px;padding:5px 6px 5px 10px;font-size:12px;box-shadow:0 2px 10px #0007;font-variant-numeric:tabular-nums;display:flex;gap:8px;align-items:center;flex-wrap:nowrap;overflow:hidden}
@@ -122,6 +123,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
 #xrUI .xrl{position:absolute;top:calc(58px + env(safe-area-inset-top));left:8px;right:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;pointer-events:auto}
 #xrUI .xrl button{padding:6px 10px;font-size:13px;font-weight:600;opacity:.55}
 #xrUI .xrl button.on{opacity:1;background:#2563ebe6}
+#xrUI #xrNorth.on{background:#2563ebe6}
 #xrUI .xrt{position:absolute;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));background:#000a;border-radius:12px;padding:8px 10px;pointer-events:auto;color:#fff;font-size:13px}
 #xrUI .xrt button{padding:6px 12px;font-size:15px}
 #xrMsg{position:absolute;top:calc(20px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);background:#000a;color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;white-space:nowrap}
@@ -213,7 +215,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v24 · 16-11 15:20. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v25 · 16-11 15:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -242,7 +244,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div class="xrl xrs" id="xrSizes"><button data-s="table" class="on">🗺 60 cm</button><button data-s="room">🛋 3 m</button><button data-s="big">🏡 10 m</button><button data-s="real">🌍 1:1</button><button data-s="gps">📍 1:1 op mijn plek</button></div>
   <div class="xrl" id="xrLayers"><button data-l="tac" class="on">🎖 Symbolen</button><button data-l="wx" class="on">☁️ Weer</button><button data-l="sky" class="on">☀️ Zon/maan</button><button data-l="meas" class="on">📏 Punten</button><button data-l="peers" class="on">🔵 Mensen &amp; ik</button><button data-l="bld" class="on">🏠 Gebouwen</button><button data-l="life" class="on">🚗 Verkeer</button><button data-l="time">⏱ Tijd</button></div>
   <div class="xrt" id="xrWxRow"><div id="xrInfo"></div><div style="display:flex;gap:8px;align-items:center"><input type="range" id="xrT" min="-8" max="192" step="1" value="0" style="flex:1"><button id="xrPlayB">▶</button><button id="xrNowB">Nu</button></div></div>
-  <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
+  <div class="xrb"><button id="xrMinus">−</button><button id="xrPlus">+</button><button id="xrNorth" class="on" title="Noorden = echt noorden">🧭</button><button id="xrRot">⟳</button><button id="xrHere">Plaats hier</button><button id="xrMove">Verplaats</button><button id="xrExit">Stop</button></div></div>
 
 <!-- ============ GEO (UTM / MGRS / Mercator) ============ -->
 <script>
@@ -667,6 +669,7 @@ function frame(t,xrFrame){
   if(tmeshes.me) meRot();
   if(tmeshes.life) lifeFrame(performance.now());
   if(terrain) terrain.material.uniforms.uT.value=performance.now()/1000;
+  if(headingMode&&typeof me!=='undefined'&&me.hd!=null){let cur_=controls.getAzimuthalAngle(),tgt=-me.hd*D2R,d=Math.atan2(Math.sin(tgt-cur_),Math.cos(tgt-cur_));if(Math.abs(d)>0.002) setAzimuth(cur_+d*0.15);}
   needle.style.transform=`rotate(${controls.getAzimuthalAngle()}rad)`;
   renderer.render(scene,camera);
   if($('tLabels').checked){
@@ -1110,7 +1113,13 @@ $('ovl').onchange=()=>{state.ovl=$('ovl').value; lsSet('terrein3d',state); refre
 $('ovlA').oninput=()=>{$('ovlAV').textContent=Math.round($('ovlA').value*100)+'%'; state.ovlA=+$('ovlA').value; lsSet('terrein3d',state); redrawTexture();};
 $('tDetail').onchange=()=>{if($('tDetail').checked) schedulePatch(); else removePatch();};
 $('vTop').onclick=()=>setView('top'); $('vReset').onclick=()=>setView('reset'); $('vLow').onclick=()=>setView('low');
-$('compass').onclick=()=>{const off=camera.position.clone().sub(controls.target),sp=new THREE.Spherical().setFromVector3(off);sp.theta=0;off.setFromSpherical(sp);camera.position.copy(controls.target).add(off);controls.update();};
+let headingMode=false;
+function setAzimuth(th){const off=camera.position.clone().sub(controls.target),sp=new THREE.Spherical().setFromVector3(off);sp.theta=th;off.setFromSpherical(sp);camera.position.copy(controls.target).add(off);controls.update();}
+$('compass').onclick=()=>{
+  const north=Math.abs(controls.getAzimuthalAngle())<0.02;
+  if(headingMode){headingMode=false;$('compass').classList.remove('on');setAzimuth(0);toast('Noord boven');return;}
+  if(north){meStart();headingMode=true;$('compass').classList.add('on');toast('Kaart draait mee met je telefoon – tik op het kompas om te stoppen');return;}
+  setAzimuth(0);};
 $('layerSel3').onchange=async()=>{
   if(!cur) return; const key=$('layerSel3').value; state.layer=key; cur.layer=key; lsSet('terrein3d',state); setLoad('Kaart laden…');
   try{const cv=await loadTexture(cur.bb,key,Math.min(maxTexCap,state.hiq?4096:2048),(d,t)=>setLoad('Kaart laden… '+Math.round(d/t*100)+'%'));
@@ -1804,6 +1813,7 @@ async function startXR(){
     if(xrWx){wx.enabled=true; fx.cKey=''; buildCelest(); applyWx(); if(!wx.data||wx.data._bb!==cur.bb) loadWeather().then(()=>{fx.cKey='';applyWx();}).catch(e=>console.warn(e));
       $('xrT').value=wx.ofs;}
     else{['clouds','precip','flow'].forEach(k=>{if(tmeshes[k]) tmeshes[k].visible=false;}); terrain.material.uniforms.cloudOn.value=0; terrain.material.uniforms.gfog.value=0; $('xrWxRow').style.display='none';}
+    meStart(); $('xrNorth').classList.toggle('on',xrNorth);
     xrL.tac=tacOn(); xrLayersUI(); xrSizesUI(); renderTac(); renderPeers(); tRemove('me'); renderMe();
     if(!xrReticle){xrReticle=new THREE.Mesh(new THREE.RingGeometry(0.06,0.08,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#facc15'}));xrReticle.matrixAutoUpdate=false;scene.add(xrReticle);}
     xrReticle.visible=false;
@@ -1830,6 +1840,7 @@ function xrApplyLayers(){
 }
 function xrUpdate(frame){
   xrApplyLayers(); if(frame&&xrPlaced) xrFollowAnchor(frame);
+  if(xrPlaced&&xrNorth&&!xrAligned&&!xrGpsMode&&(me.hd!=null)) xrAligned=xrAlignNorth();
   {const nn=xrSize>50?0.05:0.01,ff=Math.max(100,xrSize*3);if(camera.near!==nn||camera.far!==ff){camera.near=nn;camera.far=ff;camera.updateProjectionMatrix();}}
   if(!frame||!xrHit) return; const hits=frame.getHitTestResults(xrHit);
   if(hits.length){const pose=hits[0].getPose(xrRef);if(!pose) return;xrLast=pose;xrLastRes=hits[0];xrReticle.visible=!xrPlaced;xrReticle.matrix.fromArray(pose.transform.matrix);
@@ -1855,7 +1866,16 @@ function xrTarget(p,cx,cz){ // wereldpositie zodat kaartpunt (cx,cz) op vloer-/t
   const k=xrSize/cur.bb.S, by=xrSize>2?-surfaceY(cx,cz):-(cur.skirtBase||0);
   _xv.set(cx*k,0,cz*k).applyAxisAngle(_xY,world.rotation.y); return new THREE.Vector3(p.x-_xv.x,p.y+by*k,p.z-_xv.z);
 }
-function xrPlaceAt(p,cx,cz){xrSetExagForSize();xrAP={p:p.clone(),cx,cz};world.scale.setScalar(xrSize/cur.bb.S);world.position.copy(xrTarget(p,cx,cz));xrPlaneY=p.y;}
+function xrCompassYaw(){ // kijkrichting van de telefoon in AR-ruimte, op dezelfde manier gemeten als het kompas
+  const c=renderer.xr.getCamera(),q=new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld),f=new THREE.Vector3(0,0,-1).applyQuaternion(q),u=new THREE.Vector3(0,1,0).applyQuaternion(q);
+  const v=f.y<-0.57?u:f; return Math.atan2(v.x,-v.z)/D2R;
+}
+let xrNorth=true,xrAligned=false;
+function xrAlignNorth(){ // noorden van de kaart = echt noorden
+  const hd=me.hd??me.gpsHd; if(hd==null) return false;
+  world.rotation.y=(hd-xrCompassYaw())*D2R; if(xrPlaced&&xrAP) world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz)); return true;
+}
+function xrPlaceAt(p,cx,cz){xrAligned=(xrNorth&&!xrGpsMode)?xrAlignNorth():true;xrSetExagForSize();xrAP={p:p.clone(),cx,cz};world.scale.setScalar(xrSize/cur.bb.S);world.position.copy(xrTarget(p,cx,cz));xrPlaneY=p.y;}
 function xrSelect(){
   if(xrPlaced||!xrLast) return;
   const m=new THREE.Matrix4().fromArray(xrLast.transform.matrix),p=new THREE.Vector3().setFromMatrixPosition(m);
@@ -1883,7 +1903,7 @@ function xrPlaceGps(){ // 1:1 op je eigen plek, noorden van de kaart = echt noor
   const [cx,cz]=ll2w(me.pos.lat,me.pos.lon); if(!inArea(cx,cz)){$('xrMsg').textContent='Je bent buiten het geladen gebied – kies een gebied rond je positie';return false;}
   const hd=me.hd??me.gpsHd; if(hd==null){$('xrMsg').textContent='Geen kompas – richt de kaart zelf met ⟳';}
   const c=renderer.xr.getCamera(),cp=new THREE.Vector3().setFromMatrixPosition(c.matrixWorld),f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(c.matrixWorld));
-  const ayaw=Math.atan2(f.x,-f.z)/D2R; world.rotation.y=hd!=null?(hd-ayaw)*D2R:0;
+  world.rotation.y=hd!=null?(hd-xrCompassYaw())*D2R:0;
   const fy=xrLast?new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(xrLast.transform.matrix)).y:cp.y-1.55;
   xrSize=cur.bb.S; xrDropAnchor(); xrPlaceAt(new THREE.Vector3(cp.x,Math.min(fy,cp.y-1.0),cp.z),cx,cz);
   world.visible=true; xrPlaced=true; xrReticle.visible=false; xrGpsMode=true;
@@ -1905,13 +1925,16 @@ function endXR(){
   if(xrReticle) xrReticle.visible=false; $('xrUI').classList.add('hidden'); setTimeout(onResize,50);
 }
 $('xrHere').onclick=()=>{xrDropAnchor();xrPlaceHere();};
-for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers','xrSizes']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
+for(const id of ['xrMinus','xrPlus','xrRot','xrHere','xrMove','xrExit','xrWxRow','xrLayers','xrSizes','xrNorth']) $(id).addEventListener('beforexrselect',e=>e.preventDefault());
 $('xrT').oninput=()=>{wx.ofs=+$('xrT').value;wxShadowKey='';applyWx(true);};
 $('xrNowB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';}wx.ofs=0;$('xrT').value=0;wxShadowKey='';applyWx();};
 $('xrPlayB').onclick=()=>{if(xrPlay){clearInterval(xrPlay);xrPlay=null;$('xrPlayB').textContent='▶';wxShadowKey='';applyWx();return;}
   $('xrPlayB').textContent='⏸';xrPlay=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;$('xrT').value=wx.ofs;applyWx(true);},230);};
 $('xrMinus').onclick=()=>xrRescale(1/1.25); $('xrPlus').onclick=()=>xrRescale(1.25);
-$('xrRot').onclick=()=>{world.rotation.y+=Math.PI/8;if(xrPlaced&&xrAP) world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz));};
+$('xrNorth').onclick=()=>{xrNorth=!xrNorth;$('xrNorth').classList.toggle('on',xrNorth);
+  if(xrNorth){if(xrAlignNorth()) $('xrMsg').textContent='Noorden van de kaart = echt noorden (kompas ±10°)'; else $('xrMsg').textContent='Geen kompas beschikbaar – draai met ⟳';}
+  else $('xrMsg').textContent='Vrij draaien met ⟳';};
+$('xrRot').onclick=()=>{xrNorth=false;$('xrNorth').classList.remove('on');world.rotation.y+=Math.PI/8;if(xrPlaced&&xrAP) world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz));};
 $('xrMove').onclick=()=>{xrDropAnchor();xrPlaced=false;xrSeen=0;world.visible=false;$('xrMsg').textContent='Richt op een oppervlak en tik om opnieuw te plaatsen';};
 $('xrExit').onclick=()=>{const s=renderer.xr.getSession();if(s) s.end();};
 
