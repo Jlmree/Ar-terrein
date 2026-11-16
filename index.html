@@ -213,7 +213,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v23 · 16-11 14:45. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v24 · 16-11 15:20. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -653,7 +653,13 @@ function onResize(){if(!renderer) return; const w=innerWidth,h=innerHeight; rend
 const needle=document.getElementById('needle');
 let lastLblCheck=0;
 function frame(t,xrFrame){
-  if(renderer.xr.isPresenting){xrUpdate(xrFrame); if(wx.enabled&&xrWx) wxFrame(performance.now()); if(tmeshes.me) meRot(); if(tmeshes.life) lifeFrame(performance.now()); if(terrain) terrain.material.uniforms.uT.value=performance.now()/1000; renderer.render(scene,camera); return;}
+  if(renderer.xr.isPresenting){
+    // vloeiend blijven: is een frame te traag, dan animaties (verkeer, weer) om de beurt bijwerken; camera blijft altijd op volle snelheid
+    const now=performance.now(); xrFT.ema=xrFT.ema*0.9+Math.min(100,now-(xrFT.last||now))*0.1; xrFT.last=now; xrFT.n++;
+    const heavy=xrFT.ema<19||xrFT.n%2===0;
+    xrUpdate(xrFrame); if(tmeshes.me) meRot();
+    if(heavy){if(wx.enabled&&xrWx) wxFrame(now); if(tmeshes.life) lifeFrame(now);}
+    if(terrain) terrain.material.uniforms.uT.value=now/1000; renderer.render(scene,camera); return;}
   if(!running) return;
   controls.update();
   if(cur){const dd=camera.position.distanceTo(controls.target),nn=clamp(dd/400,0.3,Math.max(0.5,cur.bb.S/2000));if(Math.abs(nn-camera.near)/camera.near>0.25){camera.near=nn;camera.updateProjectionMatrix();}}
@@ -1768,6 +1774,7 @@ function uiAR(){
   else $('arDiag').innerHTML=dg.join('<br>');
 }
 // --- WebXR tafel
+const xrFT={ema:16,last:0,n:0};
 let xrAnchor=null,xrLastRes=null,xrWx=true,xrPlay=null,xrSeen=0,xrCam=null,xrHit=null,xrRef=null,xrReticle=null,xrLast=null,xrPlaced=false,xrSize=0.6,xrSaved=null;
 function arErr(m){const d=$('arDiag');if(d) d.innerHTML+='<br>❌ '+m; toast(m);}
 async function startXR(){
@@ -1783,7 +1790,8 @@ async function startXR(){
       if(!(location.protocol==='https:'||location.hostname==='localhost')) throw new Error('Chrome weigert AR voor een lokaal bestand ('+location.protocol+'). Open de pagina via een https-webadres.');
       s=await navigator.xr.requestSession('immersive-ar');}}
     xrCam={near:camera.near,far:camera.far}; camera.near=0.01; camera.far=100; camera.updateProjectionMatrix(); // dichtbij mogen komen
-    renderer.xr.setReferenceSpaceType('local'); await renderer.xr.setSession(s);
+    renderer.xr.setReferenceSpaceType('local'); try{renderer.xr.setFramebufferScaleFactor(0.85);}catch(e){}
+    await renderer.xr.setSession(s); try{renderer.xr.setFoveation(0.5);}catch(e){}
     xrRef=renderer.xr.getReferenceSpace();
     try{const viewer=await s.requestReferenceSpace('viewer');
       try{xrHit=await s.requestHitTestSource({space:viewer,entityTypes:['plane','point']});}catch(eT){xrHit=await s.requestHitTestSource({space:viewer});}}
@@ -1858,8 +1866,12 @@ function xrSelect(){
 function xrDropAnchor(){if(xrAnchor){try{xrAnchor.delete();}catch(e){}xrAnchor=null;}}
 function xrFollowAnchor(frame){ // houdt de kaart vast op de tafel en dempt trillen
   if(!xrAnchor||!frame.trackedAnchors||!frame.trackedAnchors.has(xrAnchor)) return;
-  const pose=frame.getPose(xrAnchor.anchorSpace,xrRef);if(!pose||!xrAP) return;const q=pose.transform.position;xrAP.p.set(q.x,q.y,q.z);
-  const t=xrTarget(xrAP.p,xrAP.cx,xrAP.cz),d=world.position.distanceTo(t),a=d>0.05*Math.max(1,xrSize/0.6)?1:0.08; world.position.lerp(t,a); xrPlaneY=q.y;
+  const pose=frame.getPose(xrAnchor.anchorSpace,xrRef);if(!pose||!xrAP) return;const q=pose.transform.position;
+  // ankerruis wegfilteren: kleine trillingen negeren, echte correcties rustig volgen, grote sprongen direct
+  const sc=Math.max(1,xrSize/0.6),now=performance.now(),dt=Math.min(0.1,(now-(xrAP.t||now))/1000);xrAP.t=now;
+  const dx=q.x-xrAP.p.x,dy=q.y-xrAP.p.y,dz=q.z-xrAP.p.z,d=Math.hypot(dx,dy,dz);
+  if(d>0.25*sc){xrAP.p.set(q.x,q.y,q.z);} else if(d>0.006*sc){const a=1-Math.exp(-dt/0.45);xrAP.p.x+=dx*a;xrAP.p.y+=dy*a;xrAP.p.z+=dz*a;} else return;
+  world.position.copy(xrTarget(xrAP.p,xrAP.cx,xrAP.cz)); xrPlaneY=xrAP.p.y;
 }
 let xrPlaneY=0;
 function xrRescale(f){xrSize=clamp(xrSize*f,0.15,cur.bb.S);$('xrMsg').textContent=`Terrein ${xrSizeTxt()}`;xrSizesUI();
