@@ -226,7 +226,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v27 · 16-11 17:05. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v28 · 16-11 19:00. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -2315,6 +2315,7 @@ async function shareJoin(code,isNew){
 function shareLeave(){
   if(share.client){try{share.client.end(true);}catch(e){}}
   share.client=null;share.on=false;clearInterval(share.hbT);share.peers={};renderPeers();setShareStatus('');
+  pres.on=false;pres.follow=true;pres.src=null;pres.tgt=null;pres.lastKey='';controls.enabled=true;if(pres.tv) setTv(false);presBadge();
   try{history.replaceState(null,'',location.pathname);}catch(e){}
   if(toolMode==='share') uiShare();
 }
@@ -2986,6 +2987,7 @@ function presFrame(){ // kijker: vloeiend naar het beeld van de presentator
 }
 function presBadge(){
   const b=$('presB'); if(!b) return; const now=performance.now();
+  if(!share.on){b.classList.add('hidden');return;}
   if(pres.on){b.innerHTML='📺 Je presenteert – anderen volgen jouw beeld';b.classList.remove('hidden');return;}
   if(pres.src&&now-pres.rx<6000){b.innerHTML=pres.follow?`📺 Je volgt <b>${String(pres.src.name).replace(/</g,'&lt;')}</b> · tik om zelf te kijken`:`📺 ${String(pres.src.name).replace(/</g,'&lt;')} presenteert · tik om te volgen`;b.classList.remove('hidden');}
   else if(pres.src){b.innerHTML='📺 Presentator is gestopt';b.classList.remove('hidden');}
