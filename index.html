@@ -226,7 +226,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v29 · 16-11 19:15. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v30 · 16-11 19:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -2781,17 +2781,31 @@ function lifeFrame(now){
    dus bouwen we de dekken zelf op uit OSM (bridge=yes)
    ================================================================= */
 const BW={motorway:12,trunk:10,primary:9,secondary:8,tertiary:7,unclassified:6,residential:6,service:4,track:4,path:2.5,footway:2.5,cycleway:3,bridleway:2.5,rail:6,light_rail:5,tram:5,narrow_gauge:4};
-function bridgeEnds(r){ // hoogte van het dek aan beide uiteinden (de aanbruggen/taluds zitten wél in de AHN)
+function bridgeEnds(r){ // dekhoogte aan beide uiteinden: hoogste punt van het talud vóór de brug (AHN bevat de brug zelf niet)
   if(r.e0!=null) return; const S=cur.bb.S,P=r.pts.map(([la,lo])=>ll2w(la,lo)),c=v=>clamp(v,-S/2,S/2);
-  const ext=(a,b)=>{const dx=a[0]-b[0],dz=a[1]-b[1],l=Math.hypot(dx,dz)||1;return [a[0]+dx/l*3,a[1]+dz/l*3];}; // 3 m buiten de brug meten
-  const A=ext(P[0],P[1]),B=ext(P[P.length-1],P[P.length-2]);
-  r.e0=Math.max(elevAt(c(P[0][0]),c(P[0][1])),elevAt(c(A[0]),c(A[1])));r.e1=Math.max(elevAt(c(P[P.length-1][0]),c(P[P.length-1][1])),elevAt(c(B[0]),c(B[1])));
+  const far=(a,b)=>{const dx=a[0]-b[0],dz=a[1]-b[1],l=Math.hypot(dx,dz)||1;let m=elevAt(c(a[0]),c(a[1]));
+    for(const d of [4,10,18,28,40]) m=Math.max(m,elevAt(c(a[0]+dx/l*d),c(a[1]+dz/l*d))); return m;};
+  r.e0=far(P[0],P[1]); r.e1=far(P[P.length-1],P[P.length-2]);
 }
 function deckElev(r,t,x,z){const S=cur.bb.S;let e=r.e0+(r.e1-r.e0)*t;const g=elevAt(clamp(x,-S/2,S/2),clamp(z,-S/2,S/2));return Math.max(e,g+0.4);}
-function bridgeList(){
-  const L=[];for(const r of (cur.feats&&cur.feats.roads)||[]) if(r.bridge) L.push(r);
-  if(life.extra) for(const el of life.extra.elements||[]){const t=el.tags||{};if(el.type==='way'&&t.railway&&t.bridge&&t.bridge!=='no'&&el.geometry) L.push(el._b||(el._b={cls:t.railway,pts:el.geometry.map(g=>[g.lat,g.lon]),bridge:true,rail:true}));}
-  return L;
+function bridgeList(){ // losse OSM-stukken van dezelfde brug samenvoegen tot één doorlopend dek
+  const raw=[];for(const r of (cur.feats&&cur.feats.roads)||[]) if(r.bridge) raw.push(r);
+  if(life.extra) for(const el of life.extra.elements||[]){const t=el.tags||{};if(el.type==='way'&&t.railway&&t.bridge&&t.bridge!=='no'&&el.geometry) raw.push(el._b||(el._b={cls:t.railway,pts:el.geometry.map(g=>[g.lat,g.lon]),bridge:true,rail:true}));}
+  if(cur.brChains&&cur.brChainsN===raw.length) return cur.brChains;
+  const key=p=>p[0].toFixed(6)+','+p[1].toFixed(6), used=new Set(), chains=[];
+  for(const r0 of raw){ if(used.has(r0)) continue; used.add(r0); let pts=r0.pts.slice(), parts=[r0], grow=true;
+    while(grow){grow=false;
+      for(const r of raw){ if(used.has(r)||!!r.rail!==!!r0.rail) continue; const a=r.pts,s0=key(pts[0]),s1=key(pts[pts.length-1]),a0=key(a[0]),a1=key(a[a.length-1]);
+        if(a0===s1) pts=pts.concat(a.slice(1)); else if(a1===s1) pts=pts.concat(a.slice(0,-1).reverse()); else if(a1===s0) pts=a.slice(0,-1).concat(pts); else if(a0===s0) pts=a.slice(1).reverse().concat(pts); else continue;
+        used.add(r);parts.push(r);grow=true;}}
+    const ch={cls:r0.cls,rail:!!r0.rail,bridge:true,pts}; for(const r of parts) r.chain=ch; chains.push(ch);}
+  cur.brChains=chains; cur.brChainsN=raw.length; return chains;
+}
+function chainT(ch,x,z){ // positie (x,z) → fractie langs de brug
+  if(!ch.P){ch.P=ch.pts.map(([la,lo])=>ll2w(la,lo));ch.cum=[0];for(let i=1;i<ch.P.length;i++)ch.cum.push(ch.cum[i-1]+Math.hypot(ch.P[i][0]-ch.P[i-1][0],ch.P[i][1]-ch.P[i-1][1]));}
+  let best=1e18,bt=0;for(let i=0;i<ch.P.length-1;i++){const a=ch.P[i],b=ch.P[i+1],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1,u=clamp(((x-a[0])*dx+(z-a[1])*dz)/l2,0,1),px=a[0]+dx*u,pz=a[1]+dz*u,d=(px-x)**2+(pz-z)**2;
+    if(d<best){best=d;bt=ch.cum[i]+Math.sqrt(l2)*u;}}
+  return bt/(ch.cum[ch.cum.length-1]||1);
 }
 function buildBridges(){
   tRemove('brg'); if(!cur||cur.src.startsWith('AHN DSM')) return; const L=bridgeList(); if(!L.length) return;
@@ -2824,7 +2838,7 @@ function buildBridges(){
     let spans=[];
     if(r.rail){const steel=new THREE.Color('#2f2f33');
       for(const off of [-0.72,0.72]) for(let i=0;i<V.length-1;i++){const a=V[i],b=V[i+1];prism([a.x+a.nx*off,a.y+0.12,a.z+a.nz*off],[b.x+b.nx*off,b.y+0.12,b.z+b.nz*off],a.nx,a.nz,0.12,0.18,steel);}
-      if(len>=25){const ns=Math.max(1,Math.round(len/90)),sl=(len-2)/ns,arc=new THREE.Color('#4f7286'),K=18;
+      if(len>=18){const ns=Math.max(1,Math.round(len/90)),sl=(len-2)/ns,arc=new THREE.Color('#4f7286'),K=18;
         for(let k=0;k<ns;k++) spans.push([1+k*sl,1+(k+1)*sl]);
         for(const [s0,s1] of spans){const H=clamp((s1-s0)*0.17,4,24);
           const side=sg=>{const pts=[];for(let k=0;k<=K;k++){const u=k/K,q=at(s0+(s1-s0)*u),o=(w+0.35)*sg;pts.push({p:[q.x+q.nx*o,q.y+H*4*u*(1-u)+0.4,q.z+q.nz*o],d:[q.x+q.nx*o,q.y,q.z+q.nz*o],nx:q.nx,nz:q.nz});}return pts;};
@@ -2847,7 +2861,7 @@ function buildBridges(){
   const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2}));m.renderOrder=2;tAdd('brg',m);
 }
 function lifeDeckY(w,s,x,z){ // hoogte voor voertuigen op een brug
-  const r=w.src;if(!r) return null;bridgeEnds(r);return (deckElev(r,s/w.len,x,z)-cur.eMin)*exag()+0.2;
+  const r=w.src;if(!r) return null; if(!r.chain) bridgeList(); const ch=r.chain||r; bridgeEnds(ch); return (deckElev(ch,chainT(ch,x,z),x,z)-cur.eMin)*exag()+0.2;
 }
 
 $('tWater').onchange=()=>{if(terrain) terrain.material.uniforms.lcOn.value=$('tWater').checked&&lcv.tex?1:0;};
