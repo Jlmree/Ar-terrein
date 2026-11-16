@@ -1522,12 +1522,15 @@ function uiWx(){
     <label class="tg"><input type="checkbox" id="wCloud" ${wx.cloud?'checked':''}> Wolken</label>
     <label class="tg"><input type="checkbox" id="wRain" ${wx.rain?'checked':''}> Neerslag</label>
     <label class="tg"><input type="checkbox" id="wMist" ${wx.mist?'checked':''}> Zicht/mist</label>
+    <label class="tg"><input type="checkbox" id="wStar" ${stars.on?'checked':''}> ✨ Echte sterren &amp; planeten</label>
+    <label class="tg"><input type="checkbox" id="wCon" ${stars.con?'checked':''}> Sterrenbeelden &amp; namen</label>
+    <label class="tg"><input type="checkbox" id="wMw" ${stars.mw?'checked':''}> Melkweg</label>
   </div>
   <div class="row"><span class="t">Wolken tonen</span><select id="wCm"><option value="rain">Alleen bij regen/buien (en echte mist)</option><option value="all">Altijd volgens het weermodel</option></select></div>
   <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
   <div id="sunInfo" class="note"></div>
   <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
-  <div class="attr">Weer: Open-Meteo · Radar: RainViewer · Zon/maan berekend (SunCalc)</div>`;
+  <div class="attr">Weer: Open-Meteo · Radar: RainViewer · Zon/maan berekend (SunCalc) · Sterren: Hipparcos via d3-celestial (BSD)</div>`;
   const tl=()=>{$('wxTV').textContent=wx.ofs===0?'nu':new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});};tl();
   $('wxT').oninput=()=>{wx.ofs=+$('wxT').value;tl();applyWx();};
   $('wCm').value=wx.cloudMode; $('wCm').onchange=()=>{wx.cloudMode=$('wCm').value;state.cloudMode=wx.cloudMode;lsSet('terrein3d',state);fx.cKey='';applyWx();};
@@ -1536,6 +1539,7 @@ function uiWx(){
     $('wxPlay').textContent='⏸ Stop';
     fx.play=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;const sl=$('wxT');if(sl){sl.value=wx.ofs;$('wxTV').textContent=new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});}applyWx(true);},230);};
   for(const [id,k] of [['wSun','sun'],['wWind','wind'],['wCloud','cloud'],['wRain','rain'],['wMist','mist']]) $(id).onchange=()=>{wx[k]=$(id).checked;wxShadowKey='';applyWx();};
+  for(const [id,k] of [['wStar','on'],['wCon','con'],['wMw','mw']]) $(id).onchange=()=>{stars[k]=$(id).checked;state['sky_'+k]=stars[k];lsSet('terrein3d',state);applyWx();};
   $('radPlay').onclick=()=>{if(radTimer){clearInterval(radTimer);radTimer=null;$('radPlay').textContent='▶ Radar afspelen';return;}
     if(!wx.radar) return; $('radPlay').textContent='⏸ Stop';radTimer=setInterval(()=>{wx.fi=(wx.fi+1)%wx.radar.frames.length;drawRadar();},700);};
   wx.enabled=true;
@@ -1564,14 +1568,15 @@ function applyWx(fast){
     else{const ml=mp.alt>0?mi.f:0; lightK=0.13+0.25*ml*(1-0.6*cc); tint=[0.62,0.72,1]; amb=0.6; dirK=mp.alt>0.3?0.55*(1-0.75*cc):0; src=mp.alt>0.3?mp:null;}
     lightK*=1-0.15*rainy;
     if(src){U.sun.value.copy(sunVec(src)); dirL.position.copy(U.sun.value).multiplyScalar(1000);}
-    const shK=src&&src===sp?sm(2,8,src.alt):0; // maanlicht: geen harde slagschaduwen U.shOn.value=shK; if(shK>0&&!(fast&&(fx.shSkip++%4))) scheduleShadows(src);
+    const shK=src&&src===sp?sm(2,8,src.alt):0; /* maanlicht: geen harde slagschaduwen */ U.shOn.value=shK; if(shK>0&&!(fast&&(fx.shSkip++%4))) scheduleShadows(src);
     // lucht
     const D=dome.material.uniforms; D.sunD.value.copy(sunVec(sp)); D.moonD.value.copy(sunVec(mp)); D.day.value=day; D.dusk.value=dusk;
     D.cloudy.value=clamp(cc*cc*1.1,0,1); D.moonF.value=mi.f; D.starK.value=starK; dome.visible=!renderer.xr.isPresenting;
+    updateSky(t,lat,lon,starK*(1-D.cloudy.value),mp.alt>0?mi.f:0,dome.visible);
     // horizonkleur (gelijk aan de shader) voor nevel en achtergrond
     const hD=new THREE.Color(0.68,0.82,0.95),hN=new THREE.Color(0.04,0.06,0.12),hS=new THREE.Color(1.0,0.55,0.32);
     sky=hN.clone().lerp(hD,day).lerp(hS,dusk*0.5).lerp(new THREE.Color(0.62,0.65,0.7).multiplyScalar(0.15+0.85*day),D.cloudy.value*0.85);
-  }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;dome.visible=false;}
+  }else{U.sun.value.copy(SUN0);dirL.position.copy(SUN0).multiplyScalar(1000);U.shOn.value=0;dome.visible=false;updateSky(t,lat,lon,0,0,false);}
   lightK=Math.max(lightK,renderer.xr.isPresenting?0.4:0.3); // kaart blijft leesbaar in het donker
   fx.lk=lightK; U.amb.value=amb;U.dirK.value=dirK;U.lightK.value=lightK;U.tint.value.set(...tint);
   if(!renderer.xr.isPresenting) scene.background=sky; U.fogC.value.copy(sky);
@@ -1635,7 +1640,7 @@ function computeShadows(p){
 const fx={last:0,t:0,drift:new THREE.Vector2(),cw:new THREE.Vector2(),lk:1,flash:0,flashT:-1e9,next:0,storm:false,play:null,shSkip:0,cKey:'',pKey:'',mask:null};
 let skyDome=null;
 const SKY_VS=`varying vec3 vDir; void main(){vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
-const SKY_FS=`uniform vec3 sunD; uniform vec3 moonD; uniform float day; uniform float dusk; uniform float cloudy; uniform float moonF; uniform float starK; uniform float flash;
+const SKY_FS=`uniform vec3 sunD; uniform vec3 moonD; uniform float day; uniform float dusk; uniform float cloudy; uniform float moonF; uniform float starK; uniform float flash; uniform float starRand;
 varying vec3 vDir;
 float hash(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453);}
 void main(){
@@ -1653,7 +1658,7 @@ void main(){
   float md=dot(d,moonD), mup=step(0.0,moonD.y);
   col+=vec3(0.88,0.9,1.0)*smoothstep(0.99955,0.9997,md)*(0.25+0.75*moonF)*(1.0-cloudy*0.9)*(1.0-day*0.75)*mup*1.6;
   col+=vec3(0.45,0.5,0.7)*pow(max(md,0.0),50.0)*0.18*moonF*(1.0-day)*vis*mup;
-  if(starK>0.01&&d.y>0.0){vec3 q=floor(d*220.0);float s=hash(q);col+=vec3(step(0.9972,s))*starK*vis*smoothstep(0.0,0.25,d.y)*(0.35+0.65*hash(q+1.3));}
+  if(starRand>0.5&&starK>0.01&&d.y>0.0){vec3 q=floor(d*220.0);float s=hash(q);col+=vec3(step(0.9972,s))*starK*vis*smoothstep(0.0,0.25,d.y)*(0.35+0.65*hash(q+1.3));}
   if(d.y<0.0) col=mix(col,hor*0.55,smoothstep(0.0,-0.12,d.y));
   col+=vec3(0.75,0.8,1.0)*flash;
   gl_FragColor=vec4(col,1.0);
@@ -1661,11 +1666,96 @@ void main(){
 function ensureSky(){
   if(skyDome) return skyDome;
   skyDome=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),new THREE.ShaderMaterial({vertexShader:SKY_VS,fragmentShader:SKY_FS,side:THREE.BackSide,depthWrite:false,fog:false,
-    uniforms:{sunD:{value:new THREE.Vector3(0,1,0)},moonD:{value:new THREE.Vector3(0,-1,0)},day:{value:1},dusk:{value:0},cloudy:{value:0},moonF:{value:0},starK:{value:0},flash:{value:0}}}));
+    uniforms:{sunD:{value:new THREE.Vector3(0,1,0)},moonD:{value:new THREE.Vector3(0,-1,0)},day:{value:1},dusk:{value:0},cloudy:{value:0},moonF:{value:0},starK:{value:0},flash:{value:0},starRand:{value:1}}}));
   skyDome.frustumCulled=false; skyDome.renderOrder=-10; skyDome.visible=false; scene.add(skyDome); return skyDome;
 }
+/* ---------- echte sterrenhemel: sterren (Hipparcos tot mag 6), sterrenbeelden, Melkweg en planeten ---------- */
+const stars={on:state.sky_on!==false,con:!!state.sky_con,mw:state.sky_mw!==false,g:null,loading:null,failed:false,pl:null,labels:[],plLabels:[]};
+const SKYDATA='https://cdn.jsdelivr.net/npm/d3-celestial@0.7.35/data/';
+// lokaal hemel-frame (gelijk aan de UV's van THREE.SphereGeometry): ra/dec → vector
+const eqLocal=(ra,dec)=>{const a=ra*D2R,d=dec*D2R;return [-Math.cos(a)*Math.cos(d),Math.sin(d),Math.sin(a)*Math.cos(d)];};
+const raOf=lon=>lon<0?lon+360:lon;
+const STARNL={11767:'Poolster',32349:'Sirius',91262:'Wega',69673:'Arcturus',24608:'Capella',27989:'Betelgeuze',24436:'Rigel',21421:'Aldebaran',102098:'Deneb',97649:'Altaïr',37279:'Procyon',49669:'Regulus',65474:'Spica',80763:'Antares',37826:'Pollux',36850:'Castor',113368:'Fomalhaut',677:'Alpheratz',54061:'Dubhe',15863:'Mirfak'};
+const CONNL={UMa:'Grote Beer',UMi:'Kleine Beer',Cas:'Cassiopeia',Ori:'Orion',Cyg:'Zwaan',Lyr:'Lier',Aql:'Arend',Tau:'Stier',Gem:'Tweelingen',Leo:'Leeuw',Vir:'Maagd',Sco:'Schorpioen',Sgr:'Schutter',Peg:'Pegasus',And:'Andromeda',Per:'Perseus',Aur:'Voerman',Boo:'Ossenhoeder',CMa:'Grote Hond',CMi:'Kleine Hond',Dra:'Draak',Cep:'Cepheus',Her:'Hercules',Ari:'Ram',Psc:'Vissen',Aqr:'Waterman',Cap:'Steenbok',Lib:'Weegschaal',Cnc:'Kreeft',CrB:'Noorderkroon',Oph:'Slangendrager',Cet:'Walvis',Lep:'Haas',Eri:'Eridanus',Del:'Dolfijn',Sge:'Pijl',Lyn:'Lynx',CVn:'Jachthonden',Com:'Hoofdhaar van Berenice',Tri:'Driehoek',Cam:'Giraffe',LMi:'Kleine Leeuw',Vul:'Vosje',Lac:'Hagedis',Ser:'Slang',Crv:'Raaf',Crt:'Beker',Hya:'Waterslang',Mon:'Eenhoorn',Col:'Duif',PsA:'Zuidervis',Equ:'Veulen',Sct:'Schild',Pup:'Achtersteven'};
+const bvRGB=bv=>{bv=clamp(bv==null||isNaN(bv)?0.6:bv,-0.4,2);const t=(bv+0.4)/2.4;return [clamp(0.62+0.38*Math.min(1,t*2.2),0,1),clamp(0.75+0.2*Math.sin(t*3)-0.15*t,0,1),clamp(1.05-0.75*t,0,1)];};
+const STAR_VS=`attribute float mag; attribute vec3 col; uniform float k; uniform float pr; varying vec3 vC; varying float vA;
+void main(){vec3 w=normalize((modelMatrix*vec4(position,0.0)).xyz); float hz=smoothstep(-0.01,0.09,w.y);
+  float b=pow(10.0,-0.4*(mag-1.0)); vA=clamp(b*1.5+0.35,0.0,2.4)*k*hz*clamp(1.0-(mag-5.0)*0.6,0.0,1.0)*(0.55+0.45*smoothstep(0.0,0.35,w.y));
+  vC=col; gl_PointSize=pr*clamp(5.6-0.9*mag,2.0,13.0); gl_Position=projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.0);}`;
+const STAR_FS=`varying vec3 vC; varying float vA; void main(){vec2 p=gl_PointCoord-0.5; float r=length(p)*2.0; float a=smoothstep(0.55,0.05,r)*1.4+smoothstep(1.0,0.4,r)*0.35; if(vA*a<0.004) discard; gl_FragColor=vec4(vC*vA*a,1.0);}`;
+function starMat(){return new THREE.ShaderMaterial({vertexShader:STAR_VS,fragmentShader:STAR_FS,uniforms:{k:{value:0},pr:{value:Math.min(2,devicePixelRatio||1)}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});}
+function skyLabel(text,col,size){const c=document.createElement('canvas'),x=c.getContext('2d'),f=size*2;x.font=`600 ${f}px system-ui,sans-serif`;const w=Math.ceil(x.measureText(text).width)+8;c.width=w;c.height=f+8;
+  x.font=`600 ${f}px system-ui,sans-serif`;x.fillStyle=col;x.textBaseline='middle';x.fillText(text,4,c.height/2);const t=new THREE.CanvasTexture(c);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false,fog:false,sizeAttenuation:false,opacity:0}));sp.userData.sw=w/c.height*0.03;sp.scale.set(sp.userData.sw,0.03,1);sp.center.set(-0.08,0.5);sp.renderOrder=-8;return sp;}
+async function loadStars(){
+  const get=f=>fetch(SKYDATA+f).then(r=>{if(!r.ok) throw new Error(f+' '+r.status);return r.json();});
+  const [st,ln,mw,cn]=await Promise.all([get('stars.6.json'),get('constellations.lines.json'),get('mw.json').catch(()=>null),get('constellations.json').catch(()=>null)]);
+  const g=new THREE.Group(); g.renderOrder=-9; g.frustumCulled=false; g.visible=false;
+  const sky=new THREE.Group(); g.add(sky); stars.sky=sky; // draait mee met de aarde
+  // Melkweg op een bol met een equirectangulaire textuur
+  if(mw){const W=2048,H=1024,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.filter='blur(6px)';
+    const lvl={ol1:0.05,ol2:0.07,ol3:0.09,ol4:0.11,ol5:0.13};
+    for(const f of mw.features){const a=lvl[f.id]||0.06;x.fillStyle=`rgba(190,200,230,${a})`;
+      for(const poly of f.geometry.coordinates){x.beginPath();for(const ring of poly){let pr=null;ring.forEach(([lo,la],i)=>{let X=raOf(lo)/360*W;const Y=(90-la)/180*H;if(pr!=null&&Math.abs(X-pr)>W/2) X+=X<pr?W:-W;pr=X;i?x.lineTo(X,Y):x.moveTo(X,Y);});x.closePath();}
+        x.fill('evenodd');x.save();x.translate(W,0);x.fill('evenodd');x.restore();x.save();x.translate(-W,0);x.fill('evenodd');x.restore();}}
+    const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+    stars.mwMesh=new THREE.Mesh(new THREE.SphereGeometry(1.02,64,32),new THREE.MeshBasicMaterial({map:t,side:THREE.BackSide,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,opacity:0}));
+    stars.mwMesh.renderOrder=-9; stars.mwMesh.frustumCulled=false; sky.add(stars.mwMesh);}
+  // sterren
+  const F=st.features.filter(f=>f.properties.mag<=6.2), n=F.length,P=new Float32Array(n*3),M=new Float32Array(n),C=new Float32Array(n*3),byId={};
+  F.forEach((f,i)=>{const [lo,la]=f.geometry.coordinates,v=eqLocal(raOf(lo),la);P.set(v,i*3);M[i]=f.properties.mag;C.set(bvRGB(+f.properties.bv),i*3);byId[f.id]=[raOf(lo),la];});
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(P,3));geo.setAttribute('mag',new THREE.BufferAttribute(M,1));geo.setAttribute('col',new THREE.BufferAttribute(C,3));
+  stars.pts=new THREE.Points(geo,starMat());stars.pts.frustumCulled=false;stars.pts.renderOrder=-8;sky.add(stars.pts);
+  // sterrenbeelden
+  const L=[];for(const f of ln.features) for(const line of f.geometry.coordinates) for(let i=1;i<line.length;i++){L.push(...eqLocal(raOf(line[i-1][0]),line[i-1][1]),...eqLocal(raOf(line[i][0]),line[i][1]));}
+  const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(L).map(v=>v*0.999),3));
+  stars.lines=new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x7fa6ff,transparent:true,opacity:0,depthWrite:false,fog:false,blending:THREE.AdditiveBlending}));stars.lines.frustumCulled=false;stars.lines.renderOrder=-8;sky.add(stars.lines);
+  if(cn) for(const f of cn.features){if(!CONNL[f.id]&&(f.properties.rank||3)>1) continue;const [lo,la]=f.geometry.coordinates,sp=skyLabel(CONNL[f.id]||f.properties.name,'#9db8ff',13);sp.position.set(...eqLocal(raOf(lo),la));sp.userData.k=0.75;sky.add(sp);stars.labels.push(sp);}
+  for(const id in STARNL){const c=byId[id];if(!c) continue;const sp=skyLabel(STARNL[id],id==11767?'#ffe7a3':'#e6ecff',id==11767?14:12);sp.position.set(...eqLocal(c[0],c[1]));sp.userData.k=id==11767?1:0.8;sky.add(sp);stars.labels.push(sp);}
+  // planeten (posities per tijdstip)
+  const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(15),3));pg.setAttribute('mag',new THREE.BufferAttribute(new Float32Array(5),1));
+  const pc=new Float32Array([1,0.95,0.85, 1,1,0.92, 1,0.62,0.45, 1,0.93,0.8, 1,0.9,0.68]);pg.setAttribute('col',new THREE.BufferAttribute(pc,3));
+  stars.pl=new THREE.Points(pg,starMat());stars.pl.frustumCulled=false;stars.pl.renderOrder=-8;sky.add(stars.pl);
+  for(const nm of ['Mercurius','Venus','Mars','Jupiter','Saturnus']){const sp=skyLabel(nm,'#ffd9a0',12);sp.userData.k=0.9;sky.add(sp);stars.plLabels.push(sp);}
+  stars.g=g; scene.add(g); if(skyDome) skyDome.material.uniforms.starRand.value=0;
+}
+// planeetbanen (JPL, Standish: a,e,I,L,ϖ,Ω met veranderingen per eeuw)
+const PLAN=[[0.38709927,0.00000037,0.20563593,0.00001906,7.00497902,-0.00594749,252.2503235,149472.67411175,77.45779628,0.16047689,48.33076593,-0.12534081,-0.4],
+  [0.72333566,0.0000039,0.00677672,-0.00004107,3.39467605,-0.0007889,181.9790995,58517.81538729,131.60246718,0.00268329,76.67984255,-0.27769418,-4.4],
+  [1.00000261,0.00000562,0.01671123,-0.00004392,-0.00001531,-0.01294668,100.46457166,35999.37244981,102.93768193,0.32327364,0,0,0],
+  [1.52371034,0.00001847,0.0933941,0.00007882,1.84969142,-0.00813131,-4.55343205,19140.30268499,-23.94362959,0.44441088,49.55953891,-0.29257343,-1.5],
+  [5.202887,-0.00011607,0.04838624,-0.00013253,1.30439695,-0.00183714,34.39644051,3034.74612775,14.72847983,0.21252668,100.47390909,0.20469106,-9.4],
+  [9.53667594,-0.0012506,0.05386179,-0.00050991,2.48599187,0.00193609,49.95424423,1221.55147045,92.59887831,-0.41897216,113.66242448,-0.28867794,-8.9]];
+function helio(el,T){const a=el[0]+el[1]*T,e=el[2]+el[3]*T,I=(el[4]+el[5]*T)*D2R,L=el[6]+el[7]*T,w=el[8]+el[9]*T,O=el[10]+el[11]*T;
+  let Mm=((L-w)%360+540)%360-180; Mm*=D2R; let E=Mm+e*Math.sin(Mm); for(let k=0;k<6;k++) E-=(E-e*Math.sin(E)-Mm)/(1-e*Math.cos(E));
+  const xp=a*(Math.cos(E)-e),yp=a*Math.sqrt(1-e*e)*Math.sin(E),om=(w-O)*D2R,Om=O*D2R,co=Math.cos(om),so=Math.sin(om),cO=Math.cos(Om),sO=Math.sin(Om),cI=Math.cos(I),sI=Math.sin(I);
+  return [(co*cO-so*sO*cI)*xp+(-so*cO-co*sO*cI)*yp,(co*sO+so*cO*cI)*xp+(-so*sO+co*cO*cI)*yp,so*sI*xp+co*sI*yp];}
+function planets(t){const T=toDays(t)/36525,ea=helio(PLAN[2],T),out=[];
+  for(const i of [0,1,3,4,5]){const p=helio(PLAN[i],T),x=p[0]-ea[0],y=p[1]-ea[1],z=p[2]-ea[2],ye=y*Math.cos(OBL)-z*Math.sin(OBL),ze=y*Math.sin(OBL)+z*Math.cos(OBL);
+    const r=Math.hypot(...p),dl=Math.hypot(x,y,z),ra=(Math.atan2(ye,x)/D2R+360)%360,dec=Math.atan2(ze,Math.hypot(x,ye))/D2R;
+    out.push({ra,dec,mag:clamp(PLAN[i][12]+5*Math.log10(r*dl)+(i===0?1.2:0),-4.8,6)});}
+  return out;}
+function eqWorld(ra,dec,lst,lat){const H=lst-ra*D2R,d=dec*D2R,f=lat*D2R;
+  const e=-Math.cos(d)*Math.sin(H),n=Math.cos(f)*Math.sin(d)-Math.sin(f)*Math.cos(d)*Math.cos(H),u=Math.sin(f)*Math.sin(d)+Math.cos(f)*Math.cos(d)*Math.cos(H);
+  return new THREE.Vector3(e,u,-n);}
+function updateSky(t,lat,lon,k,moonL,vis){
+  if(!stars.on||!vis||k<0.005||renderer.xr.isPresenting){if(stars.g) stars.g.visible=false; if(skyDome) skyDome.material.uniforms.starRand.value=stars.on&&stars.g?0:1; return;}
+  if(!stars.g){if(!stars.loading&&!stars.failed) stars.loading=loadStars().then(()=>{stars.loading=null;applyWx();}).catch(e=>{console.warn('sterren',e);stars.failed=true;stars.loading=null;});
+    if(skyDome) skyDome.material.uniforms.starRand.value=1; return;}
+  if(skyDome) skyDome.material.uniforms.starRand.value=0;
+  const lst=sidt(toDays(t),-lon*D2R);
+  // kolommen: wereldrichting van de lokale assen (x: ra 180°, y: noordpool, z: ra 90°)
+  const X=eqWorld(180,0,lst,lat),Y=eqWorld(0,90,lst,lat),Z=eqWorld(90,0,lst,lat);
+  stars.sky.matrixAutoUpdate=false; stars.sky.matrix.makeBasis(X,Y,Z); stars.sky.matrixWorldNeedsUpdate=true;
+  stars.g.visible=true; stars.pts.material.uniforms.k.value=k; stars.pl.material.uniforms.k.value=Math.min(1,k*1.6);
+  const pl=planets(t),pa=stars.pl.geometry.attributes;pl.forEach((p,i)=>{const v=eqLocal(p.ra,p.dec);pa.position.setXYZ(i,...v);pa.mag.setX(i,p.mag);stars.plLabels[i].position.set(...v);});pa.position.needsUpdate=true;pa.mag.needsUpdate=true;
+  stars.lines.material.opacity=stars.con?0.32*k:0;
+  for(const sp of stars.labels) sp.material.opacity=stars.con?k*sp.userData.k:(sp.userData.k===1?k*0.8:0); // Poolster altijd
+  for(const sp of stars.plLabels) sp.material.opacity=stars.con?k*0.9:0;
+  if(stars.mwMesh) stars.mwMesh.material.opacity=stars.mw?k*(1-0.75*moonL):0;
+}
 function wxFxOff(){ // bij uitzetten / nieuw gebied
-  if(skyDome) skyDome.visible=false; fx.storm=false; fx.flash=0; fx.cKey=''; fx.pKey='';
+  if(skyDome) skyDome.visible=false; if(stars.g) stars.g.visible=false; fx.storm=false; fx.flash=0; fx.cKey=''; fx.pKey='';
 }
 
 // --- wolken (3D-pluizen + schaduw over het terrein)
@@ -1792,6 +1882,8 @@ function wxFrame(now){
   const dt=Math.min(0.1,fx.last?(now-fx.last)/1000:0.016); fx.last=now; fx.t+=dt;
   if(!cur||!terrain||!wx.enabled) return;
   if(skyDome&&skyDome.visible){skyDome.position.copy(camera.position);skyDome.scale.setScalar(camera.far*0.8);}
+  if(stars.g&&stars.g.visible){const R=camera.far*0.78;stars.g.position.copy(camera.position);stars.g.scale.setScalar(R);
+    if(stars.lblR!==R){stars.lblR=R;for(const sp of [...stars.labels,...stars.plLabels]) sp.scale.set(sp.userData.sw/R,0.03/R,1);}}
   const sF=fx.play?90:14; fx.drift.x+=fx.cw.x*dt*sF; fx.drift.y+=fx.cw.y*dt*sF;
   const span=2*cur.bb.S; fx.drift.x=((fx.drift.x%span)+span)%span; fx.drift.y=((fx.drift.y%span)+span)%span;
   stepPrecip(dt); stepFlow(dt);
@@ -2913,7 +3005,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();}}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
