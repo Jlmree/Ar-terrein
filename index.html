@@ -62,6 +62,9 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 .lbl.off{display:none!important}
 .hud{position:absolute;z-index:10;top:calc(8px + env(safe-area-inset-top))}
 #back{left:8px;z-index:30;width:44px;height:44px;padding:0;font-size:18px;border-radius:12px;top:calc(8px + env(safe-area-inset-top))}
+#castB{right:118px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:19px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
+#castB.on{background:#7c3aed}
+body.tv #castB{display:none!important}
 #meBtn{right:66px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:20px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
 #meBtn.on{background:#16a34a}
 #meHud{left:8px;right:8px;top:calc(96px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
@@ -76,7 +79,7 @@ body.tv #presB{bottom:16px;opacity:.75}
 #info .m{font-weight:700;font-size:14px;letter-spacing:.2px;white-space:nowrap}
 #det{left:60px;transform:none;top:calc(40px + env(safe-area-inset-top));font-size:11px;background:#16181dcc;border-radius:999px;padding:2px 9px;pointer-events:none;white-space:nowrap}
 #det:empty{display:none}
-#stat{left:60px;right:118px;text-align:left;font-size:11.5px;color:#e5e7eb;background:#16181dc8;border-radius:10px;padding:5px 9px;pointer-events:none;top:calc(10px + env(safe-area-inset-top));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stat{left:60px;right:170px;text-align:left;font-size:11.5px;color:#e5e7eb;background:#16181dc8;border-radius:10px;padding:5px 9px;pointer-events:none;top:calc(10px + env(safe-area-inset-top));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #loading{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1115cc;gap:14px;font-size:15px;text-align:center;padding:20px}
 .spin{width:38px;height:38px;border:4px solid #fff3;border-top-color:#3b82f6;border-radius:50%;animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -170,6 +173,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <button id="back" class="btn dark hud" title="Terug naar de kaart">◀</button>
   <div id="stat" class="hud"></div>
   <div id="det" class="hud"></div>
+  <button id="castB" class="hud" title="Casten naar groot scherm">📺</button>
   <button id="meBtn" class="hud" title="Naar mijn positie">📍</button>
   <div id="meHud" class="hud hidden"></div>
   <div id="presB" class="hud hidden"></div>
@@ -226,7 +230,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v30 · 16-11 19:30. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v31 · 16-11 19:50. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -237,6 +241,15 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <div class="panel" style="position:relative;left:auto;right:auto;bottom:auto;width:calc(100% - 16px);margin:8px;max-height:80vh;overflow:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:15px"><span>📂 Opgeslagen gebieden</span><button class="btn sm dark" id="savedX">✕</button></div>
     <div id="savedL"></div></div></div>
+<div id="castM" class="screen hidden" style="z-index:61;background:#0f1115ee;display:flex;align-items:center;justify-content:center">
+  <div class="panel" style="position:relative;left:auto;right:auto;bottom:auto;width:calc(100% - 24px);max-width:440px;max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px"><span>📺 Casten naar groot scherm</span><button class="btn sm dark" id="castX">✕</button></div>
+    <div class="note"><b>Tv of laptop met browser</b> – scan de QR-code of open de link op het grote scherm. Het scherm volgt dan automatisch jouw beeld, zonder knoppen, in volle kwaliteit.</div>
+    <div id="castQR" style="width:220px;height:220px;margin:8px auto;background:#fff;border-radius:10px;padding:6px;display:flex;align-items:center;justify-content:center"></div>
+    <div class="note" id="castLink" style="word-break:break-all;text-align:center"></div>
+    <div class="row" style="justify-content:center"><button class="btn sm" id="castCopy">Kopieer link</button></div>
+    <div class="note" style="margin-top:10px"><b>Chromecast / Google TV zonder browser?</b> Gebruik spiegelen: Google Home-app → je tv → <b>Mijn scherm casten</b>. Samsung-tv: snelinstellingen → <b>Smart View</b>.</div>
+  </div></div>
 <!-- ============ VELD-AR ============ -->
 <div id="far" class="screen hidden">
   <video id="farV" playsinline muted autoplay></video><canvas id="farC"></canvas>
@@ -2131,7 +2144,8 @@ function onAreaLoaded(fromDoc){
   if(!fromDoc&&!sameArea(doc.area,a)){const now=Date.now();doc.area={...a,ts:now,by:share.name||''};doc.meas={pts:[],ts:now};doc.vs={pt:null,ts:now};persistDoc();if(share.on) schedulePublish();}
   else{applyDocMeas();applyDocVs();}
   renderTac(); renderPeers(); redrawTexture();
-  tRemove('me'); if(meOn()) {meStart(); renderMe();}
+  if(typeof TV_MODE!=='undefined'&&TV_MODE){pres.follow=true;document.body.classList.add('tv');}
+  tRemove('me'); if(meOn()&&!(typeof TV_MODE!=='undefined'&&TV_MODE)) {meStart(); renderMe();}
   if(bldOn()) loadBuildings(); else tRemove('bld');
 }
 
@@ -2466,7 +2480,7 @@ async function uiExpOffline(){
 function updateNet(){const p=$('netP');if(!p) return;p.classList.toggle('hidden',navigator.onLine);}
 window.addEventListener('online',updateNet);window.addEventListener('offline',updateNet);updateNet();
 // uitnodigingslink #room-CODE
-(function(){const m=location.hash.match(/^#room-([A-Z0-9]{6,})$/i);if(!m) return;const code=normCode(m[1]);
+(function(){const m=location.hash.match(/^#room-([A-Z0-9]{6,})$/i);if(!m||new URLSearchParams(location.search).get('tv')==='1') return;const code=normCode(m[1]);
   const b=$('joinP');b.innerHTML=`👥 Deelnemen aan sessie <b>${fmtCode(code)}</b> – tik hier`;b.classList.remove('hidden');
   b.onclick=async()=>{share.name=share.name||state.name||'Deelnemer';
     b.innerHTML='⏳ Verbinden…';try{await shareJoin(code,false);b.innerHTML=`🟢 Verbonden met <b>${fmtCode(code)}</b> – wacht op gebied…`;setTimeout(()=>b.classList.add('hidden'),6000);}catch(e){b.innerHTML='❌ '+e.message;}};})();
@@ -2869,7 +2883,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();}}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
@@ -3016,7 +3030,7 @@ function presRx(d){
 function presFrame(){ // kijker: vloeiend naar het beeld van de presentator
   if(pres.on) presSend();
   const d=pres.tgt; if(!d||!pres.follow||renderer.xr.isPresenting) {if(!controls.enabled&&!pres.follow) controls.enabled=true; return;}
-  if(performance.now()-pres.rx>6000){presBadge();return;}
+  if(performance.now()-pres.rx>6000) presBadge(); // presentator stil: laatste beeld blijven tonen
   controls.enabled=false; const nw=performance.now(),dt=Math.min(0.5,(nw-(pres.ft||nw))/1000); pres.ft=nw; const a=1-Math.exp(-dt/0.18);
   if(d.m==='orbit'){_pv.fromArray(d.p);camera.position.lerp(_pv,a);_pv.fromArray(d.t);controls.target.lerp(_pv,a);camera.lookAt(controls.target);}
   else{_pv.fromArray(d.p);camera.position.lerp(_pv,a);_pq.fromArray(d.q);camera.quaternion.slerp(_pq,a);
@@ -3037,6 +3051,51 @@ function setTv(on){ // schone tv-weergave: alleen de kaart
   else{try{document.fullscreenElement&&document.exitFullscreen();}catch(e){}}
 }
 setInterval(presBadge,2000);
+
+
+/* =================================================================
+   📺 CASTEN naar een groot scherm (Chromecast / tv / laptop)
+   ================================================================= */
+const TV_MODE=new URLSearchParams(location.search).get('tv')==='1';
+function tvUrl(){return location.origin+location.pathname+'?tv=1#room-'+share.code;}
+async function loadQR(){
+  if(window.qrcode) return true;
+  for(const u of ['https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js','https://unpkg.com/qrcode-generator@1.4.4/qrcode.js','https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js']){
+    try{await new Promise((res,rej)=>{const s=document.createElement('script');s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s);});if(window.qrcode) return true;}catch(e){}}
+  return false;
+}
+async function startCast(){
+  if(!cur){toast('Laad eerst een gebied');return;}
+  try{
+    if(!share.on){share.name=share.name||state.name||'Presentator';toast('Sessie starten…');await shareJoin(newCode(),true);}
+    pres.on=true;pres.follow=false;controls.enabled=true;pres.lastKey='';presBadge();
+  }catch(e){toast('Delen lukt niet: '+e.message);return;}
+  const url=tvUrl();
+  // 1) direct casten via de browser (Chromecast/Google TV), als dat kan
+  if('PresentationRequest' in window){
+    try{const req=new PresentationRequest([url]);const conn=await req.start();
+      toast('📺 Gecast – het grote scherm volgt jouw beeld');$('castB').classList.add('on');
+      conn.addEventListener('terminate',()=>$('castB').classList.remove('on'));conn.addEventListener('close',()=>$('castB').classList.remove('on'));return;}
+    catch(e){console.warn('cast',e);}
+  }
+  // 2) anders: QR-code/link voor tv of laptop + uitleg spiegelen
+  showCastDialog(url);
+}
+async function showCastDialog(url){
+  $('castLink').textContent=url; $('castM').classList.remove('hidden');
+  const box=$('castQR'); box.innerHTML='<div class="note">QR-code laden…</div>';
+  if(await loadQR()){const q=qrcode(0,'M');q.addData(url);q.make();box.innerHTML=q.createSvgTag({cellSize:5,margin:2,scalable:true});}
+  else box.innerHTML='<div class="note">(QR-code niet beschikbaar – gebruik de link)</div>';
+}
+$('castB').onclick=startCast;
+$('castX').onclick=()=>$('castM').classList.add('hidden');
+$('castCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('castLink').textContent);toast('Link gekopieerd');}catch(e){toast('Kopiëren niet toegestaan');}};
+// het grote scherm zelf: automatisch deelnemen, volgen en tv-weergave
+if(TV_MODE){const m=location.hash.match(/^#room-([A-Z0-9]{6,})$/i);
+  if(m){document.body.classList.add('tv');share.name='Groot scherm';pres.follow=true;pres.tv=true;
+    const jb=$('joinP');jb.innerHTML='📺 Verbinden met de presentatie…';jb.classList.remove('hidden');
+    shareJoin(normCode(m[1]),false).then(()=>{jb.innerHTML='📺 Verbonden – wacht op beeld…';}).catch(e=>{jb.innerHTML='❌ '+e.message;});
+    document.addEventListener('click',()=>{try{if(!document.fullscreenElement) document.documentElement.requestFullscreen();}catch(e){}},{once:true});}}
 
 </script>
 </body>
