@@ -48,6 +48,8 @@ input,select,button{font:inherit;font-size:15px}
 .chip{background:#2a2e37;color:#ddd;border:none;border-radius:999px;padding:6px 11px;font-size:14px;cursor:pointer}
 .chip.on{background:#2563eb;color:#fff}
 #simBox{margin:8px 0;background:#1b1f27;border-radius:10px;padding:6px 10px}#simBox summary{cursor:pointer;font-weight:600;padding:4px 0}#simBox .chips{margin:6px 0}
+.cpb{border:none;background:#2a2e37;color:#9db8ff;border-radius:6px;padding:1px 6px;font-size:12px;cursor:pointer;vertical-align:1px}
+.wxgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:12.5px;color:#cfd4dd;margin-top:4px}
 .simtag{background:#7c3aed;color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:4px}
 select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color:#eee;border:none}
 #go{width:100%;margin-top:6px;padding:13px;font-size:16px}
@@ -64,6 +66,8 @@ select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color
 .lbl.off{display:none!important}
 .hud{position:absolute;z-index:10;top:calc(8px + env(safe-area-inset-top))}
 #back{left:8px;z-index:30;width:44px;height:44px;padding:0;font-size:18px;border-radius:12px;top:calc(8px + env(safe-area-inset-top))}
+#srchB{right:170px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:18px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
+#srch3{left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:40;display:flex;gap:6px;background:#16181df0;padding:6px;border-radius:12px;box-shadow:0 4px 14px #0008}#srch3.hidden{display:none}#srch3 input{flex:1;min-width:0;padding:9px 10px;border-radius:9px;border:none;background:#2a2e37;color:#eee;font-size:16px}
 #castB{right:118px;width:44px;height:44px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;border:none;font-size:19px;cursor:pointer;top:calc(10px + env(safe-area-inset-top))}
 #castB.on{background:#7c3aed}
 body.tv #castB{display:none!important}
@@ -71,7 +75,7 @@ body.tv #castB{display:none!important}
 #meBtn.on{background:#16a34a}
 #meHud{left:8px;right:8px;top:calc(96px + env(safe-area-inset-top));text-align:center;font-size:12.5px;background:#16181de6;border-radius:10px;padding:5px 8px;pointer-events:none}
 #presB{top:auto;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));background:#7c3aedee;color:#fff;border-radius:999px;padding:7px 14px;font-size:13px;white-space:nowrap;cursor:pointer;box-shadow:0 2px 10px #0008;z-index:13}
-body.tv #tools,body.tv #tool,body.tv #ctrl,body.tv #stat,body.tv #det,body.tv #info,body.tv #back,body.tv #meBtn,body.tv #meHud{display:none!important}
+body.tv #srchB,body.tv #srch3,body.tv #tools,body.tv #tool,body.tv #ctrl,body.tv #stat,body.tv #det,body.tv #info,body.tv #back,body.tv #meBtn,body.tv #meHud{display:none!important}
 body.tv #presB{bottom:16px;opacity:.75}
 #compass.on{box-shadow:0 0 0 3px #2563eb}
 #compass{right:10px;width:48px;height:48px;border-radius:50%;background:#16181dd8;box-shadow:0 2px 8px #0006;cursor:pointer;padding:0;border:none}
@@ -81,7 +85,7 @@ body.tv #presB{bottom:16px;opacity:.75}
 #info .m{font-weight:700;font-size:14px;letter-spacing:.2px;white-space:nowrap}
 #det{left:60px;transform:none;top:calc(40px + env(safe-area-inset-top));font-size:11px;background:#16181dcc;border-radius:999px;padding:2px 9px;pointer-events:none;white-space:nowrap}
 #det:empty{display:none}
-#stat{left:60px;right:170px;text-align:left;font-size:11.5px;color:#e5e7eb;background:#16181dc8;border-radius:10px;padding:5px 9px;pointer-events:none;top:calc(10px + env(safe-area-inset-top));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stat{left:60px;right:222px;text-align:left;font-size:11.5px;color:#e5e7eb;background:#16181dc8;border-radius:10px;padding:5px 9px;pointer-events:none;top:calc(10px + env(safe-area-inset-top));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #loading{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f1115cc;gap:14px;font-size:15px;text-align:center;padding:20px}
 .spin{width:38px;height:38px;border:4px solid #fff3;border-top-color:#3b82f6;border-radius:50%;animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -121,7 +125,8 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;font-size:12.5px;c
 .mlist .tot{font-weight:700;color:#fff;margin-top:3px}
 input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;padding:6px 8px}
 .wxnow{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:13px;font-variant-numeric:tabular-nums}
-.wxnow .big{grid-column:1/3;font-size:16px;font-weight:700}
+.wxnow .big{grid-column:1/3;font-size:15px;font-weight:700;line-height:1.3}
+.wxnow>details,.wxnow>.simtag{grid-column:1/3}
 .radar{display:flex;gap:10px;align-items:flex-start;margin-top:8px}
 .radar canvas{width:150px;height:150px;border-radius:8px;background:#ccc;flex:0 0 auto}
 .lbl.wp>div{background:#ffd400;color:#111;font-weight:800;padding:1px 6px}
@@ -183,6 +188,8 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
   <button id="back" class="btn dark hud" title="Terug naar de kaart">◀</button>
   <div id="stat" class="hud"></div>
   <div id="det" class="hud"></div>
+  <button id="srchB" class="hud" title="Ander gebied zoeken">🔍</button>
+  <form id="srch3" class="hud hidden"><input id="q3" placeholder="Plaats, MGRS of lat,lon" autocomplete="off"><button class="btn sm" type="submit">Zoek</button><button class="btn sm dark" type="button" id="srch3X">✕</button></form>
   <button id="castB" class="hud" title="Casten naar groot scherm">📺</button>
   <button id="meBtn" class="hud" title="Naar mijn positie">📍</button>
   <div id="meHud" class="hud hidden"></div>
@@ -209,6 +216,8 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
     <div class="head" id="ctrlHead"><span>⚙ Lagen</span><span><button class="btn sm dark" id="ctrlMin">▾</button> <button class="btn sm dark" id="ctrlX">✕</button></span></div>
     <div class="note" id="feat" style="margin:0 0 4px"></div>
     <div class="body">
+      <div class="sec">Snel instellen</div>
+      <div class="chips" id="presets"><span class="chip" data-p="oef">🎖 Oefening</span><span class="chip" data-p="brief">🗺 Briefing</span><span class="chip" data-p="mooi">✨ Mooi</span></div>
       <div class="sec">Beeld</div>
       <div class="seg"><button id="vTop">⬇ Boven</button><button id="vReset">◢ Schuin</button><button id="vLow">👁 Laag</button></div>
       <div class="sec">Kaart</div>
@@ -230,9 +239,9 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
       <div class="sec">Op de kaart</div>
       <div class="grid2"><label class="tg"><input type="checkbox" id="tLabels" checked> Kenmerken</label><label class="tg"><input type="checkbox" id="tTac" checked> Tactische symbolen</label><label class="tg"><input type="checkbox" id="tMe" checked> Mijn positie</label></div>
       <div class="sec">3D en sfeer</div>
-      <div class="grid2"><label class="tg"><input type="checkbox" id="tBld" checked> Gebouwen</label><label class="tg"><input type="checkbox" id="tTrees" checked> Bomen</label><label class="tg"><input type="checkbox" id="tAhnT" checked> Echte boomhoogtes (AHN)</label><label class="tg"><input type="checkbox" id="tLife" checked> Windmolens</label><label class="tg"><input type="checkbox" id="tWater" checked> Water glinstert</label><label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label></div>
-      <div class="row"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
-      <div class="attr small">Versie v38 · 16-11 22:45. · Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="grid2"><label class="tg"><input type="checkbox" id="tBld" checked> Gebouwen</label><label class="tg"><input type="checkbox" id="tTrees" checked> Bomen</label><label class="tg"><input type="checkbox" id="tAhnT" checked> Echte boomhoogtes (AHN)</label><label class="tg"><input type="checkbox" id="tLife" checked> Windmolens</label><label class="tg"><input type="checkbox" id="tPretty" checked> Mooi beeld (water, lucht)</label><input type="checkbox" id="tWater" checked hidden><input type="checkbox" id="tAtm" checked hidden></div>
+      <div class="row" style="display:none"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
+      <div class="attr small">Versie v39 · 16-11 23:00. · Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -463,6 +472,21 @@ $('sf').onsubmit=async(e)=>{
   }catch(err){$('cinfo').textContent='Zoeken mislukt (geen verbinding?)';$('cinfo').classList.add('err');}
 };
 
+async function resolvePlace(q){ // MGRS, lat,lon of plaatsnaam → {lat,lon}
+  const ref=cur?cur.bb:{lat:state.lat,lon:state.lon};
+  const r=G.parseMGRS(q,{zone:G.utmZone(ref.lat,ref.lon),band:G.band(ref.lat)}); if(r) return {lat:r.lat,lon:r.lon};
+  const m=q.match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)\s*$/);
+  if(m){const la=+m[1].replace(',','.'),lo=+m[2].replace(',','.');if(Math.abs(la)<=90&&Math.abs(lo)<=180) return {lat:la,lon:lo};}
+  const res=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=nl&q='+encodeURIComponent(q));
+  const js=await res.json(); if(!js.length) throw new Error('Niet gevonden: '+q); return {lat:+js[0].lat,lon:+js[0].lon};
+}
+$('srchB').onclick=()=>{$('srch3').classList.remove('hidden');$('q3').value='';setTimeout(()=>$('q3').focus(),50);};
+$('srch3X').onclick=()=>$('srch3').classList.add('hidden');
+$('srch3').onsubmit=async e=>{e.preventDefault();const q=$('q3').value.trim();if(!q) return;$('q3').blur();
+  try{toast('Zoeken…');const r=await resolvePlace(q);$('srch3').classList.add('hidden');
+    state.lat=r.lat;state.lon=r.lon;lsSet('terrein3d',state);try{map.setView([r.lat,r.lon],Math.max(map.getZoom(),13));}catch(e){}
+    build({lat:r.lat,lon:r.lon,sizeKm:cur?cur.bb.S/1000:state.size,layer:$('layerSel3').value||state.layer,dem:$('demSel3').value||state.dem,hiq:state.hiq});}
+  catch(err){toast(err.message.startsWith('Niet')?err.message:'Zoeken mislukt (geen verbinding?)');}};
 function enterView(p){
   $('pick').classList.add('hidden'); $('view').classList.remove('hidden');
   initThree();
@@ -1378,10 +1402,11 @@ function updateMeas(only3d){
   if(only3d||!$('mList')) return;
   if(!P.length){$('mList').innerHTML='<i>Nog geen punten.</i>';$('mLos').textContent='';drawProfile(null);return;}
   const LL=P.map(p=>w2ll(p.x,p.z)); let tot=0,rows='';
-  rows+=`<div>1 · <b>${G.toMGRS(LL[0][0],LL[0][1],5)}</b> · ${nf(elevReal(P[0].x,P[0].z),1)} m</div>`;
+  const cpB=t=>`<button class="cpb" data-c="${t}" title="Kopieer">⧉</button>`;
+  rows+=`<div>1 · <b>${G.toMGRS(LL[0][0],LL[0][1],5)}</b> ${cpB(G.toMGRS(LL[0][0],LL[0][1],5))} · ${nf(elevReal(P[0].x,P[0].z),1)} m</div>`;
   for(let i=1;i<P.length;i++){const a=LL[i-1],b=LL[i],d=hav(a[0],a[1],b[0],b[1]);tot+=d;
     const gb=gridBrg(a[0],a[1],b[0],b[1]),mb=wrap360(brg(a[0],a[1],b[0],b[1])-measOpt.dec);
-    rows+=`<div>${i+1} · <b>${G.toMGRS(b[0],b[1],5)}</b> · ${nf(elevReal(P[i].x,P[i].z),1)} m<br>&nbsp;&nbsp;↳ ${fmtDist(d)} · kaart ${toMil(gb)}‰ (${Math.round(gb)}°) · kompas ${toMil(mb)}‰ (${Math.round(mb)}°)</div>`;}
+    rows+=`<div>${i+1} · <b>${G.toMGRS(b[0],b[1],5)}</b> ${cpB(G.toMGRS(b[0],b[1],5))} · ${nf(elevReal(P[i].x,P[i].z),1)} m<br>&nbsp;&nbsp;↳ ${fmtDist(d)} · kaart ${toMil(gb)}‰ (${Math.round(gb)}°) · kompas ${toMil(mb)}‰ (${Math.round(mb)}°)</div>`;}
   // profiel langs de route
   const N=300, seg=[];let Lw=0;for(let i=1;i<P.length;i++){const l=Math.hypot(P[i].x-P[i-1].x,P[i].z-P[i-1].z);seg.push(l);Lw+=l;}
   const dd=[],ee=[],oo=[];let up=0,dn=0;
@@ -1391,6 +1416,7 @@ function updateMeas(only3d){
       if(q){const de=e-ee[q-1];if(de>0)up+=de;else dn-=de;}}}
   if(P.length>1) rows+=`<div class="tot">Totaal ${fmtDist(tot)} · ↑ ${Math.round(up)} m · ↓ ${Math.round(dn)} m</div>`;
   $('mList').innerHTML=rows;
+  $('mList').onclick=async e=>{const b=e.target.closest('.cpb');if(!b) return;try{await navigator.clipboard.writeText(b.dataset.c);toast('Gekopieerd: '+b.dataset.c);}catch(er){toast('Kopiëren niet toegestaan');}};
   // zichtlijn 1 → laatste (recht)
   let los=null;
   if(P.length>1){const A=P[0],Z=P[P.length-1],eA=elevReal(A.x,A.z)+vsOpt.eye,eZ=elevReal(Z.x,Z.z)+vsOpt.tgt,dAZ=hav(LL[0][0],LL[0][1],LL[LL.length-1][0],LL[LL.length-1][1]);
@@ -1555,7 +1581,7 @@ function simWx(){const s=wx.sim,cc=Math.max(s.low,s.mid,s.high);
 function uiWx(){
   $('toolT').textContent='⛅ Weer, zon & maan';
   tb.innerHTML=`<div id="wxNow" class="wxnow">Weer laden…</div>
-  <div class="row"><span class="t">Tijdstip</span><input type="range" id="wxT" min="-8" max="192" step="1" value="${wx.ofs}"><span class="val" id="wxTV" style="width:92px;font-size:12px"></span></div>
+  <div class="row"><span class="t">Tijdstip</span><input type="range" id="wxT" min="-8" max="192" step="1" value="${wx.ofs}"><span class="val" id="wxTV" style="width:80px;font-size:12px"></span><button class="btn sm" id="wxPlay" style="display:none">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB" title="Terug naar nu">↺</button></div>
   <div class="sec">Tonen</div>
   <div class="grid2">
     <label class="tg"><input type="checkbox" id="wSun" ${wx.sun?'checked':''}> Zon/maan &amp; schaduw</label>
@@ -1571,9 +1597,8 @@ function uiWx(){
     <label class="tg"><input type="checkbox" id="wMw" ${stars.mw?'checked':''}> Melkweg</label>
   </div>
   <div class="row"><span class="t">Wolken tonen</span><select id="wCm"><option value="rain">Alleen bij neerslag</option><option value="all">Altijd (weermodel)</option></select></div>
-  <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
   <div id="sunInfo" class="note"></div>
-  <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
+  <div class="radar"><canvas id="radar" width="300" height="300"></canvas><div><button class="btn sm dark" id="radPlay" style="display:none">▶ Radar afspelen</button><div id="radT" class="note"></div><div class="note">Buienradar ±150 km; rood vierkant = je gebied.</div></div></div>
   <div class="sec">Simuleren</div><details id="simBox" ${wx.sim?'open':''}><summary>🧪 Zelf weer instellen</summary>
     <div class="chips" id="simP">${Object.entries(SIMP).map(([k,v])=>`<span class="chip${wx.simKey===k?' on':''}" data-k="${k}">${v.n}</span>`).join('')}</div>
     <div id="simS"></div>
@@ -1658,11 +1683,14 @@ function applyWx(fast){
   // tekst
   if($('wxNow')){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
-      $('wxNow').innerHTML=(w._sim?'<div class="simtag">🧪 SIMULATIE — geen echt weer</div>':'')+`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,1)} °C</div>
-      <div>💨 ${DIRS[Math.round(wd/22.5)%16]} ${nf(ws,1)} m/s (${bft(ws)} Bft)</div><div>Stoten ${nf(w.wind_gusts_10m??0,1)} m/s · ${toMil(wd)}‰</div>
-      <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% (L ${Math.round(w.cloud_cover_low??0)} · M ${Math.round(w.cloud_cover_mid??0)} · H ${Math.round(w.cloud_cover_high??0)})</div>
-      <div>👁 zicht ${w.visibility!=null?fmtDist(w.visibility):'—'}</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>
-      <div>💧 RV ${Math.round(w.relative_humidity_2m??0)}%</div><div>${w.snow_depth>0.005?'❄️ sneeuwdek '+Math.round(w.snow_depth*100)+' cm':''}</div>`;}
+      const vis=w.visibility!=null?fmtDist(w.visibility):'—', pr=(w.precipitation??0)>0.05?` · 🌧 ${nf(w.precipitation,1)} mm/u`:'';
+      $('wxNow').innerHTML=(w._sim?'<div class="simtag">🧪 SIMULATIE — geen echt weer</div>':'')+`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,0)} °C · ${DIRS[Math.round(wd/22.5)%16]} ${bft(ws)} Bft · zicht ${vis}${pr}</div>
+      <details class="more" id="wxMore" ${wx.more?'open':''}><summary>Meer weerdetails</summary><div class="wxgrid">
+      <div>💨 ${nf(ws,1)} m/s, stoten ${nf(w.wind_gusts_10m??0,1)} m/s</div><div>🧭 vanuit ${toMil(wd)}‰ (${Math.round(wd)}°)</div>
+      <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · kans '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% bewolkt</div>
+      <div>☁️ laag ${Math.round(w.cloud_cover_low??0)} · midden ${Math.round(w.cloud_cover_mid??0)} · hoog ${Math.round(w.cloud_cover_high??0)}%</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>
+      <div>💧 vochtigheid ${Math.round(w.relative_humidity_2m??0)}%</div><div>${w.snow_depth>0.005?'❄️ sneeuwdek '+Math.round(w.snow_depth*100)+' cm':''}</div></div></details>`;
+      const mo=$('wxMore'); if(mo) mo.ontoggle=()=>{wx.more=mo.open;};}
     else if(!wx.data) $('wxNow').textContent='Weer laden…';
   }
   if($('sunInfo')&&!fast){const ev=sunEvents(t,lat,lon),f=k=>ev[k]?hhmm(ev[k]):'—';
@@ -1726,7 +1754,7 @@ function ensureSky(){
   skyDome.frustumCulled=false; skyDome.renderOrder=-10; skyDome.visible=false; scene.add(skyDome); return skyDome;
 }
 /* ---------- echte sterrenhemel: sterren (Hipparcos tot mag 6), sterrenbeelden, Melkweg en planeten ---------- */
-const stars={on:state.sky_on!==false,con:!!state.sky_con,mw:state.sky_mw!==false,g:null,loading:null,failed:false,pl:null,labels:[],plLabels:[]};
+const stars={on:state.sky_on!==false,con:!!state.sky_con,mw:state.sky_mw===true,g:null,loading:null,failed:false,pl:null,labels:[],plLabels:[]};
 const SKYDATA='https://cdn.jsdelivr.net/npm/d3-celestial@0.7.35/data/';
 // lokaal hemel-frame (gelijk aan de UV's van THREE.SphereGeometry): ra/dec → vector
 const eqLocal=(ra,dec)=>{const a=ra*D2R,d=dec*D2R;return [-Math.cos(a)*Math.cos(d),Math.sin(d),Math.sin(a)*Math.cos(d)];};
@@ -3079,8 +3107,20 @@ function lifeDeckY(w,s,x,z){ // hoogte voor voertuigen op een brug
 
 $('tWater').onchange=()=>{if(terrain) terrain.material.uniforms.lcOn.value=$('tWater').checked&&lcv.tex?1:0;};
 $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAtm').checked?1:0;};
+$('tPretty').onchange=()=>{const on=$('tPretty').checked;state.pretty=on;lsSet('terrein3d',state);for(const id of ['tWater','tAtm']){$(id).checked=on;$(id).onchange();}};
+if(state.pretty===false){$('tPretty').checked=false;$('tWater').checked=false;$('tAtm').checked=false;}
+// --- snelle presets
+const PRESETS={
+  oef:{n:'Oefening',c:{tGrid:1,tLabels:1,tTac:1,tMe:1,tSlope:0,tRoads:0,tBld:1,tTrees:1,tShade:1,tLife:1,tPretty:0},ci:'auto',v:'vReset'},
+  brief:{n:'Briefing',c:{tGrid:1,tLabels:1,tTac:1,tMe:0,tSlope:0,tRoads:1,tBld:1,tTrees:1,tShade:1,tLife:0,tPretty:0},ci:'auto',v:'vTop'},
+  mooi:{n:'Mooi',c:{tGrid:0,tLabels:0,tTac:0,tMe:0,tSlope:0,tRoads:0,tBld:1,tTrees:1,tAhnT:1,tShade:1,tLife:1,tPretty:1},ci:'0',v:'vLow'}};
+$('presets').onclick=e=>{const c=e.target.closest('.chip');if(!c) return;const P=PRESETS[c.dataset.p];
+  for(const [id,v] of Object.entries(P.c)){const el=$(id);if(el&&el.checked!==!!v){el.checked=!!v;if(el.onchange) el.onchange();}}
+  if($('ci').value!==P.ci){$('ci').value=P.ci;updateContours();}
+  if(P.v&&$(P.v)) $(P.v).click();
+  $('presets').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c));toast('Instelling: '+P.n);};
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
-if(state.season) $('season').value=state.season;
+$('season').value='off'; // seizoenen uit de app gehaald
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
 window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},wx:()=>({sim:wx.simKey,en:wx.enabled,p:!!tmeshes.precip,pk:fx.pKey,c:!!tmeshes.clouds,ck:fx.cKey}),look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
