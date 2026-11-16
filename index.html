@@ -230,7 +230,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
         <label class="tg"><input type="checkbox" id="tAtm" checked> Atmosfeer</label>
       </div>
       <div class="row" style="margin-top:8px"><button class="btn sm dark" id="vTop">Bovenaanzicht</button><button class="btn sm dark" id="vReset">Schuin</button><button class="btn sm dark" id="vLow">Laag</button></div>
-      <div class="attr">Versie v32 · 16-11 20:10. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr">Versie v33 · 16-11 20:35. Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -2967,7 +2967,8 @@ way["waterway"~"^(river|canal${big?'':'|stream|ditch|drain'})$"](${bx});way["nat
   const polys=(el)=>{if(el.type==='way'&&el.geometry) return {o:[el.geometry.map(g=>[g.lat,g.lon])],i:[]};
     if(el.type==='relation'&&el.members){const o=[],i=[];for(const m of el.members) if(m.geometry)(m.role==='inner'?i:o).push(m.geometry.map(g=>[g.lat,g.lon]));return {o:joinRings(o),i:joinRings(i)};}return null;};
   x.globalCompositeOperation='lighter';
-  for(const el of js.elements){const t=el.tags||{};
+  const isLC=t=>t.natural==='water'||t.natural==='heath'||t.waterway==='riverbank'||t.landuse==='reservoir'||t.landuse==='basin'||(t.waterway&&WW[t.waterway]);
+  for(const el of js.elements){const t=el.tags||{}; if(!isLC(t)||t.building) continue; // alleen water en heide uit de gecombineerde OSM-gegevens
     if(t.waterway&&WW[t.waterway]&&el.type==='way'&&el.geometry){x.strokeStyle='rgb(255,0,0)';x.lineCap='round';x.lineJoin='round';x.lineWidth=Math.max(1.5,WW[t.waterway]*pm);
       x.beginPath();el.geometry.forEach((g,i)=>{const [a,c]=P([g.lat,g.lon]);i?x.lineTo(a,c):x.moveTo(a,c);});x.stroke();continue;}
     const pg=polys(el);if(!pg) continue; const heath=t.natural==='heath';
