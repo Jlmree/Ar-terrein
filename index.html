@@ -47,6 +47,8 @@ input,select,button{font:inherit;font-size:15px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{background:#2a2e37;color:#ddd;border:none;border-radius:999px;padding:6px 11px;font-size:14px;cursor:pointer}
 .chip.on{background:#2563eb;color:#fff}
+#simBox{margin:8px 0;background:#1b1f27;border-radius:10px;padding:6px 10px}#simBox summary{cursor:pointer;font-weight:600;padding:4px 0}#simBox .chips{margin:6px 0}
+.simtag{background:#7c3aed;color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:4px}
 select{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2e37;color:#eee;border:none}
 #go{width:100%;margin-top:6px;padding:13px;font-size:16px}
 .mgrslbl{background:none;border:none;color:#1d3fb8;font:700 11px system-ui;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;white-space:nowrap}
@@ -1504,6 +1506,7 @@ async function loadWeather(){
   const js=await r.json(); js._t=js.hourly.time.map(s=>Date.parse(s+'Z')-(js.utc_offset_seconds||0)*1000); js._bb=cur.bb; wx.data=js;
 }
 function wxAt(t){
+  if(wx.sim) return simWx();
   const js=wx.data;if(!js) return null;
   const T=js._t;let i=T.findIndex(x=>x>t);if(i<=0) i=i<0?T.length-1:1;const a=i-1,f=clamp((t-T[a])/(T[i]-T[a]),0,1),h=js.hourly,o={};
   for(const k of Object.keys(h)){if(k==='time') continue;const va=h[k][a],vb=h[k][i];if(va==null||vb==null){o[k]=va??vb;continue;}
@@ -1512,6 +1515,29 @@ function wxAt(t){
   if(wx.ofs===0&&js.current) Object.assign(o,js.current,{_now:true});
   return o;
 }
+// --- weersimulatie: alle effecten zelf instellen om ze te bekijken
+const SIMBASE={code:0,low:0,mid:0,high:0,precip:0,temp:14,rh:70,vis:30000,ws:4,wd:240,gust:7,snow:0};
+const SIMP={
+  helder:{n:'☀️ Helder',v:{code:0,rh:55,vis:40000,ws:3,gust:5}},
+  half:{n:'⛅ Half bewolkt',v:{code:2,low:35,mid:40,high:30,ws:5,gust:9}},
+  bewolkt:{n:'☁️ Bewolkt',v:{code:3,low:90,mid:85,high:60,rh:80,vis:20000,ws:6,gust:10}},
+  motregen:{n:'🌦 Motregen',v:{code:53,low:100,mid:90,precip:0.4,rh:96,vis:6000,temp:9,ws:4,gust:7}},
+  regen:{n:'🌧 Regen',v:{code:63,low:100,mid:100,high:80,precip:3,rh:95,vis:8000,temp:10,ws:7,gust:13}},
+  bui:{n:'⛈ Hoosbui',v:{code:82,low:100,mid:100,high:90,precip:18,rh:98,vis:2500,temp:16,ws:11,gust:21}},
+  onweer:{n:'🌩 Onweer',v:{code:95,low:100,mid:100,high:100,precip:12,rh:95,vis:3500,temp:21,ws:12,gust:24}},
+  sneeuw:{n:'🌨 Sneeuw',v:{code:73,low:100,mid:90,precip:1.6,rh:94,vis:2000,temp:-2,ws:5,gust:9,snow:12}},
+  sneeuwdek:{n:'❄️ Sneeuwdek, helder',v:{code:1,low:5,rh:80,vis:30000,temp:-5,ws:2,gust:4,snow:20}},
+  mist:{n:'🌫 Dichte mist',v:{code:45,low:100,rh:100,vis:150,temp:3,ws:0.5,gust:1}},
+  nevel:{n:'🌁 Ochtendnevel',v:{code:1,low:10,rh:98,vis:1500,temp:5,ws:1,gust:2}},
+  storm:{n:'🌪 Storm',v:{code:3,low:95,mid:90,precip:2.5,rh:88,vis:7000,temp:11,ws:24,gust:34}}};
+const SIMS=[['code','Weertype (WMO)',0,99,1,''],['low','Lage wolken',0,100,5,'%'],['mid','Middelhoge wolken',0,100,5,'%'],['high','Hoge wolken',0,100,5,'%'],
+  ['precip','Neerslag',0,30,0.1,'mm/u'],['temp','Temperatuur',-15,35,0.5,'°C'],['snow','Sneeuwdek',0,40,1,'cm'],['rh','Luchtvochtigheid',20,100,1,'%'],
+  ['vis','Zicht',100,40000,100,'m'],['ws','Wind',0,35,0.5,'m/s'],['wd','Windrichting',0,359,5,'°'],['gust','Windstoten',0,45,0.5,'m/s']];
+const fmtSim=(k,v,u)=>k==='code'?(v+' '+(WMO[v]||'')):k==='vis'?fmtDist(v):k==='wd'?(DIRS[Math.round(v/22.5)%16]+' '+v+'°'):(nf(v,u==='mm/u'||u==='m/s'||u==='°C'?1:0)+' '+u);
+function simWx(){const s=wx.sim,cc=Math.max(s.low,s.mid,s.high);
+  return {_sim:true,_now:wx.ofs===0,weather_code:s.code,temperature_2m:s.temp,dew_point_2m:s.temp-(100-s.rh)/5,relative_humidity_2m:s.rh,precipitation:s.precip,_p3:s.precip*3,
+    precipitation_probability:s.precip>0?100:0,cloud_cover:cc,cloud_cover_low:s.low,cloud_cover_mid:s.mid,cloud_cover_high:s.high,visibility:s.vis,
+    wind_speed_10m:s.ws,wind_direction_10m:s.wd,wind_gusts_10m:Math.max(s.gust,s.ws),snow_depth:s.snow/100};}
 function uiWx(){
   $('toolT').textContent='⛅ Weer, zon & maan';
   tb.innerHTML=`<div id="wxNow" class="wxnow">Weer laden…</div>
@@ -1526,6 +1552,11 @@ function uiWx(){
     <label class="tg"><input type="checkbox" id="wCon" ${stars.con?'checked':''}> Sterrenbeelden &amp; namen</label>
     <label class="tg"><input type="checkbox" id="wMw" ${stars.mw?'checked':''}> Melkweg</label>
   </div>
+  <details id="simBox" ${wx.sim?'open':''}><summary>🧪 Weer simuleren (testen)</summary>
+    <div class="chips" id="simP">${Object.entries(SIMP).map(([k,v])=>`<span class="chip${wx.simKey===k?' on':''}" data-k="${k}">${v.n}</span>`).join('')}</div>
+    <div id="simS"></div>
+    <div class="row"><button class="btn sm dark" id="simOff">↩︎ Terug naar echt weer</button></div>
+  </details>
   <div class="row"><span class="t">Wolken tonen</span><select id="wCm"><option value="rain">Alleen bij regen/buien (en echte mist)</option><option value="all">Altijd volgens het weermodel</option></select></div>
   <div class="row"><button class="btn sm" id="wxPlay">${fx.play?'⏸ Stop':'▶ 48 uur afspelen'}</button><button class="btn sm dark" id="wxNowB">Nu</button></div>
   <div id="sunInfo" class="note"></div>
@@ -1540,6 +1571,13 @@ function uiWx(){
     fx.play=setInterval(()=>{wx.ofs=wx.ofs>=192?-8:wx.ofs+1;const sl=$('wxT');if(sl){sl.value=wx.ofs;$('wxTV').textContent=new Date(wxTime()).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'});}applyWx(true);},230);};
   for(const [id,k] of [['wSun','sun'],['wWind','wind'],['wCloud','cloud'],['wRain','rain'],['wMist','mist']]) $(id).onchange=()=>{wx[k]=$(id).checked;wxShadowKey='';applyWx();};
   for(const [id,k] of [['wStar','on'],['wCon','con'],['wMw','mw']]) $(id).onchange=()=>{stars[k]=$(id).checked;state['sky_'+k]=stars[k];lsSet('terrein3d',state);applyWx();};
+  const simSl=()=>{const b=$('simS');if(!b) return; if(!wx.sim){b.innerHTML='<div class="note">Kies een weertype. Daarna kun je alles fijn afstellen; de tijdschuif hierboven werkt ook (bv. onweer \'s nachts).</div>';return;}
+    b.innerHTML=SIMS.map(([k,l,mn,mx,st,u])=>`<div class="row"><span class="t">${l}</span><input type="range" data-s="${k}" min="${mn}" max="${mx}" step="${st}" value="${wx.sim[k]}"><span class="val" id="sv_${k}">${fmtSim(k,wx.sim[k],u)}</span></div>`).join('');
+    b.querySelectorAll('input').forEach(i=>i.oninput=()=>{const k=i.dataset.s;wx.sim[k]=+i.value;const d=SIMS.find(x=>x[0]===k);$('sv_'+k).textContent=fmtSim(k,+i.value,d[5]);if(k==='code'||k==='precip'||k==='temp') fx.pKey='x';fx.cKey='';wxShadowKey='';applyWx(true);clearTimeout(wx.simT);wx.simT=setTimeout(()=>applyWx(),250);});};
+  $('simP').onclick=e=>{const c=e.target.closest('.chip');if(!c) return;wx.simKey=c.dataset.k;wx.sim={...SIMBASE,...SIMP[c.dataset.k].v};
+    $('simP').querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c));fx.cKey='';fx.pKey='x';wxShadowKey='';simSl();applyWx();toast('🧪 Simulatie: '+SIMP[c.dataset.k].n);};
+  $('simOff').onclick=()=>{wx.sim=null;wx.simKey=null;$('simP').querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));fx.cKey='';fx.pKey='x';wxShadowKey='';simSl();applyWx();toast('Echt weer');};
+  simSl();
   $('radPlay').onclick=()=>{if(radTimer){clearInterval(radTimer);radTimer=null;$('radPlay').textContent='▶ Radar afspelen';return;}
     if(!wx.radar) return; $('radPlay').textContent='⏸ Stop';radTimer=setInterval(()=>{wx.fi=(wx.fi+1)%wx.radar.frames.length;drawRadar();},700);};
   wx.enabled=true;
@@ -1587,7 +1625,7 @@ function applyWx(fast){
     if(w.visibility!=null){U.fogF.value=clamp(w.visibility,S*0.2,S*8);U.fogN.value=U.fogF.value*0.03;}
     const rh=w.relative_humidity_2m??0, ws=w.wind_speed_10m??5, v=w.visibility??20000;
     let g=v<1000?0.85:0;
-    if(wx.cloudMode==='all'){if(v<2000) g=Math.max(g,0.5); if(rh>=97&&ws<2.5&&sp.alt<8) g=Math.max(g,0.2+0.3*(rh-97)/3);}
+    if(wx.cloudMode==='all'||wx.sim){if(v<2000) g=Math.max(g,0.5); if(rh>=97&&ws<2.5&&sp.alt<8) g=Math.max(g,0.2+0.3*(rh-97)/3);}
     if([45,48].includes(w.weather_code)) g=Math.max(g,0.8);
     if(renderer.xr.isPresenting) g*=0.5;
     U.gfog.value=g; U.gfH.value=clamp((cur.eMax-cur.eMin)*0.35,3,40); U.eMinU.value=cur.eMin;
@@ -1602,7 +1640,7 @@ function applyWx(fast){
   // tekst
   if($('wxNow')){
     if(w){const ws=w.wind_speed_10m||0,wd=w.wind_direction_10m||0,base=w.temperature_2m!=null&&w.dew_point_2m!=null?Math.max(0,125*(w.temperature_2m-w.dew_point_2m)):null;
-      $('wxNow').innerHTML=`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,1)} °C</div>
+      $('wxNow').innerHTML=(w._sim?'<div class="simtag">🧪 SIMULATIE — geen echt weer</div>':'')+`<div class="big">${WMO[w.weather_code]||'—'} · ${nf(w.temperature_2m??0,1)} °C</div>
       <div>💨 ${DIRS[Math.round(wd/22.5)%16]} ${nf(ws,1)} m/s (${bft(ws)} Bft)</div><div>Stoten ${nf(w.wind_gusts_10m??0,1)} m/s · ${toMil(wd)}‰</div>
       <div>🌧 ${nf(w.precipitation??0,1)} mm/u${w.precipitation_probability!=null?' · '+Math.round(w.precipitation_probability)+'%':''}</div><div>☁️ ${Math.round(w.cloud_cover??0)}% (L ${Math.round(w.cloud_cover_low??0)} · M ${Math.round(w.cloud_cover_mid??0)} · H ${Math.round(w.cloud_cover_high??0)})</div>
       <div>👁 zicht ${w.visibility!=null?fmtDist(w.visibility):'—'}</div><div>Wolkenbasis ~${base!=null?Math.round(base/10)*10+' m':'—'}</div>
@@ -1794,7 +1832,7 @@ function buildClouds(cov,base,strat){
   g.instanceCount=N;
   const mat=new THREE.ShaderMaterial({vertexShader:PUFF_VS,fragmentShader:PUFF_FS,transparent:true,depthWrite:false,
     uniforms:{drift:{value:fx.drift},span:{value:span},clipR:{value:renderer.xr.isPresenting?S/2:0},nTex:{value:getNoise()},litC:{value:new THREE.Color(1,1,1)},darkC:{value:new THREE.Color(0.55,0.6,0.66)},opa:{value:(strat?0.7:0.85)*(renderer.xr.isPresenting?(strat?0.3:0.5):1)}}});
-  const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.renderOrder=6; m.userData={base}; tAdd('clouds',m); placeClouds();
+  const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.renderOrder=6; m.userData={base,opa0:mat.uniforms.opa.value}; tAdd('clouds',m); placeClouds();
   // schaduwmasker
   const M=256,cv=document.createElement('canvas');cv.width=cv.height=M;const ctx=cv.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,M,M);ctx.globalCompositeOperation='lighter';
   for(const p of puffs){const r=p.s*0.5/span*M;for(const ox of [-M,0,M])for(const oz of [-M,0,M]){const x=(p.x+S)/span*M+ox,y=(1-(p.z+S)/span)*M+oz;if(x<-r||y<-r||x>M+r||y>M+r) continue;
@@ -1807,7 +1845,7 @@ function updateClouds(w,tint,lightK,rainy){
   const U=terrain.material.uniforms;
   const cov=w?Math.max(w.cloud_cover_low??0,(w.cloud_cover_mid??0)*0.75)/100:0;
   const wet=w&&((w.precipitation||0)>0.1||(w.weather_code>=51&&w.weather_code!==45&&w.weather_code!==48));
-  if(!wx.cloud||!w||cov<0.04||(wx.cloudMode!=='all'&&!wet)){tRemove('clouds');fx.cKey='';U.cloudOn.value=0;return;}
+  if(!wx.cloud||!w||cov<0.04||(wx.cloudMode!=='all'&&!wx.sim&&!wet)){tRemove('clouds');fx.cKey='';U.cloudOn.value=0;return;}
   const base=(w.temperature_2m!=null&&w.dew_point_2m!=null)?clamp(125*(w.temperature_2m-w.dew_point_2m),150,2500):800, strat=cov>0.85;
   const key=Math.round(cov*10)+'|'+strat+'|'+Math.round(base/150);
   if(key!==fx.cKey){fx.cKey=key;buildClouds(cov,base,strat);}
@@ -1887,6 +1925,8 @@ function wxFrame(now){
   const sF=fx.play?90:14; fx.drift.x+=fx.cw.x*dt*sF; fx.drift.y+=fx.cw.y*dt*sF;
   const span=2*cur.bb.S; fx.drift.x=((fx.drift.x%span)+span)%span; fx.drift.y=((fx.drift.y%span)+span)%span;
   stepPrecip(dt); stepFlow(dt);
+  {const m=tmeshes.clouds; if(m&&!renderer.xr.isPresenting){const top=m.position.y+m.userData.base+250, h=camera.position.y, r=Math.max(300,cur.bb.S*0.25);
+    const k=clamp((h-top)/r,0,1); m.material.uniforms.opa.value=m.userData.opa0*(1-0.72*k*k*(3-2*k));}} // van bovenaf: wolken doorzichtiger zodat je het terrein blijft zien
   const U=terrain.material.uniforms;
   if(fx.storm){if(now>fx.next){fx.flashT=now;fx.next=now+2500+Math.random()*7000;}
     const e=now-fx.flashT; fx.flash=e<70?1:e<130?0.15:e<200?0.75:e<700?Math.max(0,0.5*(1-(e-200)/500)):0;}
@@ -3005,7 +3045,7 @@ $('tAtm').onchange=()=>{if(terrain) terrain.material.uniforms.atmOn.value=$('tAt
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 if(state.season) $('season').value=state.season;
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},wx:()=>({sim:wx.simKey,en:wx.enabled,p:!!tmeshes.precip,pk:fx.pKey,c:!!tmeshes.clouds,ck:fx.cKey}),look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 $('lifeSp').oninput=()=>{$('lifeSpV').textContent=$('lifeSp').value+'×';};
