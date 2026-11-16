@@ -519,7 +519,20 @@ async function loadTerrarium(bb,n){
     for(let i=0;i<n;i++){const x=bb.x0+i/(n-1)*bb.W, gx=(x+HALF)*sc-tx0*256-0.5;
       E[j*n+i]=bilin(Hm,W,H,gx,gy);}}
   fillHoles(E,n);
-  return {E,src:'Terrain Tiles (~'+Math.round(WORLD/(256*2**z)*Math.cos(bb.lat*Math.PI/180))+' m)'};
+  const sea=seaFlood(E,n);
+  return {E,sea,src:'Terrain Tiles (~'+Math.round(WORLD/(256*2**z)*Math.cos(bb.lat*Math.PI/180))+' m)'};
+}
+// zee: alles onder zeeniveau dat met de rand verbonden is wordt zeeoppervlak (de tegels bevatten de zeebodem)
+function seaFlood(E,n){
+  const M=new Uint8Array(n*n),st=[];let c=0;
+  const push=k=>{if(!M[k]&&E[k]<0.05){M[k]=1;st.push(k);}};
+  for(let i=0;i<n;i++){push(i);push((n-1)*n+i);push(i*n);push(i*n+n-1);}
+  while(st.length){const k=st.pop(),i=k%n,j=(k/n)|0;c++;if(i>0)push(k-1);if(i<n-1)push(k+1);if(j>0)push(k-n);if(j<n-1)push(k+n);}
+  if(c<n*2) return null; // te klein: geen zee
+  // grote, diepe laagtes die niet nat zijn (bv. Dode Zee-gebied) laten we met rust als ze nergens dicht bij 0 m komen
+  let near0=0;for(let k=0;k<M.length;k++) if(M[k]&&E[k]>-15) near0++; if(!near0) return null;
+  for(let k=0;k<M.length;k++) if(M[k]) E[k]=0;
+  return M;
 }
 function bilin(A,W,H,x,y){
   x=clamp(x,0,W-1);y=clamp(y,0,H-1);
@@ -740,9 +753,9 @@ void main(){
     vec3 wiC=vec3(gy*0.98+0.05,gy*0.93+0.03,gy*0.82+0.02);
     vec3 sc=col*seas.y+spC*seas.x+auC*seas.z+wiC*seas.w; col=mix(col,sc,veg);}
   if(lc.g>0.01){vec3 hc=mix(vec3(0.45,0.4,0.27),vec3(0.66,0.36,0.64),heathK);col=mix(col,mix(col,hc,0.55),clamp(lc.g*1.2,0.0,1.0));}
-  if(snow>0.0){float fl=smoothstep(0.5,0.9,Nn.y);col=mix(col,vec3(0.93,0.95,0.98),snow*fl);}
+  if(snow>0.0){float fl=smoothstep(0.5,0.9,Nn.y)*(1.0-clamp(lc.r*2.0,0.0,1.0));col=mix(col,vec3(0.93,0.95,0.98),snow*fl);}
   if(wet>0.0){col*=1.0-0.22*wet;col=mix(col,col*col*1.7,0.22*wet);}
-  if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a);}
+  if(ci>0.0){float a=max(cline(vElev,ci)*0.55,cline(vElev,ci*5.0)*0.95);col=mix(col,vec3(0.55,0.28,0.08),a*(1.0-clamp(lc.r*2.0,0.0,1.0)));}
   float sh=shOn>0.001?mix(1.0,texture2D(shMap,muv).r,shOn):1.0;
   float cs=1.0; if(cloudOn>0.5){vec2 p=vL.xz+sun.xz/max(sun.y,0.15)*cloudY; vec2 cuv=fract((p-cloudDrift)/cloudSpan+0.5); cs=1.0-cloudK*clamp(texture2D(cloudMap,cuv).r*1.6,0.0,1.0);}
   float d=max(dot(Nn,sun),0.0)*sh*cs;
@@ -802,7 +815,7 @@ async function build(p){
     const T=await texP; let cv=T.cv; layer=T.layer; note+=T.note;
     if(tk!==token) return;
     let eMin=Infinity,eMax=-Infinity; for(const v of dem.E){if(v<eMin)eMin=v;if(v>eMax)eMax=v;}
-    cur={bb,n,E:dem.E,eMin,eMax,src:dem.src,layer,feats:null,trees:[],pois:[]};
+    cur={bb,n,E:dem.E,eMin,eMax,src:dem.src,sea:dem.sea||null,layer,feats:null,trees:[],pois:[]};
     mainSurf=mkSurf(bb,cv);
     buildTerrain();
     redrawSurf(mainSurf); refreshOverlay(mainSurf);
@@ -842,7 +855,7 @@ function swapMainTexture(cv){
   terrain.material.uniforms.map.value=mainSurf.tex; old.tex.dispose(); redrawSurf(mainSurf); refreshOverlay(mainSurf);
 }
 function upgradeElevation(dem){ // hoogtes vervangen zonder alles opnieuw te laden
-  if(!cur||!terrain) return; cur.E=dem.E; cur.src=dem.src; let mn=Infinity,mx=-Infinity; for(const v of dem.E){if(v<mn)mn=v;if(v>mx)mx=v;} cur.eMin=mn; cur.eMax=mx;
+  if(!cur||!terrain) return; cur.E=dem.E; cur.sea=dem.sea||null; cur.src=dem.src; let mn=Infinity,mx=-Infinity; for(const v of dem.E){if(v<mn)mn=v;if(v>mx)mx=v;} cur.eMin=mn; cur.eMax=mx;
   terrain.geometry.setAttribute('elev',new THREE.BufferAttribute(dem.E,1));
   cur.obst=null; cur.dsmObst=null; cur.slopeCanvas=null; cur.brChains=null; for(const r of (cur.feats&&cur.feats.roads)||[]){delete r.e0;delete r.e1;r.chain=null;}
   removePatch(); updateContours(); applyExag(); buildBridges(); if(typeof bldOn==='function'&&bldOn()) buildBuildings();
@@ -3126,6 +3139,8 @@ way["waterway"~"^(river|canal${big?'':'|stream|ditch|drain'})$"](${bx});way["nat
     const pg=polys(el);if(!pg) continue; const heath=t.natural==='heath';
     x.globalCompositeOperation='lighter';x.fillStyle=heath?'rgb(0,255,0)':'rgb(255,0,0)';x.beginPath();pg.o.forEach(ring);x.fill('evenodd');
     if(pg.i.length){x.globalCompositeOperation='destination-out';x.beginPath();pg.i.forEach(ring);x.fill();x.globalCompositeOperation='lighter';}}
+  if(cur.sea){const n=cur.n,cw=M/(n-1);x.globalCompositeOperation='lighter';x.fillStyle='rgb(255,0,0)';
+    for(let j=0;j<n;j++)for(let i=0;i<n;i++) if(cur.sea[j*n+i]) x.fillRect((i-0.5)*cw,(j-0.5)*cw,cw+0.6,cw+0.6);}
   if(cur.feats&&cur.feats.forests){x.fillStyle='rgb(0,0,255)';for(const f of cur.feats.forests){x.globalCompositeOperation='lighter';x.beginPath();f.outer.forEach(ring);x.fill('evenodd');
     if(f.inner.length){x.globalCompositeOperation='destination-out';x.beginPath();f.inner.forEach(ring);x.fill();}}}
   x.globalCompositeOperation='source-over';
