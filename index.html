@@ -241,7 +241,7 @@ input[type=number]{background:#2a2e37;color:#eee;border:none;border-radius:8px;p
       <div class="sec">3D en sfeer</div>
       <div class="grid2"><label class="tg"><input type="checkbox" id="tBld" checked> Gebouwen</label><label class="tg"><input type="checkbox" id="tTrees" checked> Bomen</label><label class="tg"><input type="checkbox" id="tAhnT" checked> Echte boomhoogtes (AHN)</label><label class="tg"><input type="checkbox" id="tLife" checked> Windmolens</label><label class="tg"><input type="checkbox" id="tPretty" checked> Mooi beeld (water, lucht)</label><input type="checkbox" id="tWater" checked hidden><input type="checkbox" id="tAtm" checked hidden></div>
       <div class="row" style="display:none"><span class="t">Seizoen</span><select id="season"><option value="off">Uit</option><option value="auto">Automatisch (datum)</option><option value="spring">Lente</option><option value="summer">Zomer</option><option value="autumn">Herfst</option><option value="winter">Winter</option></select><span class="val" id="seasV" style="width:auto;min-width:50px;font-size:12px"></span></div>
-      <div class="attr small">Versie v39 · 16-11 23:00. · Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
+      <div class="attr small">Versie v40 · 17-11 11:00. · Tik op het terrein voor MGRS-coördinaat en hoogte. Eén vinger: draaien · twee vingers: zoomen/schuiven.<br>
       Bronnen: AHN (Rijkswaterstaat/PDOK), Kadaster BRT/TOP25 (PDOK), OpenTopoMap, © OpenStreetMap-bijdragers (Overpass), Mapzen/AWS Terrain Tiles, Esri World Imagery.</div>
     </div>
   </div>
@@ -543,7 +543,7 @@ async function loadTerrarium(bb,n){
     for(let i=0;i<n;i++){const x=bb.x0+i/(n-1)*bb.W, gx=(x+HALF)*sc-tx0*256-0.5;
       E[j*n+i]=bilin(Hm,W,H,gx,gy);}}
   fillHoles(E,n);
-  const sea=seaFlood(E,n);
+  const sea=inNL(bb.lat,bb.lon)?null:seaFlood(E,n);
   return {E,sea,src:'Terrain Tiles (~'+Math.round(WORLD/(256*2**z)*Math.cos(bb.lat*Math.PI/180))+' m)'};
 }
 // zee: alles onder zeeniveau dat met de rand verbonden is wordt zeeoppervlak (de tegels bevatten de zeebodem)
@@ -674,7 +674,7 @@ function osmFetch(q){ // meerdere Overpass-servers: de snelste wint
 function osmQuery(bb){
   const b=bbLatLng(bb), bx=`${b.s},${b.w},${b.n},${b.e}`, S=bb.S, big=S>15000, huge=S>25000;
   const roadRe=huge?'motorway|trunk|primary|secondary':big?'motorway|trunk|primary|secondary|tertiary':'motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track|path|footway|cycleway|bridleway';
-  return `[out:json][timeout:${big?120:60}][maxsize:${big?400000000:200000000}];(
+  return `[out:json][timeout:${big?150:90}][maxsize:${big?400000000:200000000}];(
 ${big?'':`way["landuse"="forest"](${bx});way["natural"="wood"](${bx});rel["landuse"="forest"](${bx});rel["natural"="wood"](${bx});`}
 way["highway"~"^(${roadRe})$"](${bx});
 node["natural"~"^(peak|hill)$"](${bx});
@@ -686,10 +686,14 @@ way["landuse"="military"](${bx});
 way["natural"="water"](${bx});rel["natural"="water"](${bx});way["waterway"="riverbank"](${bx});way["landuse"~"^(reservoir|basin)$"](${bx});
 way["waterway"~"^(river|canal${big?'':'|stream|ditch|drain'})$"](${bx});way["natural"="heath"](${bx});rel["natural"="heath"](${bx});
 way["railway"~"^(rail|light_rail|tram|narrow_gauge)$"](${bx});node["railway"~"^(station|halt)$"](${bx});node["generator:source"="wind"](${bx});
-${S<=8000?`way["building"](${bx});rel["building"]["type"="multipolygon"](${bx});`:''}
 );out geom;`;
 }
 function getOSMFor(bb){const key=bb.x0.toFixed(1)+'|'+bb.y0.toFixed(1)+'|'+bb.S;if(!osmCache[key]){osmCache[key]=osmFetch(osmQuery(bb));osmCache[key].catch(()=>{delete osmCache[key];});}return osmCache[key];}
+// gebouwen apart: grote stads-gebieden mogen de rest (wegen, bruggen, labels) niet laten mislukken
+function getBldFor(bb){const key='b|'+bb.x0.toFixed(1)+'|'+bb.y0.toFixed(1)+'|'+bb.S;
+  if(!osmCache[key]){const b=bbLatLng(bb),bx=`${b.s},${b.w},${b.n},${b.e}`;
+    osmCache[key]=osmFetch(`[out:json][timeout:90];(way["building"](${bx});rel["building"]["type"="multipolygon"](${bx}););out geom;`);osmCache[key].catch(()=>{delete osmCache[key];});}
+  return osmCache[key];}
 async function loadOverpass(bb){return getOSMFor(bb);}
 
 /* =================== 3D =================== */
@@ -863,10 +867,14 @@ async function build(p){
   }
   // kenmerken (achtergrond)
   $('feat').textContent='kenmerken laden…';
-  try{
-    const js=await loadOverpass(bb); if(tk!==token) return;
-    processFeatures(js); $('feat').textContent=`${cur.pois.length} kenmerken · ${cur.trees.length} bomen`;
-  }catch(e){console.warn('overpass',e); if(tk===token) $('feat').textContent='kenmerken niet geladen';}
+  for(let poging=1;poging<=3;poging++){
+    try{
+      const js=await loadOverpass(bb); if(tk!==token) return;
+      processFeatures(js); $('feat').textContent=`${cur.pois.length} kenmerken · ${cur.trees.length} bomen`; return;
+    }catch(e){console.warn('overpass',e); if(tk!==token) return;
+      if(poging<3){$('feat').textContent='kenmerken: opnieuw proberen…';await new Promise(r=>setTimeout(r,4000*poging));}
+      else{$('feat').textContent='kenmerken niet geladen';toast('Wegen, bruggen en labels konden niet laden (OSM-server druk). Probeer later opnieuw.');}}
+  }
 }
 async function loadTexFB(bb,layer,size,prog){ // kaart laden met reserves
   try{return {cv:await loadTexture(bb,layer,size,prog),layer,note:''};}
@@ -883,7 +891,7 @@ function upgradeElevation(dem){ // hoogtes vervangen zonder alles opnieuw te lad
   terrain.geometry.setAttribute('elev',new THREE.BufferAttribute(dem.E,1));
   cur.obst=null; cur.dsmObst=null; cur.slopeCanvas=null; cur.brChains=null; for(const r of (cur.feats&&cur.feats.roads)||[]){delete r.e0;delete r.e1;r.chain=null;}
   removePatch(); updateContours(); applyExag(); buildBridges(); if(typeof bldOn==='function'&&bldOn()) buildBuildings();
-  if($('tSlope').checked) computeSlope(); if(cur.vsObs) computeVS(); redrawTexture(); loadAhnTrees(); if(wx.enabled){wxShadowKey='';applyWx();}
+  if($('tSlope').checked) computeSlope(); if(cur.vsObs) computeVS(); redrawTexture(); loadAhnTrees(); loadLandcover(); if(wx.enabled){wxShadowKey='';applyWx();}
   $('stat').textContent=`${G.toMGRS(cur.bb.lat,cur.bb.lon,3)} · ${cur.bb.S/1000}×${cur.bb.S/1000} km · ${mn.toFixed(1)} – ${mx.toFixed(1)} m · ${dem.src}`;
   toast('AHN-hoogtes geladen ✓'); schedulePatch();
 }
@@ -2774,7 +2782,7 @@ async function loadBuildings(){
   setDet('🏠 gebouwen laden…');
   try{
     const b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`;
-    if(!bld.data){const all=await getOSMFor(cur.bb);bld.data={elements:all.elements.filter(e=>e.tags&&e.tags.building)};}
+    if(!bld.data){bld.data=await getBldFor(cur.bb);}
     if(!bld.dsm&&inNL(cur.bb.lat,cur.bb.lon)){try{bld.dsm=await getDSM();}catch(e){console.warn('DSM',e);bld.dsm=false;}}
     if(tk!==bld.tok||!cur) return;
     buildBuildings(); setDet('');
@@ -3122,7 +3130,7 @@ $('presets').onclick=e=>{const c=e.target.closest('.chip');if(!c) return;const P
 $('season').onchange=()=>{state.season=$('season').value;lsSet('terrein3d',state);applySeason(true);};
 $('season').value='off'; // seizoenen uit de app gehaald
 $('tAhnT').onchange=()=>{if(!cur) return; if($('tAhnT').checked) loadAhnTrees(); else {aht.tok++;cur.dsmObst=null;cur.obst=null;if(cur.feats) buildTrees(cur.feats.forests);}};
-window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},wx:()=>({sim:wx.simKey,en:wx.enabled,p:!!tmeshes.precip,pk:fx.pKey,c:!!tmeshes.clouds,ck:fx.cKey}),look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
+window.__t3d={doc:()=>doc,cur:()=>cur,share:()=>share,pres:()=>({on:pres.on,follow:pres.follow,src:!!pres.src,tgt:!!pres.tgt,ak:areaKey(),srcak:pres.src&&pres.src.ak,ce:controls.enabled}),cam:()=>({p:camera.position.toArray(),t:controls.target.toArray()}),move:(x,y,z,tx,ty,tz)=>{camera.position.set(x,y,z);if(tx!=null) controls.target.set(tx,ty,tz);controls.update();},brg:()=>({n:tmeshes.brg?tmeshes.brg.geometry.attributes.position.count:0,roads:(cur.feats&&cur.feats.roads||[]).filter(r=>r.bridge).length,extra:!!life.extra,src:cur.src,list:bridgeList().length}),wx:()=>({sim:wx.simKey,en:wx.enabled,p:!!tmeshes.precip,pk:fx.pKey,c:!!tmeshes.clouds,ck:fx.cKey}),look:(x,y,z,tx,ty,tz)=>{controls.enabled=false;camera.position.set(x,y,z);camera.lookAt(tx,ty,tz);}}; // alleen voor testen/debug
 $('tLife').onchange=()=>{state.life=$('tLife').checked;lsSet('terrein3d',state);if(lifeOn()) loadLife(); else lifeClear();};
 if(state.life===false) $('tLife').checked=false;
 
@@ -3196,7 +3204,7 @@ const dsmC={key:'',p:null};
 function getDSM(){const key=cur.bb.x0+'|'+cur.bb.S;if(dsmC.key!==key){dsmC.key=key;dsmC.p=loadAHN(cur.bb,Math.min(801,Math.round(cur.bb.S/4)+1),'dsm_05m',1.6);}return dsmC.p;}
 async function getBuildingData(){
   if(bld.data&&bld.bbKey===cur.bb.x0+'|'+cur.bb.S) return bld.data;
-  if(cur.bb.S<=8000){try{const all=await getOSMFor(cur.bb);bld.data={elements:all.elements.filter(e=>e.tags&&e.tags.building)};bld.bbKey=cur.bb.x0+'|'+cur.bb.S;return bld.data;}catch(e){return null;}}
+  if(cur.bb.S<=8000){try{bld.data=await getBldFor(cur.bb);bld.bbKey=cur.bb.x0+'|'+cur.bb.S;return bld.data;}catch(e){return null;}}
   const b=bbLatLng(cur.bb),bx=`${b.s},${b.w},${b.n},${b.e}`,q=`[out:json][timeout:50];(way["building"](${bx});rel["building"]["type"="multipolygon"](${bx}););out geom;`;
   for(const ep of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){try{const r=await fetch(ep+'?data='+encodeURIComponent(q));if(!r.ok) throw 0;const js=await r.json();bld.data=js;bld.bbKey=cur.bb.x0+'|'+cur.bb.S;return js;}catch(e){}}
   return null;
